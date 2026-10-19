@@ -52,7 +52,13 @@ typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Li
  * regions' bytes from the patch file and the file grows to vsize. */
 typedef struct { uint64_t offset, length, data; } PatchRegion;
 typedef struct { int fd; uint64_t base_size, vsize; uint32_t count; PatchRegion *regions; } Patch;
-typedef struct { int used, host; Listing *dir; size_t position; char path[512]; Patch *patch; uint64_t vpos; } File;
+/* Read-only files keep their own offset (vpos, under io) and are read with pread: games share
+ * one descriptor of an archive (art.rcf) between threads, and on Windows a positioned read
+ * moves the descriptor's file pointer for a moment, which a read() at the same time would use. */
+typedef struct {
+    int used, host; Listing *dir; size_t position; char path[512];
+    Patch *patch; uint64_t vpos; int tracked; pthread_mutex_t io;
+} File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
@@ -416,6 +422,7 @@ static int64_t do_close(int fd) {
     if (f->host>=0) close(f->host);
     free_listing(f->dir);
     free_patch(f->patch);
+    if (f->tracked) pthread_mutex_destroy(&f->io);
     *f=(File){0};
     pthread_mutex_unlock(&lock);
     return 0;
@@ -449,9 +456,14 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
     if (h<0) return -EBADF;
     touch_for_write(buffer,size);
     File *pf=fd>=3 ? get(fd) : NULL;
-    if (pf && pf->patch) {
-        int64_t r=patched_pread(pf->patch,h,buffer,size,pf->vpos);
+    if (pf && pf->tracked) {
+        pthread_mutex_lock(&pf->io);
+        int64_t r;
+        if (pf->patch) r=patched_pread(pf->patch,h,buffer,size,pf->vpos);
+        else { ssize_t n=pread(h,buffer,size,(int64_t)pf->vpos); r=n<0 ? -errno : n; }
         if (r>0) pf->vpos+=(uint64_t)r;
+        pthread_mutex_unlock(&pf->io);
+        if (r>0) { __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)r,__ATOMIC_RELAXED); }
         return r;
     }
     ssize_t n=host_read(h,buffer,size);
@@ -493,11 +505,20 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
         if (whence==0 && offset>=0) { f->position=(size_t)offset; return offset; }
         return -EINVAL;
     }
-    if (f->patch) {
-        int64_t base=whence==0 ? 0 : whence==1 ? (int64_t)f->vpos : (int64_t)f->patch->vsize;
-        if (base+offset<0) return -EINVAL;
-        f->vpos=(uint64_t)(base+offset);
-        return (int64_t)f->vpos;
+    if (f->tracked) {
+        int64_t end=0;
+        if (whence==2) {
+            HostStat st;
+            if (f->patch) end=(int64_t)f->patch->vsize;
+            else if (host_fstat(f->host,&st)) return -errno;
+            else end=(int64_t)st.st_size;
+        }
+        pthread_mutex_lock(&f->io);
+        const int64_t base=whence==0 ? 0 : whence==1 ? (int64_t)f->vpos : end;
+        int64_t r=-EINVAL;
+        if (base+offset>=0) { f->vpos=(uint64_t)(base+offset); r=(int64_t)f->vpos; }
+        pthread_mutex_unlock(&f->io);
+        return r;
     }
     int64_t r=host_lseek(f->host,offset,whence);
     return r<0 ? -errno : r;
@@ -565,16 +586,15 @@ void runtime_file_report_recent(void) {
 }
 static int64_t do_open(const char *guest,int flags,int mode) {
     int64_t r=do_open_impl(guest,flags,mode);
-    if (r>=3 && game_path(guest)) {
+    if (r>=3) {
         File *f=get((int)r);
         HostStat st;
-        if (f && f->host>=0 && !f->dir && !host_fstat(f->host,&st) && S_ISREG(st.st_mode)) {
-            Patch *p=open_patch(guest,(uint64_t)st.st_size);
-            if (p) {
-                pthread_mutex_lock(&lock);
-                f->patch=p; f->vpos=0;
-                pthread_mutex_unlock(&lock);
-            }
+        if (f && f->host>=0 && !f->dir && !(flags & 3) && !host_fstat(f->host,&st) && S_ISREG(st.st_mode)) {
+            Patch *p=game_path(guest) ? open_patch(guest,(uint64_t)st.st_size) : NULL;
+            pthread_mutex_lock(&lock);
+            pthread_mutex_init(&f->io,NULL);
+            f->patch=p; f->vpos=0; f->tracked=1;
+            pthread_mutex_unlock(&lock);
         }
     }
     pthread_mutex_lock(&lock);

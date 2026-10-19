@@ -9,6 +9,38 @@ uintptr_t runtime_lookup(const RuntimeExport *table,size_t n,const char *name) {
     for (size_t i=0;i<n;++i) if (!strcmp(table[i].name,name)) return (uintptr_t)table[i].function;
     return 0;
 }
+/* One descriptor shared by threads: seek+read in one, positioned reads in the other. */
+static int shared_fd;
+static void *pread_worker(void *arg) {
+    (void)arg;
+    unsigned char b[64];
+    for (int i=0;i<20000;++i) {
+        int64_t at=(i*7919)%60000;
+        assert(do_pread(shared_fd,b,64,at)==64);
+        for (int k=0;k<64;++k) assert(b[k]==(unsigned char)((at+k)%251));
+    }
+    return NULL;
+}
+static void test_shared_reads(const char *game) {
+    char path[600]; snprintf(path,sizeof(path),"%s/shared.bin",game);
+    FILE *f=fopen(path,"wb"); assert(f);
+    for (int i=0;i<65536;++i) fputc(i%251,f);
+    assert(!fclose(f));
+    shared_fd=(int)do_open("/app0/shared.bin",0,0); assert(shared_fd>=3);
+    pthread_t t; assert(!pthread_create(&t,NULL,pread_worker,NULL));
+    unsigned char b[32];
+    for (int i=0;i<20000;++i) {
+        int64_t at=(i*104729)%60000;
+        assert(do_lseek(shared_fd,at,0)==at);
+        assert(do_read(shared_fd,b,32)==32);
+        for (int k=0;k<32;++k) assert(b[k]==(unsigned char)((at+k)%251));
+        assert(do_lseek(shared_fd,0,1)==at+32);
+    }
+    assert(!pthread_join(t,NULL));
+    assert(do_lseek(shared_fd,-10,2)==65526);
+    assert(do_read(shared_fd,b,32)==10);
+    assert(!do_close(shared_fd) && !unlink(path));
+}
 int main(void) {
     char root[]="/tmp/port-mod-files-XXXXXX";
     assert(mkdtemp(root));
@@ -96,6 +128,7 @@ int main(void) {
         p+=length;
     }
     assert(found && !do_close(dir));
+    test_shared_reads(game);
     int save=(int)do_open("/data/test-save",0x202,0644); assert(save>=3);
     assert(do_write(save,"save",4)==4 && !do_close(save));
     assert(!path_op("/data/test-save",2,0));
@@ -103,5 +136,6 @@ int main(void) {
     const char *dirs[]={"temp0","download0","data"};
     for (int i=0;i<3;++i) { char p[1024]; snprintf(p,sizeof(p),"%s/%s",user,dirs[i]); assert(!rmdir(p)); }
     assert(!rmdir(user) && !rmdir(root));
+    puts("Shared descriptor: seek+read and positioned reads from two threads PASS");
     puts("Guest mod files: reads, stat, merged listing, readonly assets and writable saves PASS");
 }

@@ -6,7 +6,7 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 0.5.0 — keyboard and mouse update, October 19, 2026** ([notes](docs/releases/v0.5.0.md)). First public release: 0.4.0.
+**Version 0.5.1 — October 19, 2026** ([notes](docs/releases/v0.5.1.md)): keyboard and mouse ([0.5.0](docs/releases/v0.5.0.md)), fixes for archive dumps. First public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
@@ -47,7 +47,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v0.5.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v0.5.1.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`) and press **PLAY**. The first start prepares the game (about a
@@ -97,8 +97,8 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 ## Known issues
 
-- Opening the pause menu (touchpad, Esc) can rarely end in an endless loading screen. Under
-  investigation: press **F10** while it hangs and send `last_run.log`.
+- A loading screen can rarely never end (seen when opening the pause menu). Press **F10** while
+  it hangs and send `last_run.log` and `out\hang_sample.txt`.
 - PROTOTYPE 2 does not start yet.
 - Render resolutions above 1080p are experimental.
 - FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows

@@ -39,8 +39,8 @@ SAVES AND LOGS
   Log:     last_run.log (send it with any problem report)
 
 KNOWN ISSUES
-  - The pause menu (touchpad, Esc) can rarely hang on its loading screen: press F10 while it
-    hangs and send last_run.log.
+  - A loading screen can rarely never end: press F10 while it hangs and send last_run.log
+    and out\hang_sample.txt.
   - PROTOTYPE 2 (from the bundle menu) is not supported yet: choosing it ends the game.
   - Render resolution above 1080p is experimental.
   - FSR 4.1 needs a driver feature AMD's Windows driver does not have yet; it stays hidden.
