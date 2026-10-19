@@ -319,7 +319,8 @@ bool TemporalUpscaler::OnFrameStart() {
                         "perspective (|z| %.3f), %u unmatched, %u found, %u invalid (b %.4f); "
                         "%u from ring, %u from guest memory; history resets %u; now current %d "
                         "previous %d depth %d; projection %.4f %.4f %.6f %.4f; largest camera "
-                        "step %.3f units, %.2f degrees; jitter %.3f %.3f\n",
+                        "step %.3f units, %.2f degrees; jitter %.3f %.3f; up to %u cameras "
+                        "in a frame\n",
                         diag_frames, diag_triggers, diag_runs, diag_no_scene, diag_no_camera,
                         failed ? ", failed" : "", c.diag_calls, c.diag_affine, c.diag_zlen,
                         c.diag_last_zlen, c.diag_disagree, c.diag_commits, c.diag_invalid,
@@ -327,12 +328,13 @@ bool TemporalUpscaler::OnFrameStart() {
                         int(c.CurrentValid()), int(c.PreviousValid()), int(bool(c.Depth())),
                         c.CurrentProj()[0], c.CurrentProj()[1], c.CurrentProj()[2],
                         c.CurrentProj()[3], c.diag_max_move, c.diag_max_turn, jitter[0],
-                        jitter[1]);
+                        jitter[1], c.diag_max_groups);
         }
         camera_motion.diag_calls = camera_motion.diag_affine = camera_motion.diag_zlen = 0;
         camera_motion.diag_disagree = camera_motion.diag_commits = camera_motion.diag_invalid = 0;
         camera_motion.diag_ring = camera_motion.diag_guest = camera_motion.diag_history_resets = 0;
         camera_motion.diag_max_move = camera_motion.diag_max_turn = 0.0f;
+        camera_motion.diag_max_groups = 0;
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
     prototype_game = prototype;
@@ -412,6 +414,7 @@ void TemporalUpscaler::OnDrawTrigger() {
     }
     done_this_frame = true;
     ++diag_triggers;
+    camera_motion.FinalizeFrame();
     if (!Active()) {
         reset = true;
         return;

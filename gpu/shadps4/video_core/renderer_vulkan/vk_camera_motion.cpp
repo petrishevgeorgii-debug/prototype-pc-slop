@@ -347,24 +347,48 @@ void CameraMotion::OnObjectConstants(const float* data, u64 vs_hash, u32 size, i
         ++diag_zlen;
         return;
     }
-    // Two draws must imply the same matrix (a draw whose first floats are other data, or a
-    // special camera, does not match the main one).
-    bool agreed = false;
-    for (u32 c = 0; c < candidate_count && !agreed; ++c) {
+    // Group the draws' view-projections: the frame's camera is the one most draws use
+    // (decided in FinalizeFrame). PROTOTYPE draws some objects with another projection (a
+    // nearer near plane); taking whichever came first alternated the two between frames.
+    for (u32 c = 0; c < candidate_count; ++c) {
         float diff = 0.0f, scale = 0.0f;
         for (int i = 0; i < 16; ++i) {
             diff = std::max(diff, std::abs(vp[i] - candidates[c][i]));
             scale = std::max(scale, std::abs(candidates[c][i]));
         }
-        agreed = diff <= 1e-4f * std::max(scale, 1.0f);
+        if (diff <= 1e-4f * std::max(scale, 1.0f)) {
+            ++candidate_votes[c];
+            return;
+        }
     }
-    if (!agreed) {
-        ++diag_disagree;
-        candidates[candidate_next] = vp;
-        candidate_next = (candidate_next + 1) % candidates.size();
-        candidate_count = std::min<u32>(candidate_count + 1, u32(candidates.size()));
+    ++diag_disagree;
+    if (candidate_count < candidates.size()) {
+        candidates[candidate_count] = vp;
+        candidate_votes[candidate_count] = 1;
+        ++candidate_count;
+    }
+}
+
+void CameraMotion::FinalizeFrame() {
+    if (frame_has_camera) {
         return;
     }
+    u32 best = candidate_count, votes = 1, groups = 0;
+    for (u32 c = 0; c < candidate_count; ++c) {
+        groups += candidate_votes[c] >= 2;
+        if (candidate_votes[c] > votes) {
+            votes = candidate_votes[c];
+            best = c;
+        }
+    }
+    diag_max_groups = std::max(diag_max_groups, groups);
+    if (best == candidate_count) {
+        return;
+    }
+    const Mat4 vp = candidates[best];
+    candidate_count = 0;
+    const float zx = At(vp, 3, 0), zy = At(vp, 3, 1), zz = At(vp, 3, 2), zw = At(vp, 3, 3);
+    const float zlen = std::sqrt(zx * zx + zy * zy + zz * zz);
     // Rows of the view matrix from the view-projection: z = row 3 / |row 3|, then x and y with
     // their projection centres removed; depth = a + b / z (D3D, 0 at the near plane).
     const float inv_len = 1.0f / zlen;
@@ -444,6 +468,7 @@ void CameraMotion::OnDisplayPass(VideoCore::ImageId frame) {
     if (debug_overlay && frame && depth_id && current.valid && previous.valid) {
         Overlay(frame);
     }
+    FinalizeFrame();
     if (!frame_has_camera) {
         InvalidateHistory();
         ++diag_history_resets;

@@ -86,6 +86,9 @@ public:
 
     /// The G-buffer pass (5+ color targets): its depth is the scene depth.
     void OnGBufferPass(VideoCore::ImageId depth);
+    /// PROTOTYPE: the frame's scene draws are done: its camera is the view-projection most of
+    /// them used (OnObjectConstants groups them).
+    void FinalizeFrame();
 
     /// The pass copying the finished frame (`frame`, the last target drawn) to the display: the
     /// frame's depth and camera are complete. Records the debug overlay, starts a new frame.
@@ -122,9 +125,11 @@ public:
     float diag_last_zlen = 0.0f, diag_last_b = 0.0f;
     u32 diag_ring = 0, diag_guest = 0, diag_history_resets = 0;
     float diag_max_move = 0.0f, diag_max_turn = 0.0f;
+    u32 diag_max_groups = 0; ///< most cameras (2+ draws each) seen in one frame
 private:
     /// PROTOTYPE: view-projections seen this frame, waiting for a second draw to agree.
-    std::array<std::array<float, 16>, 4> candidates{};
+    std::array<std::array<float, 16>, 8> candidates{};
+    std::array<u32, 8> candidate_votes{};
     u32 candidate_count = 0, candidate_next = 0;
     std::array<float, 2> jitter{}, previous_jitter{};
     std::array<u32, 2> render_size{};
