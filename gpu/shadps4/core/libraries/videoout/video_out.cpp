@@ -145,8 +145,12 @@ s32 PS4_SYSV_ABI sceVideoOutRegisterBuffers(s32 handle, s32 startIndex, void* co
 }
 
 s32 PS4_SYSV_ABI sceVideoOutSetFlipRate(s32 handle, s32 rate) {
-    std::printf("VideoOut: sceVideoOutSetFlipRate(handle=%d, rate=%d)\n", handle, rate);
-    std::fflush(stdout);
+    // port: logged only when the rate changes (PROTOTYPE sets it every frame).
+    static s32 last_rate = -1;
+    if (rate != last_rate) {
+        std::printf("VideoOut: sceVideoOutSetFlipRate(handle=%d, rate=%d)\n", handle, rate);
+        last_rate = rate;
+    }
     LOG_TRACE(Lib_VideoOut, "called");
     // port: THEORDER_FLIP_RATE=<n> replaces the game's flip rate (0: every vblank).
     static const char* forced = std::getenv("THEORDER_FLIP_RATE");

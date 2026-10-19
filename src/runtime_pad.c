@@ -463,11 +463,11 @@ static ABI int32_t pad_read_state(int32_t handle, PadData *data) {
     if (!data) return ERR_INVALID_ARG;
     pthread_mutex_lock(&lock);
     sample(data);
-    if (++reads <= 30 || (data->buttons != 0) || reads % 120 == 0) {
+    static int key_trace=-1;
+    if (key_trace<0) key_trace=getenv("THEORDER_KEY_TRACE")!=NULL;
+    if (++reads <= 30 || (key_trace && data->buttons != 0)) /* THEORDER_KEY_TRACE: every press */
         printf("Runtime: pad read #%zu: buttons=0x%x lx=%u ly=%u rx=%u ry=%u\n",
                reads, data->buttons, data->left_x, data->left_y, data->right_x, data->right_y);
-        fflush(stdout);
-    }
     pthread_mutex_unlock(&lock);
     return 0;
 }

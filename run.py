@@ -414,6 +414,11 @@ def main():
         if not get_env(env, 'VBLANK_HZ'):
             env['THEORDER_VBLANK_HZ'] = '60'
             derived.append('THEORDER_VBLANK_HZ')
+        # PROTOTYPE paces itself on the PS4's 60 Hz flips: without a cap the present thread
+        # let it run at 70-120 FPS (menus and loading screens too fast).
+        if is_prototype and not get_env(env, 'FPS_LIMIT'):
+            env['THEORDER_FPS_LIMIT'] = '60'
+            derived.append('THEORDER_FPS_LIMIT')
         # Without the frame rate patch the engine steps 1/60 s per frame: the present thread must
         # not flip faster, or the game speeds up.
         env['THEORDER_ENGINE_FPS'] = str(engine_fps)
