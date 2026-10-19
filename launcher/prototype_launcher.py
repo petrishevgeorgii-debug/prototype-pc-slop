@@ -43,7 +43,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -132,6 +132,10 @@ def load_settings():
         pass
     if values['render_res'] not in RESOLUTIONS:
         values['render_res'] = '1920x1080'
+    # 0.2.1: the render resolution patch changed; every setup starts again from the PS4's size.
+    if values.get('settings_version', 0) < 2:
+        values['render_res'] = '1920x1080'
+        values['settings_version'] = 2
     return values
 
 
@@ -166,7 +170,6 @@ def game_environment(values):
         'THEORDER_FPS60': '1' if values['fps60'] else '0',
         'THEORDER_PROTO_RES': values['render_res'],
         'THEORDER_PROTO_TENDRIL_FIX': '1' if values['tendril_fix'] else '0',
-        'THEORDER_LANGUAGE': str(values['language']),
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
         'THEORDER_UPSCALER': 'none',
         'PYTHONIOENCODING': 'utf-8',
@@ -658,8 +661,9 @@ class Launcher:
     def tab_graphics(self):
         res = [(r, r.replace('x', ' × ') + ('  (PS4)' if r == '1920x1080' else '')) for r in RESOLUTIONS]
         self.section('IMAGE')
-        self.stepper('Render resolution', 'The resolution the game renders at. Above your window size it '
-                     'supersamples (sharper, heavier); below it, FSR 1 scales it up.', 'render_res', res)
+        self.stepper('Render resolution', 'EXPERIMENTAL. The resolution the game renders at. Above your window '
+                     'size it supersamples (sharper, heavier); below it, FSR 1 scales it up. If the game '
+                     'misbehaves, set it back to 1920 × 1080.', 'render_res', res)
         self.toggle('FSR 1 upscaling', 'AMD FidelityFX Super Resolution 1: scales the game image to your window '
                     'with edge-aware upscaling instead of plain filtering.', 'fsr1')
         self.toggle('Sharpening (RCAS)', 'Contrast-adaptive sharpening of the final image.', 'rcas')
@@ -712,8 +716,6 @@ class Launcher:
             bx = cv.bbox(item)[2] + 18
         self.row_y += 36
         self.section('OPTIONS')
-        self.stepper('Language', 'Text and voice language of the game.', 'language',
-                     [(code, name) for name, code in LANGUAGES])
         self.toggle('Fix white tendrils', 'Consume tendrils show their red veins (a fix for a GPU emulation '
                     'difference; keep it on).', 'tendril_fix')
 

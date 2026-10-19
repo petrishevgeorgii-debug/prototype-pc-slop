@@ -34,67 +34,67 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 1280x720"
-              Note="The game renders at 1280x720 instead of 1920x1080 (display setup and game config). The window shows it scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 1280x720 instead of 1920x1080. The window shows the image scaled to its own size."
               Author="prototype-port"
-              PatchVer="1.0"
+              PatchVer="2.0"
               AppVer="01.00"
               AppElf="eboot.bin"
               isEnabled="false">
         <PatchList>
+            <Line Type="bytes" Address="0x00227b50" Value="48b800050000d0020000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff00050000c7853cfeffffd0020000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
-            <Line Type="bytes" Address="0x000bf81a" Value="c70300050000c74304d0020000" Pattern="c7 03 80 07 00 00 c7 43 04 38 04 00 00" At="0"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 1600x900"
-              Note="The game renders at 1600x900 instead of 1920x1080 (display setup and game config). The window shows it scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 1600x900 instead of 1920x1080. The window shows the image scaled to its own size."
               Author="prototype-port"
-              PatchVer="1.0"
+              PatchVer="2.0"
               AppVer="01.00"
               AppElf="eboot.bin"
               isEnabled="false">
         <PatchList>
+            <Line Type="bytes" Address="0x00227b50" Value="48b84006000084030000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff40060000c7853cfeffff84030000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
-            <Line Type="bytes" Address="0x000bf81a" Value="c70340060000c7430484030000" Pattern="c7 03 80 07 00 00 c7 43 04 38 04 00 00" At="0"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 2560x1440"
-              Note="The game renders at 2560x1440 instead of 1920x1080 (display setup and game config). The window shows it scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 2560x1440 instead of 1920x1080. The window shows the image scaled to its own size."
               Author="prototype-port"
-              PatchVer="1.0"
+              PatchVer="2.0"
               AppVer="01.00"
               AppElf="eboot.bin"
               isEnabled="false">
         <PatchList>
+            <Line Type="bytes" Address="0x00227b50" Value="48b8000a0000a0050000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff000a0000c7853cfeffffa0050000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
-            <Line Type="bytes" Address="0x000bf81a" Value="c703000a0000c74304a0050000" Pattern="c7 03 80 07 00 00 c7 43 04 38 04 00 00" At="0"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 3200x1800"
-              Note="The game renders at 3200x1800 instead of 1920x1080 (display setup and game config). The window shows it scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 3200x1800 instead of 1920x1080. The window shows the image scaled to its own size."
               Author="prototype-port"
-              PatchVer="1.0"
+              PatchVer="2.0"
               AppVer="01.00"
               AppElf="eboot.bin"
               isEnabled="false">
         <PatchList>
+            <Line Type="bytes" Address="0x00227b50" Value="48b8800c000008070000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff800c0000c7853cfeffff08070000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
-            <Line Type="bytes" Address="0x000bf81a" Value="c703800c0000c7430408070000" Pattern="c7 03 80 07 00 00 c7 43 04 38 04 00 00" At="0"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 3840x2160"
-              Note="The game renders at 3840x2160 instead of 1920x1080 (display setup and game config). The window shows it scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 3840x2160 instead of 1920x1080. The window shows the image scaled to its own size."
               Author="prototype-port"
-              PatchVer="1.0"
+              PatchVer="2.0"
               AppVer="01.00"
               AppElf="eboot.bin"
               isEnabled="false">
         <PatchList>
+            <Line Type="bytes" Address="0x00227b50" Value="48b8000f000070080000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff000f0000c7853cfeffff70080000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
-            <Line Type="bytes" Address="0x000bf81a" Value="c703000f0000c7430470080000" Pattern="c7 03 80 07 00 00 c7 43 04 38 04 00 00" At="0"/>
         </PatchList>
     </Metadata>
 </Patch>
