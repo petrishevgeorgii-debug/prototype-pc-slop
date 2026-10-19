@@ -393,6 +393,16 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
             const bool display = regs.color_buffers[0] &&
                                  FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address());
             if (display || ProtoSamplesSceneColor(pipeline)) {
+                (display ? upscaler->diag_trigger_display : upscaler->diag_trigger_sample)++;
+                if (PortStats::flips.load() < PortStats::trace_until_flip.load()) {
+                    std::printf("Trace: flip %llu, FSR %s, ps %08x, %u scene draws\n",
+                                static_cast<unsigned long long>(PortStats::flips.load()),
+                                display ? "at the display pass" : "before post",
+                                pipeline->GetStages()[u32(Shader::SwStage::Fragment)]
+                                    ? u32(pipeline->GetStages()[u32(Shader::SwStage::Fragment)]->pgm_hash)
+                                    : 0u,
+                                proto_main_draws);
+                }
                 proto_post_trigger = true;
                 proto_post_phase = true;
                 proto_frame_pending = true;
@@ -1163,6 +1173,11 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
         (!PrototypeGame() || proto_frame_pending || ProtoFrameFallback())) {
         proto_last_frame_start = std::chrono::steady_clock::now();
+        if (PrototypeGame() && PortStats::flips.load() < PortStats::trace_until_flip.load()) {
+            std::printf("Trace: flip %llu, frame start (%s)\n",
+                        static_cast<unsigned long long>(PortStats::flips.load()),
+                        proto_frame_pending ? "after FSR" : "fallback");
+        }
         proto_scene_seen = false;
         proto_frame_pending = false;
         // The scene colour of the next frame: this frame's target with the most scene draws.

@@ -68,6 +68,7 @@ int DumpFrame() {
         std::printf("Upscaler: saving FSR images of 3 frames\n");
         remaining = 3;
         PortStats::display_dump_left = 4;
+        PortStats::trace_until_flip = PortStats::flips.load() + 8;
     }
     if (remaining > 0 && !trigger) {
         --remaining;
@@ -334,7 +335,8 @@ bool TemporalUpscaler::OnFrameStart() {
                         "%u from ring, %u from guest memory; history resets %u; now current %d "
                         "previous %d depth %d; projection %.4f %.4f %.6f %.4f; largest camera "
                         "step %.3f units, %.2f degrees; jitter %.3f %.3f; up to %u cameras "
-                        "in a frame; jittered draws %u of %u with the scene depth\n",
+                        "in a frame; jittered draws %u of %u with the scene depth; FSR before "
+                        "post %u, at the display pass %u\n",
                         diag_frames, diag_triggers, diag_runs, diag_no_scene, diag_no_camera,
                         failed ? ", failed" : "", c.diag_calls, c.diag_affine, c.diag_zlen,
                         c.diag_last_zlen, c.diag_disagree, c.diag_commits, c.diag_invalid,
@@ -342,7 +344,8 @@ bool TemporalUpscaler::OnFrameStart() {
                         int(c.CurrentValid()), int(c.PreviousValid()), int(bool(c.Depth())),
                         c.CurrentProj()[0], c.CurrentProj()[1], c.CurrentProj()[2],
                         c.CurrentProj()[3], c.diag_max_move, c.diag_max_turn, jitter[0],
-                        jitter[1], c.diag_max_groups, diag_jittered, diag_depth_draws);
+                        jitter[1], c.diag_max_groups, diag_jittered, diag_depth_draws,
+                        diag_trigger_sample, diag_trigger_display);
         }
         camera_motion.diag_calls = camera_motion.diag_affine = camera_motion.diag_zlen = 0;
         camera_motion.diag_disagree = camera_motion.diag_commits = camera_motion.diag_invalid = 0;
@@ -350,6 +353,7 @@ bool TemporalUpscaler::OnFrameStart() {
         camera_motion.diag_max_move = camera_motion.diag_max_turn = 0.0f;
         camera_motion.diag_max_groups = 0;
         diag_jittered = diag_depth_draws = 0;
+        diag_trigger_sample = diag_trigger_display = 0;
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
     prototype_game = prototype;

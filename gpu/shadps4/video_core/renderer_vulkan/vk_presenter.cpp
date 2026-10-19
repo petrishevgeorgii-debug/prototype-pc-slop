@@ -415,6 +415,10 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
                             (frame_dump_interval > 0 && (frame_dump_counter % frame_dump_interval == 0)) ||
                             PortStats::display_dump_left.fetch_sub(1) > 0;
     if (PortStats::display_dump_left.load() < 0) PortStats::display_dump_left = 0;
+    if (PortStats::flips.load() < PortStats::trace_until_flip.load()) {
+        std::printf("Trace: flip %llu presented\n",
+                    static_cast<unsigned long long>(PortStats::flips.load()));
+    }
     // port: scaled upscaler presets: the output-size display buffer drawn by the port.
     TemporalUpscaler::Display display{};
     const bool upscaled = rasterizer->GetUpscaler().DisplayOverride(cpu_address, display);

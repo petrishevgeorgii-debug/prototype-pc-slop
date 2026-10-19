@@ -282,6 +282,7 @@ private:
     bool prototype_game = false;
 public:
     u32 diag_jittered = 0, diag_depth_draws = 0; ///< PROTOTYPE diagnostics (rasterizer counts)
+    u32 diag_trigger_sample = 0, diag_trigger_display = 0;
 private:
     bool fsr_ran_last_frame = false;  ///< PROTOTYPE: FSR is running (recently dispatched)
     u32 frames_without_fsr = 1000;
