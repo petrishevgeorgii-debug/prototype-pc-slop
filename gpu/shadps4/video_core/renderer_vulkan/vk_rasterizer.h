@@ -350,8 +350,9 @@ private:
     bool proto_scene_seen = false;
     bool proto_post_trigger = false;
     bool proto_post_seen = false;         ///< the scene ended this frame: next display draw starts a frame      ///< this draw starts PROTOTYPE's post-processing
-    u32 proto_scene_draws = 0;            ///< scene draws into proto_scene_color this frame
-    VideoCore::ImageId proto_scene_color{};
+    u32 proto_main_draws = 0;             ///< scene draws into proto_main_color this frame
+    VideoCore::ImageId proto_main_color{}; ///< the scene colour (most scene draws last frame)
+    std::vector<std::pair<VideoCore::ImageId, u32>> proto_color_counts;
     std::unique_ptr<TemporalUpscaler> upscaler; // port: FSR (docs/upscaler.md)
     std::array<float, 2> draw_jitter{};         ///< viewport offset of the current draw, pixels
     std::array<float, 2> target_scale{1.0f, 1.0f}; ///< pass drawn into the upscaler's output-size images

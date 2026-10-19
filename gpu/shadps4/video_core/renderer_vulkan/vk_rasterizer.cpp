@@ -304,9 +304,10 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     }
     // port: PROTOTYPE: a scene draw renders into a single RGBA8 (or RGBA16F) colour target
     // with a same-size, non-square (shadow atlases are square) D32S8 depth: that depth is the
-    // scene depth, the colour the scene colour (the UI's depth pairs with the sRGB display
-    // buffer and is not one). After 8+ scene draws into one colour, the first draw that
-    // targets neither it nor the scene depth starts post-processing: FSR runs before it.
+    // scene depth (the UI's depth pairs with the sRGB display buffer and is not one). The
+    // scene colour is the target with the most scene draws in the previous frame. After 8+
+    // draws into it, the first draw that targets neither it nor the scene depth starts
+    // post-processing: FSR runs before it.
     proto_scene_draw = false;
     proto_post_trigger = false;
     if (PrototypeGame() && camera_motion->Enabled() && !proto_post_seen) {
@@ -322,23 +323,33 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 proto_scene_draw = true;
                 proto_scene_seen = true;
                 camera_motion->OnGBufferPass(db_desc.first);
-                if (cb_descs[0].first != proto_scene_color) {
-                    proto_scene_color = cb_descs[0].first;
-                    proto_scene_draws = 0;
+                // Scene draws per colour target this frame; the one with the most last
+                // frame is the scene colour (an earlier pass with the scene depth draws
+                // into another RGBA8 target).
+                const auto color_id = cb_descs[0].first;
+                auto it = std::find_if(proto_color_counts.begin(), proto_color_counts.end(),
+                                       [&](const auto& e) { return e.first == color_id; });
+                if (it != proto_color_counts.end()) {
+                    ++it->second;
+                } else if (proto_color_counts.size() < 8) {
+                    proto_color_counts.push_back({color_id, 1u});
                 }
-                ++proto_scene_draws;
+                if (color_id == proto_main_color) {
+                    ++proto_main_draws;
+                    if (upscaler->Enabled()) {
+                        upscaler->OnSceneColor(color_id);
+                    }
+                }
                 if (upscaler->Enabled()) {
-                    upscaler->OnSceneColor(cb_descs[0].first);
                     upscaler->NoteNativeScene(dw, dh);
                 }
             }
         }
-        if (!proto_scene_draw && proto_scene_draws >= 8 &&
-            !(cb_descs[0].first && cb_descs[0].first == proto_scene_color) &&
+        if (!proto_scene_draw && proto_main_draws >= 8 &&
+            !(cb_descs[0].first && cb_descs[0].first == proto_main_color) &&
             !(db_desc.first && db_desc.first == camera_motion->Depth())) {
             proto_post_trigger = true;
             proto_post_seen = true;
-            proto_scene_draws = 0;
         }
     }
     if (upscaler->Enabled() && cb_descs[0].first) {
@@ -1103,11 +1114,20 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     // a scene starts the next frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
-        (!PrototypeGame() || proto_post_seen)) {
+        (!PrototypeGame() || proto_post_seen || (proto_scene_seen && proto_main_draws < 8))) {
         proto_scene_seen = false;
         proto_post_seen = false;
-        proto_scene_draws = 0;
-        proto_scene_color = {};
+        // The scene colour of the next frame: this frame's target with the most scene draws.
+        u32 best = 0;
+        for (const auto& [id, count] : proto_color_counts) {
+            if (count > best) {
+                best = count;
+                proto_main_color = id;
+            }
+        }
+        if (best == 0) proto_main_color = {};
+        proto_color_counts.clear();
+        proto_main_draws = 0;
         scene_started = false;
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
