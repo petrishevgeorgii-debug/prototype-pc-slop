@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include "common/recursive_lock.h"
 #include "common/shared_first_mutex.h"
 #include "video_core/buffer_cache/buffer_cache.h"
@@ -351,6 +353,13 @@ private:
     bool proto_post_trigger = false;
     bool proto_post_phase = false;    ///< post-processing/UI of a frame: no scene draws
     bool proto_frame_pending = false; ///< post started: the next display draw starts a frame
+    /// No post-processing trigger for a quarter second (menus, loading): display draws start
+    /// frames again. (A mid-frame display draw must not: it reset the camera every frame.)
+    std::chrono::steady_clock::time_point proto_last_frame_start{};
+    bool ProtoFrameFallback() const {
+        return std::chrono::steady_clock::now() - proto_last_frame_start >
+               std::chrono::milliseconds(250);
+    }
     u32 proto_main_draws = 0;             ///< scene draws into proto_main_color this frame
     VideoCore::ImageId proto_main_color{}; ///< the scene colour (most scene draws last frame)
     std::vector<std::pair<VideoCore::ImageId, u32>> proto_color_counts;

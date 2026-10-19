@@ -1129,8 +1129,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     // a scene starts the next frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
-        (!PrototypeGame() || proto_frame_pending ||
-         (!proto_post_phase && proto_scene_seen && proto_main_draws < 8))) {
+        (!PrototypeGame() || proto_frame_pending || ProtoFrameFallback())) {
+        proto_last_frame_start = std::chrono::steady_clock::now();
         proto_scene_seen = false;
         proto_frame_pending = false;
         // The scene colour of the next frame: this frame's target with the most scene draws.
