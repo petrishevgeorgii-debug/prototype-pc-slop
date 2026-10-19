@@ -121,6 +121,7 @@ public:
         diag_invalid = 0;
     float diag_last_zlen = 0.0f, diag_last_b = 0.0f;
     u32 diag_ring = 0, diag_guest = 0, diag_history_resets = 0;
+    float diag_max_move = 0.0f, diag_max_turn = 0.0f;
 private:
     /// PROTOTYPE: view-projections seen this frame, waiting for a second draw to agree.
     std::array<std::array<float, 16>, 4> candidates{};

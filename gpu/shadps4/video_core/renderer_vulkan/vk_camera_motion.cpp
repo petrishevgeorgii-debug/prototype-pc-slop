@@ -405,6 +405,19 @@ void CameraMotion::OnObjectConstants(const float* data, u64 vs_hash, u32 size, i
     current.valid = scales[0] > 0.0f && scales[1] > 0.0f && b < 0.0f;
     ++diag_commits;
     diag_invalid += !current.valid;
+    // Diagnostics: the largest camera movement between frames in this window (world units,
+    // and the angle of the view axis in degrees).
+    if (previous.valid && current.valid) {
+        float move = 0.0f, dot = 0.0f;
+        for (int r = 0; r < 3; ++r) {
+            const float d = current.inv_view[r * 4 + 3] - previous.inv_view[r * 4 + 3];
+            move += d * d;
+            dot += current.view[8 + r] * previous.view[8 + r];
+        }
+        diag_max_move = std::max(diag_max_move, std::sqrt(move));
+        diag_max_turn = std::max(diag_max_turn,
+                                 std::acos(std::clamp(dot, -1.0f, 1.0f)) * 57.29578f);
+    }
     diag_last_b = b;
     frame_has_camera = true;
     candidate_count = 0;

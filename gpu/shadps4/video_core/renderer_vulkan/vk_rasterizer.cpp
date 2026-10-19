@@ -353,6 +353,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 // another target uses a wider one) and the scene size.
                 proto_camera_draw = color_id == proto_main_color;
                 if (proto_camera_draw) {
+                    proto_scene_depth = db_desc.first;
                     ++proto_main_draws;
                     if (upscaler->Enabled()) {
                         upscaler->OnSceneColor(color_id);
@@ -1154,6 +1155,12 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
             if (!PrototypeGame()) camera_motion->InvalidateHistory();
         }
         camera_motion->SetJitter(upscaler->Jitter());
+        // PROTOTYPE: the scene depth is known from the frame's start, so its depth pre-pass
+        // (before the first colour draw) is jittered like the colour pass that tests
+        // against it (else the depth-equal test fails along every edge: shimmer).
+        if (PrototypeGame() && proto_scene_depth) {
+            camera_motion->OnGBufferPass(proto_scene_depth);
+        }
         object_motion->OnFrameStart();
         NoteFrameStart();
         static const char* scene_debug = std::getenv("THEORDER_SCENE_DEBUG");
