@@ -6,6 +6,12 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
+> **First release: October 21, 2026.** Until then this is a work in progress; build it from
+> source if you want to try it early.
+>
+> **Tested on AMD Radeon only. NVIDIA GPUs are untested** — reports (with `last_run.log`) are
+> welcome in Issues.
+
 **This repository contains no game files.** You need your own legally obtained, decrypted dump of
 CUSA06545. Nothing in your game folder is ever modified: every fix is applied in memory.
 
@@ -16,6 +22,8 @@ CUSA06545. Nothing in your game folder is ever modified: every fix is applied in
 | PROTOTYPE | Playable: tested through the early missions (saving, loading, cutscenes, videos) |
 | PROTOTYPE 2 | Not yet (the bundle menu's choice ends the game with a message) |
 | Platform | Windows 10/11, x86-64, Vulkan 1.3 GPU |
+| GPUs | AMD Radeon: tested. NVIDIA: untested. Intel: untested |
+| Release | October 21, 2026 |
 
 Fixes built into the port:
 
