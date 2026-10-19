@@ -468,7 +468,11 @@ def main():
                    '--user', str(user_dir),
                    '--timeout', timeout_val, *isa_args, *guest_lang_args, *args]
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
-        return subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console()).returncode
+        code = subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console()).returncode
+        if code == 42 and is_prototype:
+            # sceSystemServiceLoadExec: the bundle menu asked for the other game (runtime_proto.c).
+            print('The bundle menu started Prototype 2: the native port runs Prototype 1 only for now.', flush=True)
+        return code
     finally:
         if mod_view:
             shutil.rmtree(mod_view, ignore_errors=True)
