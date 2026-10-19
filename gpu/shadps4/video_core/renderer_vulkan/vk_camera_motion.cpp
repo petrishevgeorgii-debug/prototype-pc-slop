@@ -292,24 +292,34 @@ void CameraMotion::OnObjectConstants(const float* data) {
         return;
     }
     ++diag_calls;
-    Mat4 world, wvp, inv;
-    std::memcpy(world.data(), data, sizeof(world));
-    std::memcpy(wvp.data(), data + 16, sizeof(wvp));
-    // Object-to-world: affine, a sensible scale.
-    if (world[3] != 0.0f || world[7] != 0.0f || world[11] != 0.0f || std::abs(world[15] - 1.0f) > 1e-4f) {
-        ++diag_affine;
-        return;
-    }
-    for (const float v : wvp) {
-        if (!std::isfinite(v)) {
-            return;
+    // Material constants hold World and WVP (column-major), in either order: World first
+    // (e.g. vertex shader 0xf1958b0b) or WVP first (most others).
+    Mat4 world, wvp, inv, vp;
+    bool found = false;
+    for (int order = 0; order < 2 && !found; ++order) {
+        std::memcpy(world.data(), data + (order ? 16 : 0), sizeof(world));
+        std::memcpy(wvp.data(), data + (order ? 0 : 16), sizeof(wvp));
+        // Object-to-world: affine.
+        if (world[3] != 0.0f || world[7] != 0.0f || world[11] != 0.0f ||
+            std::abs(world[15] - 1.0f) > 1e-4f) {
+            continue;
         }
+        bool finite = true;
+        for (const float v : wvp) {
+            finite = finite && std::isfinite(v);
+        }
+        if (!finite || !InvertAffine(world, inv)) {
+            continue;
+        }
+        vp = Mul(wvp, inv);
+        const float x = At(vp, 3, 0), y = At(vp, 3, 1), z = At(vp, 3, 2);
+        const float len = std::sqrt(x * x + y * y + z * z);
+        found = len >= 0.9f && len <= 1.1f;
     }
-    if (!InvertAffine(world, inv)) {
+    if (!found) {
         ++diag_affine;
         return;
     }
-    const Mat4 vp = Mul(wvp, inv);
     // Perspective with w = distance along the view axis: row 3 is that axis (unit length).
     const float zx = At(vp, 3, 0), zy = At(vp, 3, 1), zz = At(vp, 3, 2), zw = At(vp, 3, 3);
     const float zlen = std::sqrt(zx * zx + zy * zy + zz * zz);
