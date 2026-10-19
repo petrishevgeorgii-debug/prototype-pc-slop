@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "video_core/renderer_vulkan/vk_camera_motion.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -287,11 +288,12 @@ Mat4 Mul(const Mat4& a, const Mat4& b) {
 }
 } // namespace
 
-void CameraMotion::OnObjectConstants(const float* data) {
+void CameraMotion::OnObjectConstants(const float* data, u64 vs_hash, u32 size, int source) {
     if (frame_has_camera) {
         return;
     }
     ++diag_calls;
+    (source ? diag_guest : diag_ring)++;
     // Material constants hold World and WVP (column-major), in either order: World first
     // (e.g. vertex shader 0xf1958b0b) or WVP first (most others).
     Mat4 world, wvp, inv, vp;
@@ -318,6 +320,20 @@ void CameraMotion::OnObjectConstants(const float* data) {
     }
     if (!found) {
         ++diag_affine;
+        // Diagnostics: the first floats of a few rejected buffers (one per shader and size).
+        static u32 dumps = 0;
+        static std::array<u64, 24> seen{};
+        const u64 key = vs_hash * 4099 + size * 2 + u64(source);
+        if (dumps < seen.size() && std::find(seen.begin(), seen.begin() + dumps, key) ==
+                                       seen.begin() + dumps) {
+            seen[dumps++] = key;
+            std::printf("Camera: rejected constants of vs %08llx (%u bytes, %s):",
+                        static_cast<unsigned long long>(vs_hash), size, source ? "guest" : "ring");
+            for (int i = 0; i < 32 && i * 4 < int(size); ++i) {
+                std::printf("%s%g", i % 4 ? " " : (i ? " | " : " "), data[i]);
+            }
+            std::printf("\n");
+        }
         return;
     }
     // Perspective with w = distance along the view axis: row 3 is that axis (unit length).
@@ -412,7 +428,10 @@ void CameraMotion::OnDisplayPass(VideoCore::ImageId frame) {
     if (debug_overlay && frame && depth_id && current.valid && previous.valid) {
         Overlay(frame);
     }
-    if (!frame_has_camera) InvalidateHistory();
+    if (!frame_has_camera) {
+        InvalidateHistory();
+        ++diag_history_resets;
+    }
     frame_has_camera = false;
     candidate_count = 0;
     depth_id = {};

@@ -75,7 +75,11 @@ public:
     /// PROTOTYPE: a scene material draw's vertex constants (column-major object-to-world at
     /// floats 0-15, world-view-projection at 16-31). The view-projection they imply becomes
     /// this frame's camera once two draws agree on it.
-    void OnObjectConstants(const float* data);
+    /// `source`: 0 constant ring copy, 1 guest memory (diagnostics).
+    void OnObjectConstants(const float* data, u64 vs_hash = 0, u32 size = 0, int source = 0);
+    /// Why Ready() is false (diagnostics).
+    [[nodiscard]] bool CurrentValid() const noexcept { return current.valid; }
+    [[nodiscard]] bool PreviousValid() const noexcept { return previous.valid; }
     /// Far plane of the current projection (3000 when it cannot be derived).
     [[nodiscard]] float Far() const noexcept;
 
@@ -115,6 +119,7 @@ public:
     u32 diag_calls = 0, diag_affine = 0, diag_zlen = 0, diag_disagree = 0, diag_commits = 0,
         diag_invalid = 0;
     float diag_last_zlen = 0.0f, diag_last_b = 0.0f;
+    u32 diag_ring = 0, diag_guest = 0, diag_history_resets = 0;
 private:
     /// PROTOTYPE: view-projections seen this frame, waiting for a second draw to agree.
     std::array<std::array<float, 16>, 4> candidates{};

@@ -2349,7 +2349,8 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 }
                 if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex && ring->size >= 128) {
                     camera_motion->OnObjectConstants(
-                        reinterpret_cast<const float*>(constant_ring->Data(ring->offset)));
+                        reinterpret_cast<const float*>(constant_ring->Data(ring->offset)),
+                        stage.pgm_hash, ring->size, 0);
                 }
                 push_data.AddOffset(binding.buffer, 0);
             }
@@ -2422,7 +2423,8 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
             }
             if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex &&
                 vsharp.GetSize() >= 128 && memory->IsValidGpuMapping(vsharp.base_address, 128)) {
-                camera_motion->OnObjectConstants(reinterpret_cast<const float*>(vsharp.base_address));
+                camera_motion->OnObjectConstants(reinterpret_cast<const float*>(vsharp.base_address),
+                                                 stage.pgm_hash, u32(vsharp.GetSize()), 1);
             }
             // Object motion research: the vertex shader buffers of G-buffer draws.
             if (FrameCapture::Active() && gbuffer_draw && stage.sw_stage == Shader::SwStage::Vertex &&
