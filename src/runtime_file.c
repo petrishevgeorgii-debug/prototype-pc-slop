@@ -240,7 +240,7 @@ static int try_case_fallback(const char *in_path, char *out_path, size_t out_siz
     return 0;
 }
 /* All operations return >=0 or -(host errno); wrappers adapt the convention. */
-static int64_t do_open(const char *guest,int flags,int mode) {
+static int64_t do_open_impl(const char *guest,int flags,int mode) {
     if (game_path(guest) && (flags & (3|0x8|0x200|0x400|0x800))) return -EROFS;
     char path[1024];
     int e=translate(guest,path,sizeof(path));
@@ -411,7 +411,7 @@ static int64_t do_fstat(int fd,GuestStat *out) {
     if (host_fstat(h,&s)) return -errno;
     convert_stat(&s,out); return 0;
 }
-static int64_t do_stat(const char *guest,GuestStat *out) {
+static int64_t do_stat_impl(const char *guest,GuestStat *out) {
     char path[1024]; HostStat s;
     int e=translate(guest,path,sizeof(path));
     if (e) return -e;
@@ -427,6 +427,18 @@ static int64_t do_stat(const char *guest,GuestStat *out) {
         return -errno;
     }
     convert_stat(&s,out); return 0;
+}
+/* PROTO_TRACE_FILES=1 prints every guest open/stat and its result. */
+static int trace_files(void) { static int t=-1; if (t<0) { const char *e=getenv("PROTO_TRACE_FILES"); t=e && *e=='1'; } return t; }
+static int64_t do_open(const char *guest,int flags,int mode) {
+    int64_t r=do_open_impl(guest,flags,mode);
+    if (trace_files()) printf("File: open %s flags=0x%x -> %lld\n",guest,flags,(long long)r);
+    return r;
+}
+static int64_t do_stat(const char *guest,GuestStat *out) {
+    int64_t r=do_stat_impl(guest,out);
+    if (trace_files()) printf("File: stat %s -> %lld\n",guest,(long long)r);
+    return r;
 }
 static int64_t do_getdents(int fd,char *buffer,uint64_t size,int64_t *basep) {
     pthread_mutex_lock(&lock);

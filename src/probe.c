@@ -170,10 +170,6 @@ static LONG fatal_exception(EXCEPTION_POINTERS *info) {
                 (unsigned long long)words[2],(long long)words[3],(void *)nodes);
     }
     print_unwound_stack(c);
-    if (image) {
-        fprintf(stderr, "  globals: [0x16b1df0]=%p [0x16b3420]=%p [0x16b3418]=%p\n",
-                *(void**)(image + 0x16b1df0), *(void**)(image + 0x16b3420), *(void**)(image + 0x16b3418));
-    }
     if (gpu_enabled) theordergpu_dump_guest_writes(info);
     /* rbp chain (guest and host code keep frame pointers). */
     uintptr_t rbp=(uintptr_t)c->Rbp;

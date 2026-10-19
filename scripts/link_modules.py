@@ -10,6 +10,7 @@ libSceLibcInternal are served by libc.prx's same-NID exports: the internal
 library is not shipped with the game and exposes the same functions.
 Output: out/boot-linked.bin (format G3PROBE5) and out/link.json.
 """
+import os
 import collections
 import hashlib
 import json
@@ -95,7 +96,7 @@ def patch_fs_loads(image, ph, base):
 
 
 def link(game, out, module_names=DEFAULT_MODULES):
-    main = module(game / 'eboot.bin')
+    main = module(game / os.environ.get('THEORDER_EBOOT', 'eboot.bin'))
     raw = (out / 'boot.bin').read_bytes()
     magic, size, entry, ns, nr, ni, flags = unpack('<8s6Q', raw, 0)
     if magic != b'G3PROBE2':

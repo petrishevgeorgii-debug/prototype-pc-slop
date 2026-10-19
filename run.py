@@ -300,7 +300,8 @@ def main():
 
     candidates = [
         get_env(env, 'GAME_DIR'),
-        r'C:\Users\Mateus\Downloads\games\CUSA00035',
+        r'F:\Games\PBHworkpls\protik',
+        PORT.parent / 'CUSA06545',
         PORT.parent / 'CUSA00035',
     ]
     game = None
@@ -345,6 +346,7 @@ def main():
         import patches
         from patches import game_profile_for, patch_requirements, patch_status, selected_patches
         profile = game_profile_for(game)
+        is_prototype = bool(profile) and profile[3].startswith('PROTOTYPE')
         engine_fps, fps_patched = 60, False
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries); on
         # Linux the launcher's own icon (the AppImage ships the one chosen when it was built) and
@@ -375,6 +377,9 @@ def main():
                 for auto_patch in ('Unlock All Languages', 'Unlock The Armoury Menu'):
                     if auto_patch not in names:
                         names.append(auto_patch)
+            # PROTOTYPE: THEORDER_FPS60=1 (run-60fps.bat) turns on the 60 FPS patch.
+            if is_prototype and get_env(env, 'FPS60') == '1' and 'Prototype 60 FPS' not in names:
+                names.append('Prototype 60 FPS')
             names = graphics_options.restrict_to_available(names, patches.available_patches(profile[1], profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'
@@ -450,9 +455,11 @@ def main():
         print(f'Language: PS4 id {ps4_lang} -> engine id {engine_lang}', flush=True)
 
         guest_lang_args = []
-        if '-language' not in args:
+        if is_prototype:
+            pass  # The Order's engine arguments mean nothing to PROTOTYPE.
+        elif '-language' not in args:
             guest_lang_args.extend(['--guest-arg', '-language', '--guest-arg', str(engine_lang)])
-        if '-enablesubtitles' not in args:
+        if not is_prototype and '-enablesubtitles' not in args:
             guest_lang_args.extend(['--guest-arg', '-enablesubtitles'])
 
         timeout_val = get_env(env, 'TIMEOUT', '0')

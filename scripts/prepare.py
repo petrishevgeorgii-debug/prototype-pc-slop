@@ -4,6 +4,7 @@
 No decryption, patches to source files, third-party modules or Python dependencies.
 Format references are linked in README.md. All offsets are checked before use.
 """
+import os
 import argparse
 import base64
 import collections
@@ -170,7 +171,7 @@ def inspect_libc(path):
 
 
 def prepare(game, out):
-    source = read_self(game / 'eboot.bin')
+    source = read_self(game / os.environ.get('THEORDER_EBOOT', 'eboot.bin'))
     elf, header, ph, segments, missing = parse_self(source)
     loads = [p for p in ph if p['type'] in (1, 0x61000010)]
     def mapped(addr, size=8):

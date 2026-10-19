@@ -187,6 +187,7 @@ PATCHES_DIR=Path(__file__).resolve().parent.parent/'patches'
 GAMES=[
     ({'CUSA00035','CUSA00070','CUSA00076','CUSA00100','CUSA00670','CUSA00785'},
      PATCHES_DIR/'TheOrder1886-Orbis.xml','01.02','The Order 1886'),
+    ({'CUSA06545'},PATCHES_DIR/'Prototype-Orbis.xml','01.00','PROTOTYPE BIOHAZARD BUNDLE'),
 ]
 # The build the built-in Address values and third-party patch files are written for.
 REFERENCE_SHA256='f742eb1793f92772a5c4bdd174e29b08e0b53f68d373a37f4cda730703e558d8'  # CUSA00035 01.02
@@ -223,7 +224,7 @@ _SHA_CACHE={}
 
 def eboot_sha256(game):
     try:
-        path=Path(game)/'eboot.bin'
+        path=Path(game)/os.environ.get('THEORDER_EBOOT','eboot.bin')
         stat=path.stat()
         key=(str(path),stat.st_mtime_ns,stat.st_size)
         if key not in _SHA_CACHE:
@@ -363,7 +364,8 @@ def main():
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile_for(a.game_dir)
-    if not profile:
+    if os.environ.get('THEORDER_EBOOT','eboot.bin')!='eboot.bin':
+        profile=None  # the built-in patches are for the main eboot.bin only
         write_patches(a.out,[])
         print(f'Patches: no patch profile for {title}: none applied')
         return

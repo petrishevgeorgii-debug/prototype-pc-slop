@@ -86,8 +86,14 @@ static ABI uint64_t process_time_counter(void) {
 static ABI uint64_t process_time_frequency(void) { return 1000000000; }
 /* The guest's TSC is the process clock in nanoseconds. The raw rdtsc differs per core on some
  * hosts (3.9 s apart on a Xeon E5-2680 v4, #42), so a thread moving cores made the game jump. */
-static ABI uint64_t read_tsc(void) { return process_time_counter(); }
-static ABI uint64_t tsc_frequency(void) { return 1000000000; }
+/* PS4 TSC rate: PROTOTYPE hardcodes 1,593,749,508 Hz for its frame timing instead of asking
+ * sceKernelGetTscFrequency, so the counter must tick at exactly that rate. */
+#define PS4_TSC_HZ UINT64_C(1593749508)
+static ABI uint64_t read_tsc(void) {
+    uint64_t ns=process_time_counter();
+    return (uint64_t)(((unsigned __int128)ns*PS4_TSC_HZ)/1000000000u);
+}
+static ABI uint64_t tsc_frequency(void) { return PS4_TSC_HZ; }
 /* Shared with the GPU library so flip/label timestamps use the guest's clock. */
 uint64_t runtime_process_time_us(void) { return process_time(); }
 uint64_t runtime_process_time_counter(void) { return process_time_counter(); }

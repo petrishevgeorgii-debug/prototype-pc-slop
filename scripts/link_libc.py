@@ -3,6 +3,7 @@
 The original boot.bin remains usable. Symbols are matched by library/module
 identity, versions and NID, not by dump-local suffix or NID alone.
 """
+import os
 import collections
 import hashlib
 import json
@@ -72,7 +73,7 @@ def module(path):
 
 
 def link(game, out):
-    main = module(game/'eboot.bin')
+    main = module(game/os.environ.get('THEORDER_EBOOT', 'eboot.bin'))
     libc = module(game/'sce_module/libc.prx')
     raw = (out/'boot.bin').read_bytes()
     magic, size, entry, ns, nr, ni, flags = unpack('<8s6Q', raw, 0)

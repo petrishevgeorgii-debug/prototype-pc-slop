@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PROTOTYPE BIOHAZARD BUNDLE (Prototype 1 / bundle menu, eboot.bin). Addresses are eboot
+     virtual addresses; each line also carries the original bytes as its Pattern, so a site is
+     only written where the code is exactly the one these patches were made for. -->
+<Patch>
+    <TitleID>
+        <ID>CUSA06545</ID>
+    </TitleID>
+    <Metadata Title="Prototype"
+              Name="Fix White Consume Tendrils"
+              Note="The dummy vertex stream is filled with zeros instead of 0xDEADBEEF (the GPU layer reads past it; on the PS4 those reads return zero). Fixes white veins when Mercer consumes someone."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="true">
+        <PatchList>
+            <Line Type="bytes" Address="0x00c9b550" Value="00000000000000000000000000000000" Pattern="ef be ad de ef be ad de ef be ad de ef be ad de" At="0"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype"
+              Name="Prototype 60 FPS"
+              Note="Gameplay at 60 FPS; videos and menus stay at their normal speed (30 FPS while a video plays, menu/UI animation time halved)."
+              Author="prototype-port"
+              PatchVer="3.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <Line Type="bytes" Address="0x00227fb5" Value="458bafc001000031f6833d9373000100400f95c68b3df14ef600e89c9f9f004183fd027222488d5d908b3ddc4ef6004889dee8d49f9f00837dc000740a6a015fe8a6999f00ebe2" Pattern="45 8b af c0 01 00 00 41 83 fd 02 72 3a 4c 8d 25 f7 4e f6 00 41 8b 3c 24 48 8d 75 90 e8 ea 9f 9f 00 83 7d c0 00 74 20 48 8d 5d 90 bf 01 00 00 00 e8 b6 99 9f 00 41 8b 3c 24 48 89 de e8 ca 9f 9f 00 83 7d c0 00 75 e4" At="0"/>
+            <Line Type="bytes" Address="0x00005080" Value="833dd1a22201007508c5fa5905e701c900c5fa118424a8000000e9b8a53f00cc" Pattern="55 48 89 e5 48 83 ec 20 48 c7 44 24 08 ff ff ff ff e8 1a fe ff ff 48 83 c4 20 5d c3 0f 1f 40 00" At="0"/>
+            <Line Type="bytes" Address="0x003ff64e" Value="e92d5ac0ff90909090" Pattern="01 00 00 48 83 7b 30 00 0f 84 f8 01 00 00 c5 fa 11 84 24 a8 00 00 00 c6 83 a1 0a 00 00 01 c5 fc" At="14"/>
+        </PatchList>
+    </Metadata>
+</Patch>
