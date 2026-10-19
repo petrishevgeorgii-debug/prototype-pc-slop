@@ -300,7 +300,6 @@ def main():
 
     candidates = [
         get_env(env, 'GAME_DIR'),
-        r'F:\Games\PBHworkpls\protik',
         PORT.parent / 'CUSA06545',
         PORT.parent / 'CUSA00035',
     ]

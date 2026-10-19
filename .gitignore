@@ -29,3 +29,6 @@ patches.json
 graphify-out/
 .claude/
 .vscode/
+# PROTOTYPE port: built launcher and its Python environment, local settings
+/Prototype.exe
+launcher.json
