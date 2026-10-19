@@ -218,15 +218,24 @@ def prototype_controls(env, probe, game, out, derived):
     """PROTOTYPE's keyboard and mouse layout (THEORDER_PROTO_CONTROLS: the launcher's changes,
     JSON) for the runtime, and the button prompts: THEORDER_PROMPTS=keyboard shows the keys in
     the game's texts and hints (files made from the game's own, scripts/proto_prompts.py),
-    gamepad keeps the PS4 buttons, auto (default) picks keyboard when no gamepad is connected."""
+    gamepad keeps the PS4 buttons, auto (default) follows the device last played with (or, the first
+    time, keyboard when no gamepad is connected)."""
     import proto_controls
     full = proto_controls.layout(get_env(env, 'PROTO_CONTROLS', ''))
     if not get_env(env, 'KEY_MAP'):
         env['THEORDER_KEY_MAP'] = proto_controls.key_map_spec(full)
         derived.append('THEORDER_KEY_MAP')
+    # The runtime notes the device last played with (src/runtime_pad.c note_device).
+    last_input = out / 'last_input.txt'
+    env['THEORDER_LAST_INPUT'] = str(last_input)
     mode = get_env(env, 'PROMPTS', 'auto')
     if mode not in ('keyboard', 'gamepad'):
-        mode = 'gamepad' if gamepad_connected(probe) else 'keyboard'
+        try:
+            mode = last_input.read_text(encoding='utf-8').strip()
+        except OSError:
+            mode = ''
+        if mode not in ('keyboard', 'gamepad'):
+            mode = 'gamepad' if gamepad_connected(probe) else 'keyboard'
     print(f'Button prompts: {"keyboard and mouse" if mode == "keyboard" else "controller"}', flush=True)
     if mode != 'keyboard':
         return

@@ -130,7 +130,7 @@ DEFAULTS = {
     'show_fps': False, 'language': 1, 'tendril_fix': True, 'tab': 0,
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
 }
-PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'Controller')]
+PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
 
 
 def load_settings():
@@ -735,9 +735,9 @@ class Launcher:
         cv = self.canvas
         x0, _, x1, _ = PANEL
         self.section('KEYBOARD AND MOUSE', first=True)
-        self.stepper('Button prompts', 'What the game shows in its hints and tutorials: the keys below, or the '
-                     'controller\'s buttons. Automatic: keys when no controller is connected at start.',
-                     'prompts', PROMPTS)
+        self.stepper('Button icons in game', 'The buttons the game shows in its hints and tutorials: your keys '
+                     'and mouse buttons (below), or the PlayStation buttons. Automatic: the ones of what you '
+                     'played with last time. Takes effect at the next start.', 'prompts', PROMPTS)
         self.toggle('Mouse look', 'The mouse turns the camera (F7 switches it in game).', 'mouse_look')
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
                     'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])

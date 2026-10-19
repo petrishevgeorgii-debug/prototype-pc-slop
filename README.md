@@ -65,13 +65,13 @@ The launcher holds the render resolution, FSR 1 and sharpening, anisotropic filt
 | Jump | Space | | Offensive / vision / defensive power | 1 / 2 / 3 |
 | Sprint, glide (hold) | Left Shift | | Disguise | 4 or Z |
 | Attack | Left click | | Reset camera | Middle click or V |
-| Special attack, consume | Right click | | Upgrades | U |
-| Grab, throw | E | | Pause | Esc |
+| Special attack, consume | Right click | | Pause, upgrades | Esc |
+| Grab, throw | E | | Options button | M |
 | Target lock, aim (hold) | Q | | Menus | Arrows, Enter, Backspace |
 
 The launcher's **CONTROLS** page changes any of them (two keys per action), and sets the mouse
-sensitivity and the **button prompts**: *Automatic* shows your keys when no controller is
-connected at start, or choose *Keyboard & mouse* / *Controller*. The keyboard prompts are made at
+sensitivity and the **button icons in game**: *Keyboard & mouse*, *PlayStation*, or *Automatic*
+(the device you played with last time). The keyboard prompts are made at
 start from your own game files (the texts and the hint pictures) into `out\prompts`; the game
 folder is not changed. A controller works at any time.
 

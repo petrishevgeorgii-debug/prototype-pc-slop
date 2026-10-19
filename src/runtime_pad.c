@@ -302,6 +302,19 @@ static bool wheel_held(int i, int notches, uint64_t now) {
     if (wheel[i].pending>0) { --wheel[i].pending; wheel[i].down=true; wheel[i].until=now+WHEEL_PRESS_US; return true; }
     return false;
 }
+/* THEORDER_LAST_INPUT=<file>: "keyboard" or "gamepad", rewritten when the player switches between
+ * them, so the next start can show the prompts of the device last played with (run.py). */
+static void note_device(int device) {
+    static int last; static const char *path; static int checked;
+    if (!checked) { path=getenv("THEORDER_LAST_INPUT"); checked=1; }
+    if (device==last) return;
+    last=device;
+    if (!path || !*path) return;
+    FILE *f=fopen(path,"w");
+    if (!f) return;
+    fputs(device==1 ? "keyboard\n" : "gamepad\n",f);
+    fclose(f);
+}
 /* The mouse buttons and wheel (keyboard map sources) and mouse look on the right stick. */
 static uint32_t mouse_held; /* SDL_BUTTON_MASK bits and 1<<30 / 1<<31 for the wheel */
 static void mouse_input(PadData *d) {
@@ -314,6 +327,7 @@ static void mouse_input(PadData *d) {
     }
     const uint64_t now=now_us();
     mouse_held=m.buttons;
+    if (fabsf(m.dx)+fabsf(m.dy)>4.0f || m.wheel) note_device(1);
     if (wheel_held(0,m.wheel>0 ? m.wheel : 0,now)) mouse_held|=1u<<30;
     if (wheel_held(1,m.wheel<0 ? -m.wheel : 0,now)) mouse_held|=1u<<31;
     int mx=0, my=0;
@@ -353,6 +367,9 @@ static void sample_host(PadData *d) {
         if (d->r2>30) d->buttons|=BTN_R2;
         if (mapped & BTN_L2) d->l2=255;
         if (mapped & BTN_R2) d->r2=255;
+        const int moved=abs(d->left_x-128)>64 || abs(d->left_y-128)>64 || abs(d->right_x-128)>64 ||
+                        abs(d->right_y-128)>64;
+        if (d->buttons || d->l2>60 || d->r2>60 || moved) note_device(2);
         if (SDL_GetNumGamepadTouchpads(g)>0) {
             const int fingers=SDL_GetNumGamepadTouchpadFingers(g,0);
             for (int finger=0;finger<fingers && d->touch_count<2;++finger) {
@@ -370,6 +387,7 @@ static void sample_host(PadData *d) {
      * stick follows the keys only while one of them is held. */
     uint32_t keys=0;
     for (size_t i=0;i<key_map.count;++i) if (key_source_down(k,key_map.entries[i].source)) keys|=key_map.entries[i].ps;
+    if (keys) note_device(1);
     d->buttons|=keys & ~STICK_BITS;
     if (keys & BTN_L2) d->l2=255;
     if (keys & BTN_R2) d->r2=255;

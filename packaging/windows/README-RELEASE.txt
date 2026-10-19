@@ -17,9 +17,9 @@ PLAYING
 KEYBOARD AND MOUSE
   WASD move, mouse camera, Space jump, Left Shift sprint/glide, left click attack, right click
   special attack/consume, E grab/throw, Q target lock, Tab power wheel, F disguise menu,
-  1/2/3 powers on/off, 4 or Z disguise, middle click or V reset camera, U upgrades, Esc pause;
+  1/2/3 powers on/off, 4 or Z disguise, middle click or V reset camera, Esc pause/upgrades;
   menus: arrows, Enter, Backspace. The launcher's CONTROLS page changes the keys, the mouse
-  sensitivity and the button prompts (your keys or the controller's buttons in the game's hints;
+  sensitivity and the button icons (your keys or the PlayStation buttons in the game's hints;
   made from your game files at start, the game folder is not changed).
 
 IN GAME

@@ -37,8 +37,9 @@ ACTIONS = (
     ('disguise', 'left', 'Disguise', 'Маскировка', ['4', 'Z'], 'powers'),
     ('camera_reset', 'r3', 'Reset camera', 'Сброс камеры', ['Mouse Middle', 'V'], 'other'),
     ('l3', 'l3', 'L3 (left stick click)', 'L3 (нажатие левого стика)', ['C'], 'other'),
-    ('pause', 'options', 'Pause', 'Пауза', ['Escape'], 'other'),
-    ('upgrades', 'touchpad', 'Upgrades (touchpad)', 'Улучшения (сенсорная панель)', ['U'], 'other'),
+    # The game's pause is the touchpad (its texts: "pause with ·", BSE); Options is kept on a key too.
+    ('pause', 'touchpad', 'Pause, upgrades', 'Пауза, улучшения', ['Escape'], 'other'),
+    ('options', 'options', 'Options button', 'Кнопка OPTIONS', ['M'], 'other'),
     ('menu_confirm', 'cross', 'Menu: confirm', 'Меню: выбрать', ['Return'], 'menu'),
     ('menu_back', 'circle', 'Menu: back', 'Меню: назад', ['Backspace'], 'menu'),
     ('menu_up', 'up', 'Menu: up', 'Меню: вверх', ['Up'], 'menu'),
