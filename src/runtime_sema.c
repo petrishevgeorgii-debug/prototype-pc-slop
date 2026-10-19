@@ -8,10 +8,21 @@
 #include <pthread.h>
 #include <errno.h>
 #include <time.h>
+#include <inttypes.h>
+#ifdef _WIN32
+#include <windows.h>
+static unsigned long host_tid(void) { return GetCurrentThreadId(); }
+#else
+#include <unistd.h>
+#include <sys/syscall.h>
+static unsigned long host_tid(void) { return (unsigned long)syscall(SYS_gettid); }
+#endif
 #define ERR(n) ((int32_t)(UINT32_C(0x80020000)|(n)))
 typedef struct Waiter {
     int32_t need, result;
     int done;
+    unsigned long tid;  /* host thread, for the F10 hang report */
+    uintptr_t caller;   /* return address of the wait call */
     pthread_cond_t event;
     struct Waiter *next;
 } Waiter;
@@ -23,6 +34,7 @@ typedef struct Sema {
     Waiter *first;
     struct Sema *next;
 } Sema;
+uintptr_t runtime_guest_image;
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
 static Sema *registry;
 static uint32_t next_id=1;
@@ -61,7 +73,7 @@ static ABI int32_t sem_create(uint32_t *out,const char *name,uint32_t attr,
     pthread_mutex_unlock(&lock);
     return 0;
 }
-static int32_t wait_count(uint32_t id,int32_t need,uint32_t *timeout,int block) {
+static int32_t wait_count(uint32_t id,int32_t need,uint32_t *timeout,int block,uintptr_t caller) {
     pthread_mutex_lock(&lock);
     Sema *s=find(id);
     int32_t result=0;
@@ -74,7 +86,7 @@ static int32_t wait_count(uint32_t id,int32_t need,uint32_t *timeout,int block) 
         /* Priority-ordered semaphores (attr 2) are served FIFO: there is no
            PS4 priority scheduler, host threads run at equal priority. */
         if (getenv("THEORDER_TRACE_SEMA")) fprintf(stderr,"Runtime: blocking wait on semaphore %u (need %d, count %d)\n",id,need,s->count); /* deadlock diagnosis */
-        Waiter w={.need=need};
+        Waiter w={.need=need,.tid=host_tid(),.caller=caller};
         pthread_condattr_t attr;
         host_check(pthread_condattr_init(&attr));
         host_check(pthread_condattr_setclock(&attr,WAIT_CLOCK));
@@ -105,8 +117,10 @@ static int32_t wait_count(uint32_t id,int32_t need,uint32_t *timeout,int block) 
     pthread_mutex_unlock(&lock);
     return result;
 }
-static ABI int32_t sem_wait(uint32_t id,int32_t need,uint32_t *timeout) { return wait_count(id,need,timeout,1); }
-static ABI int32_t sem_poll(uint32_t id,int32_t need) { return wait_count(id,need,NULL,0); }
+static ABI int32_t sem_wait(uint32_t id,int32_t need,uint32_t *timeout) {
+    return wait_count(id,need,timeout,1,(uintptr_t)__builtin_return_address(0));
+}
+static ABI int32_t sem_poll(uint32_t id,int32_t need) { return wait_count(id,need,NULL,0,0); }
 static ABI int32_t sem_signal(uint32_t id,int32_t count) {
     pthread_mutex_lock(&lock);
     Sema *s=find(id);
@@ -168,7 +182,11 @@ void runtime_sema_report_waiting(void) {
         unsigned n=0; int32_t need=0;
         for (Waiter *w=s->first;w;w=w->next) { ++n; if (!need) need=w->need; }
         if (!n) continue;
-        fprintf(stderr,"  semaphore %u: %u waiting (first needs %d), count %d of %d\n",s->id,n,need,s->count,s->maximum);
+        fprintf(stderr,"  semaphore %u: %u waiting (first needs %d), count %d of %d; waiters:",s->id,n,need,s->count,s->maximum);
+        for (Waiter *w=s->first;w;w=w->next)
+            fprintf(stderr," tid %lu (call returns to guest offset 0x%" PRIxPTR ")",w->tid,
+                    w->caller-runtime_guest_image);
+        fputc('\n',stderr);
         ++shown;
     }
     pthread_mutex_unlock(&lock);

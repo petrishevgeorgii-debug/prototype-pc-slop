@@ -115,4 +115,6 @@ void runtime_proto_report(void);
 /* Live fibers and semaphores with waiters, for the F10 hang report (probe.c). */
 void runtime_fiber_report_state(void);
 void runtime_sema_report_waiting(void);
+/* The guest image's base (probe.c), for guest offsets in diagnostics; 0 before it is mapped. */
+extern uintptr_t runtime_guest_image;
 #endif

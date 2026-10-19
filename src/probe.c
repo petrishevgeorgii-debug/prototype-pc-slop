@@ -309,7 +309,7 @@ static DWORD WINAPI win_watchdog_thread(LPVOID param) {
  * "count;thread=<name>;frame;..." lines (tools/sample_report.py names them). Nothing is allocated
  * or printed while a thread is suspended: it may hold the heap lock. */
 #define SAMPLE_SLOTS 65536
-#define SAMPLE_DEPTH 12
+#define SAMPLE_DEPTH 24
 typedef struct { uintptr_t frames[SAMPLE_DEPTH]; unsigned thread, count; } SampleSlot;
 static SampleSlot sample_slots[SAMPLE_SLOTS];
 static int sample_add(unsigned thread, const uintptr_t frames[SAMPLE_DEPTH]) {
@@ -321,6 +321,28 @@ static int sample_add(unsigned thread, const uintptr_t frames[SAMPLE_DEPTH]) {
         if (s->thread==thread && !memcmp(s->frames,frames,sizeof(s->frames))) { ++s->count; return 1; }
     }
     return 0; /* table full */
+}
+/* The guest's own frames: its code keeps rbp frame chains (push rbp; mov rbp,rsp), so from the
+ * first guest frame on the return addresses are at [rbp+8] and the caller's rbp at [rbp]. Only
+ * committed, readable stack is read (the thread is suspended: nothing here may allocate). */
+static int is_guest_code(uintptr_t address) {
+    return image && address-(uintptr_t)image<0x20000000;
+}
+static int readable_frame(uintptr_t p) {
+    MEMORY_BASIC_INFORMATION m;
+    if (!p || (p&7) || !VirtualQuery((const void *)p,&m,sizeof(m))) return 0;
+    if (m.State!=MEM_COMMIT || (m.Protect&(PAGE_NOACCESS|PAGE_GUARD)) || !m.Protect) return 0;
+    return p+16<=(uintptr_t)m.BaseAddress+m.RegionSize;
+}
+static int guest_frames(uintptr_t rbp, uintptr_t *frames, int depth, int max) {
+    for (int steps=0; depth<max && steps<64 && readable_frame(rbp); ++steps) {
+        const uintptr_t next=((const uintptr_t *)rbp)[0], ret=((const uintptr_t *)rbp)[1];
+        if (!is_guest_code(ret)) break;
+        frames[depth++]=ret;
+        if (next<=rbp) break;
+        rbp=next;
+    }
+    return depth;
 }
 /* Samples the threads whose name holds a '|'-separated part of `part` ("*": all) for `seconds`
  * into `path`; with `to_log` the most frequent stack of each thread is also printed. */
@@ -352,7 +374,8 @@ static void sample_threads(const char *part, unsigned seconds, const char *path,
                 }
             }
             if (match) {
-                if (name && *name) { wcsncpy(names[count],name,63); names[count][63]=0; }
+                /* the thread id too: the semaphore report names waiters by it */
+                if (name && *name) swprintf(names[count],64,L"%.40ls (tid %lu)",name,(unsigned long)entry.th32ThreadID);
                 else swprintf(names[count],64,L"tid %lu",(unsigned long)entry.th32ThreadID);
                 threads[count++]=thread;
             } else CloseHandle(thread);
@@ -374,6 +397,10 @@ static void sample_threads(const char *part, unsigned seconds, const char *path,
                     DWORD64 base=0; PVOID handler_data; DWORD64 establisher;
                     PRUNTIME_FUNCTION fn=RtlLookupFunctionEntry(c.Rip,&base,NULL);
                     if (fn) RtlVirtualUnwind(UNW_FLAG_NHANDLER,base,c.Rip,fn,&c,&handler_data,&establisher,NULL);
+                    else if (is_guest_code(c.Rip)) { /* the rest of the stack is the guest's */
+                        guest_frames(c.Rbp,frames,depth+1,SAMPLE_DEPTH);
+                        break;
+                    }
                     else if (depth==0) { c.Rip=*(DWORD64 *)c.Rsp; c.Rsp+=8; }
                     else break;
                 }
@@ -1287,6 +1314,7 @@ int main(int argc, char **argv) {
     size_t isa_stub_size = isa_table ? round_page(isa_stub_area_size(isa_table)) : 0;
     size_t stub_area = isa_stub_size + 65536;
     image = allocate(round_page(size) + stub_area);
+    runtime_guest_image = (uintptr_t)image;
     unsigned char *stubs = image + round_page(size);
     g_diag_stubs = stubs + isa_stub_size;
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
