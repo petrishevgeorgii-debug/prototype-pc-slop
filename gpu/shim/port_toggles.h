@@ -76,6 +76,8 @@ inline bool Disabled(std::uint64_t bit) {
 } // namespace PortToggle
 
 namespace PortStats {
+/// PROTOTYPE menu (FSR tests): save the upscaler's images of the next frames (DumpFrame).
+inline std::atomic<int> dump_request{0};
 /// Guest writes caught by page protection, and pages currently left unprotected as hot.
 inline std::atomic<std::uint64_t> tracker_faults{0};
 /// Stall diagnostics (THEORDER_FRAME_STATS): per-frame deltas printed for frames over 40 ms.

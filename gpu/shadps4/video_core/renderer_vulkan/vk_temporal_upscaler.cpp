@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 #include <vk_mem_alloc.h>
@@ -59,6 +60,18 @@ FfxVkPortableImage Describe(vk::Image image, vk::Format format, u32 width, u32 h
 int DumpFrame() {
     static const char* trigger = std::getenv("THEORDER_DUMP_TRIGGER");
     static int remaining = 0, index = 0, polls = 0;
+    // PROTOTYPE menu: three consecutive frames, numbered on from earlier saves.
+    if (remaining == 0 && PortStats::dump_request.exchange(0) != 0) {
+        std::error_code ec;
+        const char* env = std::getenv("THEORDER_DUMP_DIR");
+        std::filesystem::create_directories(env && env[0] ? env : "out/dump", ec);
+        std::printf("Upscaler: saving FSR images of 3 frames\n");
+        remaining = 3;
+    }
+    if (remaining > 0 && !trigger) {
+        --remaining;
+        return index++;
+    }
     if (!trigger) {
         return -1;
     }
@@ -1099,6 +1112,7 @@ void TemporalUpscaler::Run() {
         failed = true;
         return;
     }
+    const bool info_reset_for_dump = reset;
     const auto depth_format = depth.info.pixel_format;
     const auto depth_view =
         CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
@@ -1210,7 +1224,7 @@ void TemporalUpscaler::Run() {
         // Toggle 1 << 26 (tests): the opposite sign convention for FSR.
         const float sign = PortToggle::Disabled(1u << 26) ? -1.0f : 1.0f;
         info.jitterOffset = {sign * jitter[0],
-                             sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]};
+                             sign * (PortToggle::Disabled(1ull << 63) ? -1.0f : 1.0f) * jitter[1]};
         info.motionVectorScale = {1.0f, 1.0f};
         info.renderSize = {w, h};
         info.outputSize = {ow, oh};
@@ -1252,6 +1266,17 @@ void TemporalUpscaler::Run() {
     if (dispatched) {
         reset = false;
         dispatched_last_frame = true;
+        // FSR's inputs and output (menu: FSR tests, save images; or THEORDER_DUMP_TRIGGER).
+        if (const int dump = DumpFrame(); dump >= 0) {
+            DumpImages(instance, scheduler, cmdbuf, dump,
+                       {{input_color, w, h, hdr ? 8u : 4u, "input", hdr ? "rgba16f" : "rgba8"},
+                        {vk::Image(motion_image), w, h, 4, "motion", "rg16f"},
+                        {vk::Image(output_image), ow, oh, 8, "output", "rgba16f"}});
+            DumpImages(instance, scheduler, cmdbuf, dump,
+                       {{input_depth, w, h, 4, "depth", "f32", vk::ImageAspectFlagBits::eDepth}});
+            std::printf("Upscaler: saved frame %d (jitter %.4f %.4f, reset %d)\n", dump,
+                        jitter[0], jitter[1], int(info_reset_for_dump));
+        }
         if (PortSettings::Get().upscaler != PortSettings::UpscalerTaa) {
             ExtraSharpen(cmdbuf, vk::Image(output_image), false, ow, oh);
         }
@@ -1812,7 +1837,7 @@ void TemporalUpscaler::RunScaled() {
     info.transparencyAndCompositionMask.structSize = sizeof(info.transparencyAndCompositionMask);
     const float sign = PortToggle::Disabled(1u << 26) ? -1.0f : 1.0f;
     info.jitterOffset = {sign * jitter[0],
-                             sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]};
+                             sign * (PortToggle::Disabled(1ull << 63) ? -1.0f : 1.0f) * jitter[1]};
     info.motionVectorScale = {1.0f, 1.0f};
     info.renderSize = {w, h};
     info.outputSize = {ow, oh};
@@ -2040,7 +2065,7 @@ bool TemporalUpscaler::RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image 
         .render_height = h,
         .preset = applied_preset,
         .jitter = {sign * jitter[0],
-                   sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]},
+                   sign * (PortToggle::Disabled(1ull << 63) ? -1.0f : 1.0f) * jitter[1]},
         .frame_ms = frame_ms,
         .near_plane = camera_motion.Near(),
         .far_plane = camera_motion.Far(),

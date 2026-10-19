@@ -944,14 +944,20 @@ void PrototypeMenu() {
                            0,
                            {T("NORMAL", "ОБЫЧНЫЙ"), T("INVERTED", "ОБРАТНЫЙ"), T("Y INVERTED", "Y ОБРАТНЫЙ"),
                             T("X INVERTED", "X ОБРАТНЫЙ")},
-                           (toggle_on(1ull << 26) ? 1 : 0) + (toggle_on(1ull << 29) ? 2 : 0)});
+                           (toggle_on(1ull << 26) ? 1 : 0) + (toggle_on(1ull << 63) ? 2 : 0)});
         options.push_back({T("VERTICAL MOTION", "ВЕРТИКАЛЬНОЕ ДВИЖЕНИЕ"),
                            T("Flips the up/down direction of the camera motion given to FSR. The right one "
                              "keeps the image calm while you look up and down.",
                              "Меняет направление вертикального движения камеры для FSR. Правильное "
                              "оставляет картинку спокойной, когда смотришь вверх и вниз."),
                            0, {T("NORMAL", "ОБЫЧНОЕ"), T("FLIPPED", "ОБРАТНОЕ")},
-                           toggle_on(1ull << 28) ? 1 : 0});
+                           toggle_on(1ull << 62) ? 1 : 0});
+        options.push_back({T("SAVE FSR IMAGES", "СОХРАНИТЬ КАДРЫ FSR"),
+                           T("Saves what FSR gets and gives for three frames to out\\dump in the port folder "
+                             "(about 200 MB), for Claude to check. Press Enter or Cross.",
+                             "Сохраняет входы и результат FSR трёх кадров в out\\dump в папке порта "
+                             "(около 200 МБ), для проверки. Нажмите Enter или Крест."),
+                           0, {T("SAVE", "СОХРАНИТЬ")}, 0});
         options.push_back({T("MOTION VECTORS VIEW", "ВЕКТОРЫ ДВИЖЕНИЯ"),
                            T("Debug view: dark when nothing moves, red/green for horizontal/vertical motion.",
                              "Отладка: темно, если ничего не движется; красный/зелёный — движение."),
@@ -1003,13 +1009,14 @@ void PrototypeMenu() {
             };
             if (index == 1) {
                 set(1ull << 26, (value & 1) != 0);
-                set(1ull << 29, (value & 2) != 0);
+                set(1ull << 63, (value & 2) != 0);
             } else {
-                set(1ull << 28, value != 0);
+                set(1ull << 62, value != 0);
             }
             break;
         }
-        case 51: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
+        case 51: PortStats::dump_request = 1; break;
+        case 52: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
         default: break;
         }
     };
@@ -1049,7 +1056,7 @@ void PrototypeMenu() {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
             __atomic_fetch_and(&runtime_disabled_optimizations,
-                               ~((1ull << 26) | (1ull << 28) | (1ull << 29)), __ATOMIC_RELAXED);
+                               ~((1ull << 26) | (1ull << 62) | (1ull << 63)), __ATOMIC_RELAXED);
         }
         dirty = true;
     }
@@ -1206,7 +1213,7 @@ void PrototypeMenu() {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
             __atomic_fetch_and(&runtime_disabled_optimizations,
-                               ~((1ull << 26) | (1ull << 28) | (1ull << 29)), __ATOMIC_RELAXED);
+                               ~((1ull << 26) | (1ull << 62) | (1ull << 63)), __ATOMIC_RELAXED);
         }
         dirty = true;
     }
