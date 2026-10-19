@@ -320,7 +320,7 @@ bool TemporalUpscaler::OnFrameStart() {
                         "%u from ring, %u from guest memory; history resets %u; now current %d "
                         "previous %d depth %d; projection %.4f %.4f %.6f %.4f; largest camera "
                         "step %.3f units, %.2f degrees; jitter %.3f %.3f; up to %u cameras "
-                        "in a frame\n",
+                        "in a frame; jittered draws %u of %u with the scene depth\n",
                         diag_frames, diag_triggers, diag_runs, diag_no_scene, diag_no_camera,
                         failed ? ", failed" : "", c.diag_calls, c.diag_affine, c.diag_zlen,
                         c.diag_last_zlen, c.diag_disagree, c.diag_commits, c.diag_invalid,
@@ -328,13 +328,14 @@ bool TemporalUpscaler::OnFrameStart() {
                         int(c.CurrentValid()), int(c.PreviousValid()), int(bool(c.Depth())),
                         c.CurrentProj()[0], c.CurrentProj()[1], c.CurrentProj()[2],
                         c.CurrentProj()[3], c.diag_max_move, c.diag_max_turn, jitter[0],
-                        jitter[1], c.diag_max_groups);
+                        jitter[1], c.diag_max_groups, diag_jittered, diag_depth_draws);
         }
         camera_motion.diag_calls = camera_motion.diag_affine = camera_motion.diag_zlen = 0;
         camera_motion.diag_disagree = camera_motion.diag_commits = camera_motion.diag_invalid = 0;
         camera_motion.diag_ring = camera_motion.diag_guest = camera_motion.diag_history_resets = 0;
         camera_motion.diag_max_move = camera_motion.diag_max_turn = 0.0f;
         camera_motion.diag_max_groups = 0;
+        diag_jittered = diag_depth_draws = 0;
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
     prototype_game = prototype;
@@ -1208,7 +1209,8 @@ void TemporalUpscaler::Run() {
         info.transparencyAndCompositionMask.structSize = sizeof(info.transparencyAndCompositionMask);
         // Toggle 1 << 26 (tests): the opposite sign convention for FSR.
         const float sign = PortToggle::Disabled(1u << 26) ? -1.0f : 1.0f;
-        info.jitterOffset = {sign * jitter[0], sign * jitter[1]};
+        info.jitterOffset = {sign * jitter[0],
+                             sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]};
         info.motionVectorScale = {1.0f, 1.0f};
         info.renderSize = {w, h};
         info.outputSize = {ow, oh};
@@ -1809,7 +1811,8 @@ void TemporalUpscaler::RunScaled() {
 
     info.transparencyAndCompositionMask.structSize = sizeof(info.transparencyAndCompositionMask);
     const float sign = PortToggle::Disabled(1u << 26) ? -1.0f : 1.0f;
-    info.jitterOffset = {sign * jitter[0], sign * jitter[1]};
+    info.jitterOffset = {sign * jitter[0],
+                             sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]};
     info.motionVectorScale = {1.0f, 1.0f};
     info.renderSize = {w, h};
     info.outputSize = {ow, oh};
@@ -2036,7 +2039,8 @@ bool TemporalUpscaler::RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image 
         .render_width = w,
         .render_height = h,
         .preset = applied_preset,
-        .jitter = {sign * jitter[0], sign * jitter[1]},
+        .jitter = {sign * jitter[0],
+                   sign * (PortToggle::Disabled(1u << 29) ? -1.0f : 1.0f) * jitter[1]},
         .frame_ms = frame_ms,
         .near_plane = camera_motion.Near(),
         .far_plane = camera_motion.Far(),

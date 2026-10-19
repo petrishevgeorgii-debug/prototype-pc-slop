@@ -937,10 +937,14 @@ void PrototypeMenu() {
                              "но меньше сглаживания. Для поиска причины мерцания."),
                            0, {off, on}, s.jitter ? 1 : 0});
         options.push_back({T("JITTER SIGN", "ЗНАК ДРОЖАНИЯ"),
-                           T("Tells FSR the shift in the other direction. The right one gives a calm image.",
-                             "Сообщает FSR сдвиг в другую сторону. Правильный даёт спокойную картинку."),
-                           0, {T("NORMAL", "ОБЫЧНЫЙ"), T("INVERTED", "ОБРАТНЫЙ")},
-                           toggle_on(1ull << 26) ? 1 : 0});
+                           T("Which way FSR is told the shift goes (both axes, or only up/down or left/right). The "
+                             "right one gives a calm image.",
+                             "Как FSR понимает направление сдвига (обе оси, только вертикаль или горизонталь). "
+                             "Правильный вариант даёт спокойную картинку."),
+                           0,
+                           {T("NORMAL", "ОБЫЧНЫЙ"), T("INVERTED", "ОБРАТНЫЙ"), T("Y INVERTED", "Y ОБРАТНЫЙ"),
+                            T("X INVERTED", "X ОБРАТНЫЙ")},
+                           (toggle_on(1ull << 26) ? 1 : 0) + (toggle_on(1ull << 29) ? 2 : 0)});
         options.push_back({T("VERTICAL MOTION", "ВЕРТИКАЛЬНОЕ ДВИЖЕНИЕ"),
                            T("Flips the up/down direction of the camera motion given to FSR. The right one "
                              "keeps the image calm while you look up and down.",
@@ -992,9 +996,17 @@ void PrototypeMenu() {
         case 48: s.jitter = value == 1; break;
         case 49:
         case 50: {
-            const u64 bit = index == 1 ? (1ull << 26) : (1ull << 28);
-            if (value) __atomic_fetch_or(&runtime_disabled_optimizations, bit, __ATOMIC_RELAXED);
-            else __atomic_fetch_and(&runtime_disabled_optimizations, ~bit, __ATOMIC_RELAXED);
+            // Jitter sign: bit 26 flips x and y, bit 29 flips y once more.
+            const auto set = [](u64 bit, bool on) {
+                if (on) __atomic_fetch_or(&runtime_disabled_optimizations, bit, __ATOMIC_RELAXED);
+                else __atomic_fetch_and(&runtime_disabled_optimizations, ~bit, __ATOMIC_RELAXED);
+            };
+            if (index == 1) {
+                set(1ull << 26, (value & 1) != 0);
+                set(1ull << 29, (value & 2) != 0);
+            } else {
+                set(1ull << 28, value != 0);
+            }
             break;
         }
         case 51: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
@@ -1036,8 +1048,8 @@ void PrototypeMenu() {
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
-            __atomic_fetch_and(&runtime_disabled_optimizations, ~((1ull << 26) | (1ull << 28)),
-                               __ATOMIC_RELAXED);
+            __atomic_fetch_and(&runtime_disabled_optimizations,
+                               ~((1ull << 26) | (1ull << 28) | (1ull << 29)), __ATOMIC_RELAXED);
         }
         dirty = true;
     }
@@ -1193,8 +1205,8 @@ void PrototypeMenu() {
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
-            __atomic_fetch_and(&runtime_disabled_optimizations, ~((1ull << 26) | (1ull << 28)),
-                               __ATOMIC_RELAXED);
+            __atomic_fetch_and(&runtime_disabled_optimizations,
+                               ~((1ull << 26) | (1ull << 28) | (1ull << 29)), __ATOMIC_RELAXED);
         }
         dirty = true;
     }

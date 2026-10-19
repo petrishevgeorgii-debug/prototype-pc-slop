@@ -280,6 +280,9 @@ private:
     vk::UniquePipeline merge_ldr_pipeline; ///< RGBA8 scene colour (PROTOTYPE)
     SceneResolution::Size pending_native{};  ///< PROTOTYPE scene size seen this frame
     bool prototype_game = false;
+public:
+    u32 diag_jittered = 0, diag_depth_draws = 0; ///< PROTOTYPE diagnostics (rasterizer counts)
+private:
     bool fsr_ran_last_frame = false;  ///< PROTOTYPE: FSR is running (recently dispatched)
     u32 frames_without_fsr = 1000;
     u32 diag_frames = 0, diag_triggers = 0, diag_no_scene = 0, diag_no_camera = 0, diag_runs = 0;

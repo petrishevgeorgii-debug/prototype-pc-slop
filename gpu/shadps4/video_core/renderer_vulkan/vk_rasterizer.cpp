@@ -1307,6 +1307,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (upscaler->Enabled() && db_desc.first && db_desc.first == camera_motion->Depth() &&
         (regs.num_indices > 6 || regs.num_instances.NumInstances() > 1)) {
         draw_jitter = upscaler->Jitter();
+        ++upscaler->diag_depth_draws;
+        upscaler->diag_jittered += draw_jitter[0] != 0.0f || draw_jitter[1] != 0.0f;
     }
     UpdateDynamicState(pipeline, is_indexed);
     MarkPass(pipeline, state);
