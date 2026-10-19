@@ -58,6 +58,8 @@ typedef struct { int fd; uint64_t base_size, vsize; uint32_t count; PatchRegion 
 typedef struct {
     int used, host; Listing *dir; size_t position; char path[512];
     Patch *patch; uint64_t vpos; int tracked; pthread_mutex_t io;
+    /* for the F10 hang report: the file's reads */
+    uint64_t opened_ms, reads, bytes, last_offset, last_size, last_ms; int64_t last_result;
 } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
@@ -479,6 +481,13 @@ static void touch_for_write(void *buffer,uint64_t size) {
         *b=*b;
     }
 }
+static uint64_t now_ms(void);
+/* Records a read for the hang report (racy counters: diagnostics only). */
+static void note_read(File *f,uint64_t offset,uint64_t size,int64_t result) {
+    if (!f) return;
+    ++f->reads; if (result>0) f->bytes+=(uint64_t)result;
+    f->last_offset=offset; f->last_size=size; f->last_result=result; f->last_ms=now_ms();
+}
 /* Failed reads of game files are logged: the game retries a file it cannot read for ever. */
 static void read_failed(const File *f,uint64_t size,int64_t error) {
     static unsigned logged;
@@ -494,9 +503,11 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
     if (pf && pf->tracked) {
         pthread_mutex_lock(&pf->io);
         int64_t r;
+        const uint64_t at=pf->vpos;
         if (pf->patch) r=patched_pread(pf->patch,h,buffer,size,pf->vpos);
         else r=guest_pread(h,buffer,size,pf->vpos);
         if (r>0) pf->vpos+=(uint64_t)r;
+        note_read(pf,at,size,r);
         pthread_mutex_unlock(&pf->io);
         if (r>0) { __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)r,__ATOMIC_RELAXED); }
         if (r<0) read_failed(pf,size,r);
@@ -518,8 +529,13 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
     touch_for_write(buffer,size);
     File *pf=fd>=3 ? get(fd) : NULL;
     if (offset<0) return -EINVAL;
-    if (pf && pf->patch) return patched_pread(pf->patch,h,buffer,size,(uint64_t)offset);
+    if (pf && pf->patch) {
+        const int64_t r=patched_pread(pf->patch,h,buffer,size,(uint64_t)offset);
+        note_read(pf,(uint64_t)offset,size,r);
+        return r;
+    }
     const int64_t n=guest_pread(h,buffer,size,(uint64_t)offset);
+    note_read(pf,(uint64_t)offset,size,n);
     if (n<0) { read_failed(pf,size,n); return n; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
@@ -624,6 +640,21 @@ void runtime_file_report_recent(void) {
             fprintf(stderr,"  opened %s -> %lld, %.1f s ago\n",recent[n].path,(long long)recent[n].result,
                     (double)(now-recent[n].ms)/1000.0);
     }
+    /* the files open now and how far they were read (a load waiting on a file stops early) */
+    for (int fd=3;fd<MAX_FILES;++fd) {
+        const File *f=&files[fd];
+        if (!f->used || f->dir) continue;
+        HostStat st; long long size=-1;
+        if (f->host>=0 && !host_fstat(f->host,&st)) size=(long long)st.st_size;
+        if (f->patch) size=(long long)f->patch->vsize;
+        fprintf(stderr,"  open fd %d %s: size %lld, position %llu, %llu reads (%llu bytes), opened %.1f s ago",
+                fd,f->path,size,(unsigned long long)f->vpos,(unsigned long long)f->reads,
+                (unsigned long long)f->bytes,(double)(now-f->opened_ms)/1000.0);
+        if (f->reads)
+            fprintf(stderr,"; last read %llu bytes at %llu -> %lld, %.1f s ago",(unsigned long long)f->last_size,
+                    (unsigned long long)f->last_offset,(long long)f->last_result,(double)(now-f->last_ms)/1000.0);
+        fputc('\n',stderr);
+    }
     pthread_mutex_unlock(&lock);
 }
 static int64_t do_open(const char *guest,int flags,int mode) {
@@ -636,6 +667,7 @@ static int64_t do_open(const char *guest,int flags,int mode) {
             pthread_mutex_lock(&lock);
             pthread_mutex_init(&f->io,NULL);
             f->patch=p; f->vpos=0; f->tracked=1;
+            f->opened_ms=now_ms();
             pthread_mutex_unlock(&lock);
         }
     }
