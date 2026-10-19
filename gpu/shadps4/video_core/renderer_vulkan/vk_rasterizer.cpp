@@ -147,6 +147,73 @@ bool ImplausibleTexture(const VideoCore::ImageInfo& info) {
     }
     return true;
 }
+// port: raw context registers (word offsets) for render state the emulation does not model.
+constexpr u32 RegDbAlphaToMask = 0xA2DC;   // DB_ALPHA_TO_MASK
+constexpr u32 RegAaMaskX0Y0X1Y0 = 0xA30E;  // PA_SC_AA_MASK_X0Y0_X1Y0
+constexpr u32 RegAaMaskX0Y1X1Y1 = 0xA30F;  // PA_SC_AA_MASK_X0Y1_X1Y1
+constexpr u32 RegPaSuScModeCntl = 0xA205;  // PA_SU_SC_MODE_CNTL
+
+template <typename T>
+u32 RawReg(const T& field) {
+    u32 value = 0;
+    std::memcpy(&value, &field, std::min<size_t>(sizeof(T), sizeof(u32)));
+    return value;
+}
+
+/// port: one line per draw in a frame capture: shaders, size and the raw render state
+/// (blend, depth/stencil, colour masks, export formats, coverage) for finding a draw that
+/// renders differently from the console.
+std::string DrawStateNote(const AmdGpu::Regs& regs, u64 vs_hash, u64 ps_hash, u32 num_indices,
+                          u32 num_instances) {
+    const auto& r = regs.reg_array;
+    std::string note = fmt::format(
+        "\n  draw vs {:08x} ps {:08x} idx {} inst {} | cb0 {:08x} blend0 {:08x} const {:g},{:g},{:g},"
+        "{:g} | tmask {:08x} smask {:08x} colfmt {:08x} cbctl {:08x} | zctl {:08x} sctl {:08x} "
+        "zref {:08x} dbshader {:08x} dbrender {:08x} | a2m {:08x} aamask {:08x} {:08x} aacfg "
+        "{:08x} su {:08x}",
+        u32(vs_hash), u32(ps_hash), num_indices, num_instances,
+        RawReg(regs.color_buffers[0].info), RawReg(regs.blend_control[0]),
+        regs.blend_constants[0], regs.blend_constants[1], regs.blend_constants[2],
+        regs.blend_constants[3], RawReg(regs.color_target_mask),
+        RawReg(regs.color_shader_mask), RawReg(regs.color_export_format),
+        RawReg(regs.color_control), RawReg(regs.depth_control), RawReg(regs.stencil_control),
+        RawReg(regs.stencil_ref_front), RawReg(regs.depth_shader_control),
+        RawReg(regs.depth_render_control), r[RegDbAlphaToMask], r[RegAaMaskX0Y0X1Y0],
+        r[RegAaMaskX0Y1X1Y1], RawReg(regs.aa_config), r[RegPaSuScModeCntl]);
+    return note;
+}
+
+/// port: reports (to the log, once per shader and state) draws using coverage state the
+/// emulation ignores: alpha to mask (DB_ALPHA_TO_MASK) and the per-pixel sample masks
+/// (PA_SC_AA_MASK), the console's screen-door transparency.
+void NoteCoverageState(const AmdGpu::Regs& regs, u64 vs_hash, const Shader::Info* ps) {
+    const auto& r = regs.reg_array;
+    const u32 a2m = r[RegDbAlphaToMask];
+    const u32 mask0 = r[RegAaMaskX0Y0X1Y0];
+    const u32 mask1 = r[RegAaMaskX0Y1X1Y1];
+    const bool a2m_on = (a2m & 1) != 0;
+    const bool masked = mask0 != 0xFFFFFFFFu || mask1 != 0xFFFFFFFFu;
+    if (!a2m_on && !masked) [[likely]] {
+        return;
+    }
+    static std::mutex mutex;
+    static std::vector<u64> seen;
+    const u64 key = (u64(ps ? ps->pgm_hash : 0) << 32) ^ (u64(a2m) << 8) ^ mask0 ^
+                    (u64(mask1) << 16) ^ u32(vs_hash);
+    std::scoped_lock lk{mutex};
+    if (seen.size() >= 64 || std::ranges::find(seen, key) != seen.end()) {
+        return;
+    }
+    seen.push_back(key);
+    LOG_WARNING(Render_Vulkan,
+                "Coverage state the emulation ignores: vs {:08x} ps {:08x} DB_ALPHA_TO_MASK "
+                "{:08x} PA_SC_AA_MASK {:08x} {:08x} PA_SC_AA_CONFIG {:08x} blend0 {:08x} "
+                "DB_DEPTH_CONTROL {:08x} CB_TARGET_MASK {:08x}",
+                u32(vs_hash), u32(ps ? ps->pgm_hash : 0), a2m, mask0, mask1,
+                RawReg(regs.aa_config), RawReg(regs.blend_control[0]),
+                RawReg(regs.depth_control), RawReg(regs.color_target_mask));
+}
+
 } // namespace
 
 bool Rasterizer::FilterDraw() {
@@ -1393,16 +1460,11 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     if (FrameCapture::Active()) {
         const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
         FrameCapture::Draw(vs_info.pgm_hash, ps ? ps->pgm_hash : 0, num_indices, num_instances);
-        if (const auto& bc = regs.blend_control[0]; bc.enable && regs.color_buffers[0]) {
-            char note[128];
-            std::snprintf(note, sizeof(note), "\n  blend ps %08x idx %u: src %u dst %u func %u z %u%u",
-                          u32(ps ? ps->pgm_hash : 0), num_indices, u32(bc.color_src_factor),
-                          u32(bc.color_dst_factor), u32(bc.color_func),
-                          u32(regs.depth_control.depth_enable),
-                          u32(regs.depth_control.depth_write_enable));
-            FrameCapture::Note(note);
-        }
+        FrameCapture::Note(DrawStateNote(regs, vs_info.pgm_hash, ps ? ps->pgm_hash : 0,
+                                         num_indices, num_instances)
+                               .c_str());
     }
+    NoteCoverageState(regs, vs_info.pgm_hash, pipeline->GetStages()[u32(Shader::SwStage::Fragment)]);
     DebugState.IncDrawCall();
 
     ResetBindings(false);

@@ -1443,6 +1443,15 @@ bool PipelineCache::RefreshGraphicsStages(PipelineSelection& sel) {
     const auto* fs_info = sel.infos[static_cast<u32>(SwStage::Fragment)];
     key.mrt_mask = fs_info ? fs_info->mrt_mask : 0u;
     key.num_color_attachments = std::bit_width(key.mrt_mask);
+    // port: DB_ALPHA_TO_MASK, the console's alpha to coverage (screen-door fades), as Vulkan's
+    // alpha to coverage; THEORDER_ALPHA_TO_COVERAGE=1 (a test: the console also dithers it).
+    static const bool alpha_to_coverage = [] {
+        const char* env = std::getenv("THEORDER_ALPHA_TO_COVERAGE");
+        return env && env[0] == '1';
+    }();
+    key.alpha_to_coverage = alpha_to_coverage && (key.mrt_mask & 1u) != 0 &&
+                            (regs.reg_array[0xA2DC] & 1u) != 0 &&
+                            !regs.depth_shader_control.alpha_to_mask_disable;
 
     switch (regs.stage_enable.raw) {
     case AmdGpu::ShaderStageEnable::VgtStages::EsGs:

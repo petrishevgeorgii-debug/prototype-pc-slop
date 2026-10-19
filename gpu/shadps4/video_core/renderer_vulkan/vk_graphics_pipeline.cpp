@@ -148,6 +148,7 @@ GraphicsPipeline::GraphicsPipeline(
             .sampleShadingEnable = !LightingTest::Current().shading &&
                                    (fs_info.addr_flags.persp_sample_ena ||
                                     fs_info.addr_flags.linear_sample_ena),
+            .alphaToCoverageEnable = key.alpha_to_coverage,
         };
     }
 
