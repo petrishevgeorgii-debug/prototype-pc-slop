@@ -112,4 +112,7 @@ void runtime_thread_attach_host(const char *name);
 /* PROTOTYPE-specific APIs (runtime_proto.c). */
 uintptr_t runtime_proto_resolve(const char *name);
 void runtime_proto_report(void);
+/* Live fibers and semaphores with waiters, for the F10 hang report (probe.c). */
+void runtime_fiber_report_state(void);
+void runtime_sema_report_waiting(void);
 #endif

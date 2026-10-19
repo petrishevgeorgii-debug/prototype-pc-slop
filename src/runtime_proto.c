@@ -13,6 +13,8 @@
 #include <windows.h>
 #else
 #include <ucontext.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #include <sys/mman.h>
 #endif
 
@@ -32,7 +34,11 @@ typedef void (ABI *FiberEntry)(uint64_t arg_on_initialize, uint64_t arg_on_run);
 enum { FIBER_IDLE=0, FIBER_RUNNING=1, FIBER_STACK=1<<20 };
 typedef struct Fiber {
     uint32_t magic;
-    int state;
+    int state;              /* FIBER_IDLE only once its context is saved (finish_switch) */
+    void *guest;            /* the guest OrbisFiber, whose state field follows ours */
+    uint32_t last_thread;   /* host thread that last ran it, for the hang report */
+    uint64_t last_switch_ns;
+    struct Fiber *registered_next;
     FiberEntry entry;
     uint64_t arg_init;
     uint64_t transfer;      /* argument handed to this fiber when it is (re)entered */
@@ -57,6 +63,7 @@ typedef struct {
 /* Thread-locals are read through noinline accessors: a fiber can be resumed on another
  * thread, and a TLS address cached across a switch would be the old thread's. */
 static _Thread_local Fiber *tls_current;
+static _Thread_local Fiber *tls_pending_idle;
 static _Thread_local uint64_t tls_thread_transfer;
 #ifdef _WIN32
 static _Thread_local LPVOID tls_thread_host;
@@ -64,13 +71,52 @@ static _Thread_local LPVOID tls_thread_host;
 static _Thread_local ucontext_t tls_thread_context;
 #endif
 __attribute__((noinline)) static Fiber **current_slot(void) { Fiber **p=&tls_current; __asm__ volatile("":"+r"(p)); return p; }
+__attribute__((noinline)) static Fiber **pending_idle_slot(void) { Fiber **p=&tls_pending_idle; __asm__ volatile("":"+r"(p)); return p; }
 __attribute__((noinline)) static uint64_t *thread_transfer_slot(void) { uint64_t *p=&tls_thread_transfer; __asm__ volatile("":"+r"(p)); return p; }
 #ifdef _WIN32
 __attribute__((noinline)) static LPVOID *thread_host_slot(void) { LPVOID *p=&tls_thread_host; __asm__ volatile("":"+r"(p)); return p; }
 #else
 __attribute__((noinline)) static ucontext_t *thread_context_slot(void) { ucontext_t *p=&tls_thread_context; __asm__ volatile("":"+r"(p)); return p; }
 #endif
-static size_t fibers_created, fiber_switches;
+static size_t fibers_created, fiber_switches, fiber_errors;
+static pthread_mutex_t fiber_registry_lock=PTHREAD_MUTEX_INITIALIZER;
+static Fiber *fiber_registry;
+static uint64_t fiber_now_ns(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000000000u+(uint64_t)t.tv_nsec; }
+static uint32_t fiber_thread_id(void) {
+#ifdef _WIN32
+    return (uint32_t)GetCurrentThreadId();
+#else
+    return (uint32_t)syscall(SYS_gettid);
+#endif
+}
+static void set_state(Fiber *f,int state) {
+    __atomic_store_n(&f->state,state,__ATOMIC_RELEASE);
+    if (f->guest) ((GuestFiber *)f->guest)->state=(uint32_t)state;
+}
+/* The fiber that switched away is idle only now: its context is saved. Marking it idle before
+ * the switch let another thread run it on the context of its previous switch (PS4 libSceFiber
+ * saves the context first too). Every place a switch lands calls this. */
+static void finish_switch(void) {
+    Fiber *previous=*pending_idle_slot();
+    if (!previous) return;
+    *pending_idle_slot()=NULL;
+    set_state(previous,FIBER_IDLE);
+}
+static int32_t fiber_error(const char *call,const Fiber *f,int32_t error) {
+    if (__atomic_fetch_add(&fiber_errors,1,__ATOMIC_RELAXED)<64)
+        fprintf(stderr,"Runtime: %s(%s) -> 0x%08x\n",call,f ? f->name : "?",(unsigned)error);
+    return error;
+}
+/* Claims an idle fiber for running; fails while it still runs (or another thread claimed it). */
+static int claim(Fiber *f) {
+    int idle=FIBER_IDLE;
+    return __atomic_compare_exchange_n(&f->state,&idle,FIBER_RUNNING,0,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE);
+}
+static void note_running(Fiber *f) {
+    if (f->guest) ((GuestFiber *)f->guest)->state=FIBER_RUNNING;
+    f->last_thread=fiber_thread_id();
+    f->last_switch_ns=fiber_now_ns();
+}
 
 static __attribute__((noreturn)) void fiber_returned(Fiber *f) {
     fprintf(stderr,"STOP: guest fiber '%s' returned from its entry function\n",f->name);
@@ -80,12 +126,14 @@ static __attribute__((noreturn)) void fiber_returned(Fiber *f) {
 #ifdef _WIN32
 static VOID WINAPI fiber_main(LPVOID param) {
     Fiber *f=param;
+    finish_switch();
     f->entry(f->arg_init,f->transfer);
     fiber_returned(f);
 }
 #else
 static void fiber_main(unsigned lo,unsigned hi) {
     Fiber *f=(Fiber *)(((uintptr_t)hi<<32)|lo);
+    finish_switch();
     f->entry(f->arg_init,f->transfer);
     fiber_returned(f);
 }
@@ -135,6 +183,10 @@ static ABI int32_t fiber_initialize(void *guest,const char *name,FiberEntry entr
     g->arg_on_initialize=arg; g->addr_context=(uint64_t)(uintptr_t)addr_context; g->size_context=size_context;
     memcpy(g->name,f->name,sizeof g->name);
     g->fiber=f;
+    f->guest=g;
+    pthread_mutex_lock(&fiber_registry_lock);
+    f->registered_next=fiber_registry; fiber_registry=f;
+    pthread_mutex_unlock(&fiber_registry_lock);
     ++fibers_created;
     printf("Runtime: fiber '%s' (guest context %llu bytes; host stack %u KiB)\n",f->name,
            (unsigned long long)size_context,FIBER_STACK/1024);
@@ -144,22 +196,24 @@ static ABI int32_t fiber_finalize(void *guest) {
     Fiber *f=fiber_of(guest);
     if (!guest) return FIBER_ERROR_NULL;
     if (!f) return FIBER_ERROR_INVALID;
-    if (f->state!=FIBER_IDLE) return FIBER_ERROR_STATE;
+    if (__atomic_load_n(&f->state,__ATOMIC_ACQUIRE)!=FIBER_IDLE) return fiber_error("sceFiberFinalize",f,FIBER_ERROR_STATE);
+    pthread_mutex_lock(&fiber_registry_lock);
+    for (Fiber **p=&fiber_registry;*p;p=&(*p)->registered_next) if (*p==f) { *p=f->registered_next; break; }
+    pthread_mutex_unlock(&fiber_registry_lock);
     f->magic=0;
     fiber_host_destroy(f);
     ((GuestFiber *)guest)->fiber=NULL;
     free(f);
     return 0;
 }
-static void set_state(void *guest,Fiber *f,int state) { f->state=state; ((GuestFiber *)guest)->state=(uint32_t)state; }
 /* From a plain thread into fiber f; returns when some fiber calls ReturnToThread. */
 static ABI int32_t fiber_run(void *guest,uint64_t arg,uint64_t *arg_on_return) {
     Fiber *f=fiber_of(guest);
     if (!guest) return FIBER_ERROR_NULL;
     if (!f) return FIBER_ERROR_INVALID;
-    if (*current_slot()) return FIBER_ERROR_PERMISSION;
-    if (f->state!=FIBER_IDLE) return FIBER_ERROR_STATE;
-    set_state(guest,f,FIBER_RUNNING);
+    if (*current_slot()) return fiber_error("sceFiberRun",f,FIBER_ERROR_PERMISSION);
+    if (!claim(f)) return fiber_error("sceFiberRun",f,FIBER_ERROR_STATE);
+    note_running(f);
     f->transfer=arg;
     *current_slot()=f;
     ++fiber_switches;
@@ -170,6 +224,7 @@ static ABI int32_t fiber_run(void *guest,uint64_t arg,uint64_t *arg_on_return) {
 #else
     swapcontext(thread_context_slot(),&f->context);
 #endif
+    finish_switch();
     if (arg_on_return) *arg_on_return=*thread_transfer_slot();
     return 0;
 }
@@ -179,32 +234,34 @@ static ABI int32_t fiber_switch(void *guest,uint64_t arg,uint64_t *arg_on_run) {
     if (!guest) return FIBER_ERROR_NULL;
     if (!f) return FIBER_ERROR_INVALID;
     Fiber *self=*current_slot();
-    if (!self) return FIBER_ERROR_PERMISSION;
-    if (f->state!=FIBER_IDLE) return FIBER_ERROR_STATE;
-    self->state=FIBER_IDLE;
-    f->state=FIBER_RUNNING;
+    if (!self) return fiber_error("sceFiberSwitch",f,FIBER_ERROR_PERMISSION);
+    if (!claim(f)) return fiber_error("sceFiberSwitch",f,FIBER_ERROR_STATE);
+    note_running(f);
     f->transfer=arg;
     *current_slot()=f;
+    *pending_idle_slot()=self;
     ++fiber_switches;
 #ifdef _WIN32
     SwitchToFiber(f->host);
 #else
     swapcontext(&self->context,&f->context);
 #endif
+    finish_switch();
     if (arg_on_run) *arg_on_run=self->transfer;
     return 0;
 }
 static ABI int32_t fiber_return_to_thread(uint64_t arg_on_return,uint64_t *arg_on_run) {
     Fiber *self=*current_slot();
-    if (!self) return FIBER_ERROR_PERMISSION;
-    self->state=FIBER_IDLE;
+    if (!self) return fiber_error("sceFiberReturnToThread",NULL,FIBER_ERROR_PERMISSION);
     *current_slot()=NULL;
+    *pending_idle_slot()=self;
     *thread_transfer_slot()=arg_on_return;
 #ifdef _WIN32
     SwitchToFiber(*thread_host_slot());
 #else
     swapcontext(&self->context,thread_context_slot());
 #endif
+    finish_switch();
     if (arg_on_run) *arg_on_run=self->transfer;
     return 0;
 }
@@ -375,5 +432,17 @@ static const RuntimeExport exports[]={
 };
 uintptr_t runtime_proto_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }
 void runtime_proto_report(void) {
-    printf("Runtime: fibers created=%zu, fiber switches=%zu\n",fibers_created,fiber_switches);
+    printf("Runtime: fibers created=%zu, fiber switches=%zu, fiber call errors=%zu\n",fibers_created,
+           fiber_switches,fiber_errors);
+}
+/* The F10 hang report: every live fiber, whether it runs and since when. */
+void runtime_fiber_report_state(void) {
+    const uint64_t now=fiber_now_ns();
+    pthread_mutex_lock(&fiber_registry_lock);
+    for (Fiber *f=fiber_registry;f;f=f->registered_next)
+        fprintf(stderr,"  fiber %p '%s': %s, last run on thread %u %.1f s ago\n",(void *)f,f->name,
+                __atomic_load_n(&f->state,__ATOMIC_ACQUIRE)==FIBER_RUNNING ? "running" : "idle",
+                f->last_thread,f->last_switch_ns ? (double)(now-f->last_switch_ns)/1e9 : -1.0);
+    pthread_mutex_unlock(&fiber_registry_lock);
+    fprintf(stderr,"  fibers created=%zu, switches=%zu, call errors=%zu\n",fibers_created,fiber_switches,fiber_errors);
 }

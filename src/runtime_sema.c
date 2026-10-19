@@ -160,6 +160,19 @@ static ABI int32_t sem_delete(uint32_t id) {
     pthread_mutex_unlock(&lock);
     return 0;
 }
+/* The F10 hang report: semaphores someone waits on, with their counts. */
+void runtime_sema_report_waiting(void) {
+    pthread_mutex_lock(&lock);
+    unsigned shown=0;
+    for (Sema *s=registry;s && shown<40;s=s->next) {
+        unsigned n=0; int32_t need=0;
+        for (Waiter *w=s->first;w;w=w->next) { ++n; if (!need) need=w->need; }
+        if (!n) continue;
+        fprintf(stderr,"  semaphore %u: %u waiting (first needs %d), count %d of %d\n",s->id,n,need,s->count,s->maximum);
+        ++shown;
+    }
+    pthread_mutex_unlock(&lock);
+}
 /* Read-only test/diagnostic snapshot, not exposed to guest code. */
 unsigned runtime_sema_waiters(uint32_t id) {
     pthread_mutex_lock(&lock);

@@ -441,6 +441,9 @@ static DWORD WINAPI win_hang_key_thread(LPVOID param) {
         fprintf(stderr,"Hang report (F10):\n");
         fflush(stdout);
         runtime_file_report_recent();
+        runtime_fiber_report_state();
+        runtime_sema_report_waiting();
+        fflush(stderr);
         sample_threads("*",3,"out/hang_sample.txt",1);
         while (GetAsyncKeyState(VK_F10) & 0x8000) Sleep(100);
     }
