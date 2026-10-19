@@ -1,6 +1,6 @@
 # PROTOTYPE port — technical notes
 
-First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)). Current: v0.5.1 ([notes](releases/v0.5.1.md)); v0.5.0 added keyboard and mouse ([notes](releases/v0.5.0.md)).
+First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)). Current: v0.5.2 ([notes](releases/v0.5.2.md), [changelog](../CHANGELOG.md)); v0.5.0 added keyboard and mouse ([notes](releases/v0.5.0.md)).
 
 Game: PROTOTYPE BIOHAZARD BUNDLE, CUSA06545, APP_VER 01.00. `eboot.bin` is PROTOTYPE (with the
 bundle menu); `prototype2_ps4f.elf` is PROTOTYPE 2, started from the menu with
@@ -45,6 +45,11 @@ pattern, so nothing is written to a different build.
   `0x780`/`0x438` right after `sceVideoOutGetResolutionStatus`, which the game ignores), and
   `0xbe820`: the Pure3D display init parameters. The game settings block at `0x12361e0` must not
   be changed (a first version that did made loading a save run out of memory).
+  Above 1080p the patches also enlarge the video memory for render targets: the "Render" heap's
+  Garlic part (`0x56b036`, 360 MiB at 1080p) becomes 640 / 1000 / 1440 MiB at 1440p / 1800p / 4K,
+  and the Garlic direct memory block (`0x419c` allocation, `0x41b8` mapping, `0x427b` "PS4 core"
+  heap; 1724 MiB) grows by as much. Without it the held-object fade's blur target failed to
+  allocate (texture address 0) and picked-up objects vanished instead of turning half-transparent.
 
 ## Frame structure (for temporal upscaling)
 

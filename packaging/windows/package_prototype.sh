@@ -44,7 +44,7 @@ cp gpu/third_party/fonts/LICENSE-Tektur-OFL.txt gpu/third_party/fonts/LICENSE-De
 # The key caps of the keyboard prompts (scripts/proto_prompts.py) use the in-game menu's font.
 mkdir -p "$dest/fonts"
 cp gpu/third_party/fonts/Tektur-SemiCondensed.ttf gpu/third_party/fonts/LICENSE-Tektur-OFL.txt "$dest/fonts/"
-cp run.py LICENSE README.md CREDITS.md "$dest/"
+cp run.py LICENSE README.md CREDITS.md CHANGELOG.md "$dest/"
 cp packaging/windows/README-RELEASE.txt "$dest/READ ME FIRST.txt"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 
