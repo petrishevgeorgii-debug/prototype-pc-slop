@@ -14,6 +14,14 @@ PLAYING
   2. Start Prototype.exe, choose your game folder, press PLAY.
      The first start prepares the game (about a minute); later starts are quick.
 
+KEYBOARD AND MOUSE
+  WASD move, mouse camera, Space jump, Left Shift sprint/glide, left click attack, right click
+  special attack/consume, E grab/throw, Q target lock, Tab power wheel, F disguise menu,
+  1/2/3 powers on/off, 4 or Z disguise, middle click or V reset camera, U upgrades, Esc pause;
+  menus: arrows, Enter, Backspace. The launcher's CONTROLS page changes the keys, the mouse
+  sensitivity and the button prompts (your keys or the controller's buttons in the game's hints;
+  made from your game files at start, the game folder is not changed).
+
 IN GAME
   Insert (keyboard) or R3 + L2 (controller) opens the port menu:
     UPSCALING  FSR 3.1 / FSR 4 (FSR 4 needs a Radeon RX 9000), Native AA or a quality preset
@@ -23,7 +31,7 @@ IN GAME
   Tab / Q / E (or Square, L1 / R1) switches sections; Backspace (Triangle) resets a section.
 
   The launcher has the render resolution, FSR 1, sharpening, texture filtering, 30/60 FPS,
-  display mode and V-Sync.
+  display mode, V-Sync and the controls.
 
 SAVES AND LOGS
   Saves:   user\savedata (backed up at every start to user\savedata_backups)

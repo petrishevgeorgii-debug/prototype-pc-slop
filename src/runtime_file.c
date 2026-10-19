@@ -91,6 +91,25 @@ void runtime_file_configure(const char *app0,const char *user) {
         runtime_file_mount(guest,path);
     }
 }
+/* THEORDER_FILE_OVERRIDES=<dir>: game files the launcher generated (run.py, scripts/proto_prompts.py:
+ * the keyboard and mouse button prompts) are read from <dir>/<game path in lower case> instead
+ * of the game folder, which is never written. Only regular files are replaced. */
+static void override_path(const char *relative,char *out,size_t size) {
+    static const char *dir; static int checked;
+    if (!checked) { dir=getenv("THEORDER_FILE_OVERRIDES"); checked=1; }
+    if (!dir || !*dir || !relative || !*relative) return;
+    char candidate[1024];
+    if ((size_t)snprintf(candidate,sizeof(candidate),"%s%s",dir,relative)>=sizeof(candidate)) return;
+    for (char *p=candidate+strlen(dir);*p;++p) {
+        if (*p=='\\') *p='/';
+        else if (*p>='A' && *p<='Z') *p=(char)(*p-'A'+'a');
+    }
+    HostStat st;
+    if (host_stat(candidate,&st) || !S_ISREG(st.st_mode) || strlen(candidate)>=size) return;
+    static unsigned logged;
+    if (__atomic_fetch_add(&logged,1,__ATOMIC_RELAXED)<16) printf("Runtime: %s from the port's overrides\n",relative);
+    memcpy(out,candidate,strlen(candidate)+1);
+}
 /* Resolve a guest path to a host path; returns 0 or a host errno. */
 static int translate(const char *guest,char *out,size_t size) {
     if (!guest || !*guest) return ENOENT;
@@ -106,10 +125,12 @@ static int translate(const char *guest,char *out,size_t size) {
         if (!strncmp(buffer,mounts[i].guest,n) && (buffer[n]=='/' || !buffer[n]) && n>best) { best=n; m=&mounts[i]; }
     }
     int result=0;
+    const int game_mount=m && (!strcmp(m->guest,"/app0") || !strcmp(m->guest,"/hostapp"));
     if (!m) result=ENOENT;
     else if ((size_t)snprintf(out,size,"%s%s",m->host,buffer+best)>=size) result=ENAMETOOLONG;
     pthread_mutex_unlock(&lock);
     if (result==ENOENT) fprintf(stderr,"Runtime: no mount for guest path %s\n",guest);
+    if (!result && game_mount) override_path(buffer+best,out,size);
     return result;
 }
 int runtime_file_host_path(const char *guest,char *out,size_t size) {

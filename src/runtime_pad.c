@@ -1,11 +1,12 @@
 /* libScePad on SDL3 gamepads, with a keyboard fallback. SDL events are pumped
  * by the window thread (gpu/shim/window.cpp); here state is only sampled.
  *
- * Default keyboard layout (THEORDER_KEY_MAP changes the buttons, see apply_button_map):
+ * Default keyboard layout (The Order; THEORDER_KEY_MAP changes it, see apply_button_map, and
+ * the PROTOTYPE launcher sends its own, scripts/proto_controls.py):
  *   WASD left stick, arrow keys right stick, Space Cross, LShift Circle,
  *   E Square, Q Triangle, 1 L1, 3 R1, R L2, F R2, Z L3, C R3,
  *   Enter Options, Tab left touchpad (photo mode), Backspace right touchpad (pause menu),
- *   IJKL d-pad (I up, K down, J left, L right). */
+ *   IJKL d-pad (I up, K down, J left, L right); mouse: left R2, right L2, middle R3, side L1/R1. */
 #define _GNU_SOURCE
 #include "runtime.h"
 #include "gpu/theordergpu.h"
@@ -121,21 +122,40 @@ static SDL_Gamepad *current_gamepad(void) {
     return gamepad;
 }
 /* Button sources: a host button or key and the PS4 button it presses. The defaults below can be
- * changed per PS4 button with THEORDER_PAD_MAP (gamepad) and THEORDER_KEY_MAP (keyboard), e.g.
- * THEORDER_KEY_MAP="cross=Q,square=Left Shift" or THEORDER_PAD_MAP="cross=b,circle=a": comma-separated
- * <ps4 button>=<SDL key or gamepad button name>. A mapped PS4 button loses its default sources.
+ * changed per PS4 button with THEORDER_PAD_MAP (gamepad) and THEORDER_KEY_MAP (keyboard and mouse),
+ * e.g. THEORDER_KEY_MAP="cross=Q,square=Left Shift" or THEORDER_PAD_MAP="cross=b,circle=a":
+ * comma-separated <ps4 button>=<SDL key or gamepad button name>. The first entry for a PS4 button
+ * drops its default sources, further entries add to it. A leading "!" drops every default (the
+ * PROTOTYPE launcher sends its whole layout). "l1+r1=Tab" presses several buttons at once.
+ * Keyboard map sources are also "Mouse Left", "Mouse Right", "Mouse Middle", "Mouse X1",
+ * "Mouse X2", "Wheel Up" and "Wheel Down" (a short press per notch), and its targets also
+ * lstick_up/down/left/right and rstick_up/down/left/right (full deflection while held).
  * touchpad_left (alias touchpad) and touchpad_right are the two sides of the touchpad click:
  * photo mode and the pause menu. Back/View (Share on a DualSense) is the right click, and with
- * L1 held the left one. Sticks, triggers, the real touchpad click and the overlay shortcuts are
- * not remapped. */
+ * L1 held the left one. Gamepad sticks, triggers, the real touchpad click and the overlay
+ * shortcuts are not remapped. */
+enum {
+    LS_UP=0x200000, LS_DOWN=0x400000, LS_LEFT=0x800000, LS_RIGHT=0x1000000,
+    RS_UP=0x2000000, RS_DOWN=0x4000000, RS_LEFT=0x8000000, RS_RIGHT=0x10000000,
+    STICK_BITS=LS_UP|LS_DOWN|LS_LEFT|LS_RIGHT|RS_UP|RS_DOWN|RS_LEFT|RS_RIGHT,
+};
 static const struct { const char *name; uint32_t ps; } ps_names[]={
     {"cross",BTN_CROSS}, {"circle",BTN_CIRCLE}, {"square",BTN_SQUARE}, {"triangle",BTN_TRIANGLE},
     {"l1",BTN_L1}, {"r1",BTN_R1}, {"l2",BTN_L2}, {"r2",BTN_R2}, {"l3",BTN_L3}, {"r3",BTN_R3},
     {"options",BTN_OPTIONS}, {"touchpad",CLICK_LEFT}, {"touchpad_left",CLICK_LEFT}, {"touchpad_right",CLICK_RIGHT},
     {"up",BTN_UP}, {"down",BTN_DOWN}, {"left",BTN_LEFT}, {"right",BTN_RIGHT},
+    {"lstick_up",LS_UP}, {"lstick_down",LS_DOWN}, {"lstick_left",LS_LEFT}, {"lstick_right",LS_RIGHT},
+    {"rstick_up",RS_UP}, {"rstick_down",RS_DOWN}, {"rstick_left",RS_LEFT}, {"rstick_right",RS_RIGHT},
+};
+/* Keyboard map sources past the scancodes: mouse buttons (SDL_BUTTON_LEFT..X2) and wheel notches. */
+enum { SRC_MOUSE=0x1000, SRC_WHEEL_UP=0x1100, SRC_WHEEL_DOWN=0x1101 };
+static const struct { const char *name; int source; } mouse_names[]={
+    {"mouse left",SRC_MOUSE+SDL_BUTTON_LEFT}, {"mouse right",SRC_MOUSE+SDL_BUTTON_RIGHT},
+    {"mouse middle",SRC_MOUSE+SDL_BUTTON_MIDDLE}, {"mouse x1",SRC_MOUSE+SDL_BUTTON_X1},
+    {"mouse x2",SRC_MOUSE+SDL_BUTTON_X2}, {"wheel up",SRC_WHEEL_UP}, {"wheel down",SRC_WHEEL_DOWN},
 };
 typedef struct { int source; uint32_t ps; } ButtonSource;
-typedef struct { ButtonSource entries[48]; size_t count; } ButtonMap;
+typedef struct { ButtonSource entries[96]; size_t count; } ButtonMap;
 static ButtonMap pad_map={{
     {SDL_GAMEPAD_BUTTON_SOUTH,BTN_CROSS}, {SDL_GAMEPAD_BUTTON_EAST,BTN_CIRCLE},
     {SDL_GAMEPAD_BUTTON_WEST,BTN_SQUARE}, {SDL_GAMEPAD_BUTTON_NORTH,BTN_TRIANGLE},
@@ -146,6 +166,7 @@ static ButtonMap pad_map={{
     {SDL_GAMEPAD_BUTTON_DPAD_UP,BTN_UP}, {SDL_GAMEPAD_BUTTON_DPAD_DOWN,BTN_DOWN},
     {SDL_GAMEPAD_BUTTON_DPAD_LEFT,BTN_LEFT}, {SDL_GAMEPAD_BUTTON_DPAD_RIGHT,BTN_RIGHT},
 },15};
+/* The Order's layout (THEORDER_KEY_MAP replaces it; PROTOTYPE's comes from the launcher). */
 static ButtonMap key_map={{
     {SDL_SCANCODE_SPACE,BTN_CROSS}, {SDL_SCANCODE_RETURN,BTN_CROSS},
     {SDL_SCANCODE_LSHIFT,BTN_CIRCLE}, {SDL_SCANCODE_ESCAPE,BTN_CIRCLE},
@@ -158,7 +179,11 @@ static ButtonMap key_map={{
     {SDL_SCANCODE_J,BTN_LEFT}, {SDL_SCANCODE_L,BTN_RIGHT},
     {SDL_SCANCODE_UP,BTN_UP}, {SDL_SCANCODE_DOWN,BTN_DOWN},
     {SDL_SCANCODE_LEFT,BTN_LEFT}, {SDL_SCANCODE_RIGHT,BTN_RIGHT},
-},22};
+    {SDL_SCANCODE_W,LS_UP}, {SDL_SCANCODE_S,LS_DOWN}, {SDL_SCANCODE_A,LS_LEFT}, {SDL_SCANCODE_D,LS_RIGHT},
+    {SDL_SCANCODE_UP,RS_UP}, {SDL_SCANCODE_DOWN,RS_DOWN}, {SDL_SCANCODE_LEFT,RS_LEFT}, {SDL_SCANCODE_RIGHT,RS_RIGHT},
+    {SRC_MOUSE+SDL_BUTTON_LEFT,BTN_R2}, {SRC_MOUSE+SDL_BUTTON_RIGHT,BTN_L2}, {SRC_MOUSE+SDL_BUTTON_MIDDLE,BTN_R3},
+    {SRC_MOUSE+SDL_BUTTON_X1,BTN_L1}, {SRC_MOUSE+SDL_BUTTON_X2,BTN_R1},
+},35};
 
 static char *trim(char *text) {
     while (*text==' ' || *text=='\t') ++text;
@@ -166,15 +191,35 @@ static char *trim(char *text) {
     while (end>text && (end[-1]==' ' || end[-1]=='\t' || end[-1]=='\r' || end[-1]=='\n')) *--end=0;
     return text;
 }
+static uint32_t ps_from_name(char *names) {
+    uint32_t ps=0;
+    for (char *part=names, *next; part; part=next) {
+        if ((next=strchr(part,'+'))) *next++=0;
+        part=trim(part);
+        uint32_t one=0;
+        for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!SDL_strcasecmp(part,ps_names[i].name)) one=ps_names[i].ps;
+        if (!one) return 0;
+        ps|=one;
+    }
+    return ps;
+}
+static int key_source(const char *name) {
+    for (size_t i=0;i<sizeof(mouse_names)/sizeof(*mouse_names);++i)
+        if (!SDL_strcasecmp(name,mouse_names[i].name)) return mouse_names[i].source;
+    const SDL_Scancode code=SDL_GetScancodeFromName(name);
+    return code>SDL_SCANCODE_UNKNOWN ? (int)code : -1;
+}
 
 /* Applies a THEORDER_PAD_MAP/THEORDER_KEY_MAP value; returns how many entries were used. Bad entries are
  * logged and skipped, so their PS4 button keeps its default. */
 static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
     if (!spec || !*spec) return 0;
-    char copy[1024];
+    static char copy[8192];
     snprintf(copy,sizeof(copy),"%s",spec);
     int used=0;
-    char *entry=copy;
+    char *entry=trim(copy);
+    if (*entry=='!') { map->count=0; ++entry; }
+    uint32_t cleared=0;
     while (entry) {
         char *next=strchr(entry,',');
         if (next) *next++=0;
@@ -185,18 +230,24 @@ static int apply_button_map(ButtonMap *map, const char *spec, bool keyboard) {
             continue;
         }
         *eq=0;
-        const char *button=trim(entry), *name=trim(eq+1);
+        char *button=trim(entry);
+        const char *name=trim(eq+1);
         entry=next;
-        uint32_t ps=0;
-        for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!SDL_strcasecmp(button,ps_names[i].name)) ps=ps_names[i].ps;
-        const int source=!*name ? -1 : keyboard ? (int)SDL_GetScancodeFromName(name) : (int)SDL_GetGamepadButtonFromString(name);
-        if (!ps || source<=(keyboard ? (int)SDL_SCANCODE_UNKNOWN : (int)SDL_GAMEPAD_BUTTON_INVALID)) {
-            printf("Runtime: pad map: ignored '%s=%s'\n",button,name);
+        char label[64];
+        snprintf(label,sizeof(label),"%s",button);
+        const uint32_t ps=ps_from_name(button);
+        const int source=!*name ? -1 : keyboard ? key_source(name) : (int)SDL_GetGamepadButtonFromString(name);
+        const bool bad_source=keyboard ? source<0 : source<=(int)SDL_GAMEPAD_BUTTON_INVALID;
+        if (!ps || bad_source || (!keyboard && (ps & STICK_BITS))) {
+            printf("Runtime: pad map: ignored '%s=%s'\n",label,name);
             continue;
         }
-        size_t kept=0;
-        for (size_t i=0;i<map->count;++i) if (map->entries[i].ps!=ps) map->entries[kept++]=map->entries[i];
-        map->count=kept;
+        if (ps & ~cleared) { /* the first entry for a button replaces its defaults */
+            size_t kept=0;
+            for (size_t i=0;i<map->count;++i) if (!(map->entries[i].ps & ps & ~cleared)) map->entries[kept++]=map->entries[i];
+            map->count=kept;
+            cleared|=ps;
+        }
         if (map->count<sizeof(map->entries)/sizeof(*map->entries)) map->entries[map->count++]=(ButtonSource){source,ps};
         ++used;
     }
@@ -209,7 +260,7 @@ static void load_button_maps(void) {
     loaded=true;
     const int pad=apply_button_map(&pad_map,getenv("THEORDER_PAD_MAP"),false);
     const int keys=apply_button_map(&key_map,getenv("THEORDER_KEY_MAP"),true);
-    if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard buttons remapped\n",pad,keys);
+    if (pad || keys) printf("Runtime: pad map: %d gamepad and %d keyboard/mouse entries\n",pad,keys);
 }
 
 /* Mouse look: the motion turns the right stick, with the bloodborne_pc port's response
@@ -239,23 +290,43 @@ static void mouse_to_stick(float dx, float dy, float speed, int *out_x, int *out
     *out_x=(int)lround(mouse_stick_x);
     *out_y=(int)lround(mouse_stick_y);
 }
-/* Buttons: left fires (R2), right aims (L2), middle R3, back/forward side buttons L1/R1. */
+/* Wheel notches become presses of WHEEL_PRESS_US with a WHEEL_GAP_US release between them, so the
+ * game sees every notch even when several arrive between two reads. */
+enum { WHEEL_PRESS_US=70000, WHEEL_GAP_US=50000 };
+static struct { int pending; uint64_t until; bool down; } wheel[2];
+static bool wheel_held(int i, int notches, uint64_t now) {
+    wheel[i].pending+=notches;
+    if (wheel[i].pending>8) wheel[i].pending=8;
+    if (now<wheel[i].until) return wheel[i].down;
+    if (wheel[i].down) { wheel[i].down=false; wheel[i].until=now+WHEEL_GAP_US; return false; }
+    if (wheel[i].pending>0) { --wheel[i].pending; wheel[i].down=true; wheel[i].until=now+WHEEL_PRESS_US; return true; }
+    return false;
+}
+/* The mouse buttons and wheel (keyboard map sources) and mouse look on the right stick. */
+static uint32_t mouse_held; /* SDL_BUTTON_MASK bits and 1<<30 / 1<<31 for the wheel */
 static void mouse_input(PadData *d) {
     TheOrderMouse m;
     theordergpu_mouse_take(&m);
-    if (!m.captured) { mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; return; }
-    static const struct { uint32_t mask, ps; } buttons[]={
-        {SDL_BUTTON_LMASK,BTN_R2}, {SDL_BUTTON_RMASK,BTN_L2}, {SDL_BUTTON_MMASK,BTN_R3},
-        {SDL_BUTTON_X1MASK,BTN_L1}, {SDL_BUTTON_X2MASK,BTN_R1}};
-    for (size_t i=0;i<sizeof(buttons)/sizeof(buttons[0]);++i)
-        if (m.buttons & buttons[i].mask) d->buttons|=buttons[i].ps;
-    if (d->buttons & BTN_L2) d->l2=255;
-    if (d->buttons & BTN_R2) d->r2=255;
+    if (!m.captured) {
+        mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; mouse_held=0;
+        memset(wheel,0,sizeof(wheel));
+        return;
+    }
+    const uint64_t now=now_us();
+    mouse_held=m.buttons;
+    if (wheel_held(0,m.wheel>0 ? m.wheel : 0,now)) mouse_held|=1u<<30;
+    if (wheel_held(1,m.wheel<0 ? -m.wheel : 0,now)) mouse_held|=1u<<31;
     int mx=0, my=0;
     mouse_to_stick(m.dx,m.dy,m.sensitivity,&mx,&my);
     const int x=d->right_x-128+mx, y=d->right_y-128+my;
     d->right_x=(uint8_t)(128+(x<-128 ? -128 : x>127 ? 127 : x));
     d->right_y=(uint8_t)(128+(y<-128 ? -128 : y>127 ? 127 : y));
+}
+static bool key_source_down(const bool *k, int source) {
+    if (source<SRC_MOUSE) return k && source>=0 && source<SDL_SCANCODE_COUNT && k[source];
+    if (source==SRC_WHEEL_UP) return mouse_held & (1u<<30);
+    if (source==SRC_WHEEL_DOWN) return mouse_held & (1u<<31);
+    return mouse_held & SDL_BUTTON_MASK(source-SRC_MOUSE);
 }
 
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
@@ -295,16 +366,17 @@ static void sample_host(PadData *d) {
         }
     }
     mouse_input(d);
-    /* The keyboard works with or without a gamepad: its buttons add to the pad's, and a stick
-     * follows the keys only while one of them is held. */
-    if (!k) return;
-    for (size_t i=0;i<key_map.count;++i) if (k[key_map.entries[i].source]) d->buttons|=key_map.entries[i].ps;
-    if (d->buttons & BTN_L2) d->l2=255;
-    if (d->buttons & BTN_R2) d->r2=255;
-    key_axis(&d->left_x,k[SDL_SCANCODE_A],k[SDL_SCANCODE_D]);
-    key_axis(&d->left_y,k[SDL_SCANCODE_W],k[SDL_SCANCODE_S]);
-    key_axis(&d->right_x,k[SDL_SCANCODE_LEFT],k[SDL_SCANCODE_RIGHT]);
-    key_axis(&d->right_y,k[SDL_SCANCODE_UP],k[SDL_SCANCODE_DOWN]);
+    /* The keyboard and mouse work with or without a gamepad: their buttons add to the pad's, and a
+     * stick follows the keys only while one of them is held. */
+    uint32_t keys=0;
+    for (size_t i=0;i<key_map.count;++i) if (key_source_down(k,key_map.entries[i].source)) keys|=key_map.entries[i].ps;
+    d->buttons|=keys & ~STICK_BITS;
+    if (keys & BTN_L2) d->l2=255;
+    if (keys & BTN_R2) d->r2=255;
+    key_axis(&d->left_x,keys & LS_LEFT,keys & LS_RIGHT);
+    key_axis(&d->left_y,keys & LS_UP,keys & LS_DOWN);
+    key_axis(&d->right_x,keys & RS_LEFT,keys & RS_RIGHT);
+    key_axis(&d->right_y,keys & RS_UP,keys & RS_DOWN);
 }
 
 /* THEORDER_PAD_FILE=<file>: scripted input for automated runs. The file holds whitespace-separated
@@ -344,7 +416,7 @@ static void read_inject(void) {
     char token[64];
     while (fscanf(f,"%63s",token)==1) {
         if (!strcmp(token,"replay") && replay_armed!=1) { replay_armed=1; replay_start=0; } /* THEORDER_PAD_REPLAY */
-        for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!strcmp(token,ps_names[i].name)) injected.buttons|=ps_names[i].ps;
+        for (size_t i=0;i<sizeof(ps_names)/sizeof(*ps_names);++i) if (!strcmp(token,ps_names[i].name)) injected.buttons|=ps_names[i].ps & ~STICK_BITS;
         for (int i=0;i<4;++i) if (!strncmp(token,sticks[i],3)) { int v=atoi(token+3); injected.stick[i]=v<0 ? 0 : v>255 ? 255 : v; }
     }
     fclose(f);

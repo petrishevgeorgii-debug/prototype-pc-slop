@@ -38,12 +38,14 @@ int theordergpu_overlay_captures_input(void);
 /* The game's field of view constants in the loaded image (writable): the in-game menu scales them. */
 void theordergpu_set_fov_sites(double *const *sites, int count);
 /* Mouse input since the last call (window thread, gpu/shim/window.cpp): motion in pixels,
- * buttons as SDL_BUTTON_MASK bits; all zero unless captured (mouse look on, window focused,
- * menu and text entry closed). sensitivity: the menu's, 1.0 = 100%. */
+ * buttons as SDL_BUTTON_MASK bits, wheel in notches (up positive); all zero unless captured
+ * (mouse look on, window focused, menu and text entry closed). sensitivity: the menu's,
+ * 1.0 = 100%. */
 typedef struct {
     float dx, dy, sensitivity;
     uint32_t buttons;
     int captured;
+    int wheel;
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

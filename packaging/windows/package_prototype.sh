@@ -41,6 +41,9 @@ mkdir -p "$dest/fsr4_shaders"
 cp -r fsr4_shaders/. "$dest/fsr4_shaders/"
 mkdir -p "$dest/licenses"
 cp gpu/third_party/fonts/LICENSE-Tektur-OFL.txt gpu/third_party/fonts/LICENSE-DejaVu.txt "$dest/licenses/"
+# The key caps of the keyboard prompts (scripts/proto_prompts.py) use the in-game menu's font.
+mkdir -p "$dest/fonts"
+cp gpu/third_party/fonts/Tektur-SemiCondensed.ttf gpu/third_party/fonts/LICENSE-Tektur-OFL.txt "$dest/fonts/"
 cp run.py LICENSE README.md CREDITS.md "$dest/"
 cp packaging/windows/README-RELEASE.txt "$dest/READ ME FIRST.txt"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
@@ -51,7 +54,8 @@ forbidden=$(find "$dest" \( -iname eboot.bin -o -iname eboot.elf -o -iname 'boot
     -o -iname '*.log' -o -iname theorder.ini -o -iname 'link.json' -o -iname 'libc-link.json' \
     -o -iname analysis.json -o -iname 'content*.bin' -o -iname patches.bin -o -iname prototype.ico \
     -o -iname window_icon.bmp -o -iname '*.pkg' -o -iname '*.sprx' -o -iname '*.prx' -o -iname '*.rdc' \
-    -o -iname dump -o -iname '*.raw' -o -iname 'nvngx_dlss*.dll' \) -print)
+    -o -iname dump -o -iname '*.raw' -o -iname 'nvngx_dlss*.dll' -o -iname prompts -o -iname '*.p3d*' \
+    -o -iname '*.gfx' \) -print)
 if [[ -n $forbidden ]]; then
     echo "Package holds files that must not ship:" >&2
     echo "$forbidden" >&2

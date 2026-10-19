@@ -1,6 +1,7 @@
 /* Exercise actual guest file operations on a linked overlay and writable saves. */
 #include "../src/runtime_file.c"
 #include <assert.h>
+#include <stdlib.h>
 static int32_t guest_errno;
 int32_t *runtime_errno(void) { return &guest_errno; }
 int32_t runtime_guest_errno(int e) { return e; }
@@ -20,6 +21,22 @@ int main(void) {
     FILE *f=fopen(source,"w"); assert(f); assert(fputs("modded",f)>=0); assert(!fclose(f));
     assert(!symlink(source,link));
     runtime_file_configure(game,user);
+    /* THEORDER_FILE_OVERRIDES: a generated file (lower-case path) replaces the game's. */
+    char overrides[512], ov_dir[600], ov_file[700], game_dir[600], game_file[700];
+    snprintf(overrides,sizeof(overrides),"%s/ov",root);
+    snprintf(ov_dir,sizeof(ov_dir),"%s/hud",overrides);
+    snprintf(ov_file,sizeof(ov_file),"%s/text.rz",ov_dir);
+    snprintf(game_dir,sizeof(game_dir),"%s/HUD",game);
+    snprintf(game_file,sizeof(game_file),"%s/Text.rz",game_dir);
+    assert(!mkdir(overrides,0755) && !mkdir(ov_dir,0755) && !mkdir(game_dir,0755));
+    f=fopen(ov_file,"w"); assert(f); assert(fputs("generated",f)>=0); assert(!fclose(f));
+    f=fopen(game_file,"w"); assert(f); assert(fputs("orig",f)>=0); assert(!fclose(f));
+    setenv("THEORDER_FILE_OVERRIDES",overrides,1);
+    int ov=(int)do_open("/app0/HUD/Text.rz",0,0); assert(ov>=3);
+    char ov_content[16]={0}; assert(do_read(ov,ov_content,9)==9 && !strcmp(ov_content,"generated"));
+    GuestStat ov_info; assert(!do_stat("/app0/HUD/Text.rz",&ov_info) && ov_info.size==9);
+    assert(!do_close(ov));
+    assert(!unlink(ov_file) && !rmdir(ov_dir) && !rmdir(overrides) && !unlink(game_file) && !rmdir(game_dir));
     for (int i=0;i<3;++i) {
         const char *path=i==0 ? "/app0/asset.dcx" : i==1 ? "/hostapp/asset.dcx" : "asset.dcx";
         int fd=(int)do_open(path,0,0); assert(fd>=3);

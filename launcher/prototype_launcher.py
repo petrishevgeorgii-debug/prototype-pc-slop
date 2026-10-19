@@ -32,9 +32,17 @@ import shlex  # noqa: F401
 import struct  # noqa: F401
 import tempfile  # noqa: F401
 import xml.etree.ElementTree  # noqa: F401
+import io  # noqa: F401
+import zlib  # noqa: F401
 if sys.platform == 'win32':
     import _winapi  # noqa: F401
     import winreg  # noqa: F401
+try:  # scripts/proto_prompts.py draws the key caps with these
+    import PIL.DdsImagePlugin  # noqa: F401
+    import PIL.ImageDraw  # noqa: F401
+    import PIL.ImageFont  # noqa: F401
+except ImportError:
+    pass
 
 WINDOWS = sys.platform == 'win32'
 FROZEN = getattr(sys, 'frozen', False)
@@ -42,7 +50,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -120,7 +128,9 @@ DEFAULTS = {
     'game_dir': '', 'render_res': '1920x1080', 'fps60': True, 'anisotropy': 16, 'fsr1': True,
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
     'show_fps': False, 'language': 1, 'tendril_fix': True, 'tab': 0,
+    'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
 }
+PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'Controller')]
 
 
 def load_settings():
@@ -134,12 +144,15 @@ def load_settings():
         import graphics_options
         ini = graphics_options.read_ini(PORT_DIR / 'theorder.ini')
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
-                          ('rcas', bool), ('rcas_strength', int), ('anisotropy', int)):
+                          ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
+                          ('mouse_look', bool), ('mouse_sensitivity', int)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
     except Exception:
         pass
+    if not isinstance(values.get('controls'), dict):
+        values['controls'] = {}
     if values['render_res'] not in RESOLUTIONS:
         values['render_res'] = '1920x1080'
     # 0.2.1: the render resolution patch changed; every setup starts again from the PS4's size.
@@ -168,6 +181,7 @@ def write_ini(values):
             'show_fps': int(values['show_fps']), 'anisotropy': int(values['anisotropy']),
             'fsr1': int(values['fsr1']), 'rcas': int(values['rcas']),
             'rcas_strength': int(values['rcas_strength']),
+            'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -181,6 +195,8 @@ def game_environment(values):
         'THEORDER_PROTO_RES': values['render_res'],
         'THEORDER_PROTO_TENDRIL_FIX': '1' if values['tendril_fix'] else '0',
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
+        'THEORDER_PROTO_CONTROLS': json.dumps(values.get('controls') or {}),
+        'THEORDER_PROMPTS': values.get('prompts', 'auto'),
         'PYTHONIOENCODING': 'utf-8',
     })
     return env
@@ -336,6 +352,41 @@ def render_background(game_dir):
     draw.rectangle((SIDE, 0, W, H), fill=C['panel'])
     draw.line((SIDE, 0, SIDE, H), fill=C['line'])
     return canvas
+
+
+# --------------------------------------------------------------------------------------------
+# Keys for the Controls page: Tk key events to SDL key names (what the runtime reads).
+
+# Windows virtual-key codes: the key's position, whatever the keyboard layout (a Russian layout
+# still gives VK 'A' for the key the runtime's SDL scancode "A" is).
+VK_NAMES = {0x08: 'Backspace', 0x09: 'Tab', 0x0D: 'Return', 0x14: 'CapsLock', 0x1B: 'Escape', 0x20: 'Space',
+            0x21: 'PageUp', 0x22: 'PageDown', 0x23: 'End', 0x24: 'Home', 0x25: 'Left', 0x26: 'Up',
+            0x27: 'Right', 0x28: 'Down', 0x2D: 'Insert', 0xBA: ';', 0xBD: '-', 0xBE: '.', 0xBF: '/',
+            0xC0: '`', 0xDB: '[', 0xDC: '\\', 0xDD: ']', 0xDE: "'"}
+VK_NAMES.update({0x30 + i: str(i) for i in range(10)})
+VK_NAMES.update({0x41 + i: chr(0x41 + i) for i in range(26)})
+VK_NAMES.update({0x60 + i: f'Keypad {i}' for i in range(10)})
+VK_NAMES.update({0x70 + i: f'F{i + 1}' for i in range(12)})
+KEYSYM_NAMES = {'space': 'Space', 'Tab': 'Tab', 'Return': 'Return', 'BackSpace': 'Backspace',
+                'Escape': 'Escape', 'Caps_Lock': 'CapsLock', 'Shift_L': 'Left Shift', 'Shift_R': 'Right Shift',
+                'Control_L': 'Left Ctrl', 'Control_R': 'Right Ctrl', 'Alt_L': 'Left Alt', 'Alt_R': 'Right Alt',
+                'Up': 'Up', 'Down': 'Down', 'Left': 'Left', 'Right': 'Right', 'Prior': 'PageUp', 'Next': 'PageDown',
+                'Home': 'Home', 'End': 'End', 'semicolon': ';', 'minus': '-', 'period': '.', 'slash': '/',
+                'grave': '`', 'bracketleft': '[', 'backslash': '\\', 'bracketright': ']', 'apostrophe': "'"}
+# Not bindable: the port's own keys (Insert opens its menu, F7 mouse look, F9 pad recording) and
+# the characters THEORDER_KEY_MAP uses as separators.
+RESERVED_KEYS = {'Insert', 'F7', 'F9', ',', '=', '+'}
+
+
+def sdl_key_name(event):
+    name = KEYSYM_NAMES.get(event.keysym)
+    if name is None and WINDOWS:
+        name = VK_NAMES.get(event.keycode)
+    if name is None and len(event.keysym) == 1 and event.keysym.isascii() and event.keysym.isalnum():
+        name = event.keysym.upper()
+    if name is None and event.keysym.startswith('F') and event.keysym[1:].isdigit():
+        name = event.keysym
+    return None if name in RESERVED_KEYS else name
 
 
 # --------------------------------------------------------------------------------------------
@@ -508,7 +559,7 @@ class Launcher:
         return b[2] + 12
 
     # ---- settings panel
-    TABS = ('GRAPHICS', 'DISPLAY', 'GAME')
+    TABS = ('GRAPHICS', 'DISPLAY', 'CONTROLS', 'GAME')
 
     def draw_panel(self):
         cv = self.canvas
@@ -524,16 +575,18 @@ class Launcher:
             else:
                 self.hover(item, C['muted'], C['text'])
                 cv.tag_bind(item, '<Button-1>', lambda e, i=i: self.switch_tab(i))
-            tx += 108
+            tx += 96
         cv.create_line(x0, 65, x1, 65, fill=C['line'])
         self.row_y = 108
         # Description of the row under the pointer.
         cv.create_line(x0 + 32, y1 - 92, x1 - 32, y1 - 92, fill=C['hair'])
         self.desc_item = cv.create_text(x0 + 32, y1 - 76, text='', anchor='nw', fill=C['muted'],
                                         font=self.f(9), width=x1 - x0 - 64)
-        [self.tab_graphics, self.tab_display, self.tab_game][self.values['tab']]()
+        tabs = [self.tab_graphics, self.tab_display, self.tab_controls, self.tab_game]
+        tabs[min(self.values['tab'], len(tabs) - 1)]()
 
     def switch_tab(self, i):
+        self.capture_stop()
         self.values['tab'] = i
         self.save()
         self.draw()
@@ -671,6 +724,128 @@ class Launcher:
         self.section('IN GAME')
         self.note('Insert (keyboard) or R3 + L2 (controller) opens the port menu while playing: '
                   'FSR 3.1 / FSR 4 upscaling and the other graphics options.')
+
+    # ---- controls
+    def layout(self):
+        import proto_controls
+        return proto_controls.layout(self.values.get('controls'))
+
+    def tab_controls(self):
+        import proto_controls
+        cv = self.canvas
+        x0, _, x1, _ = PANEL
+        self.section('KEYBOARD AND MOUSE', first=True)
+        self.stepper('Button prompts', 'What the game shows in its hints and tutorials: the keys below, or the '
+                     'controller\'s buttons. Automatic: keys when no controller is connected at start.',
+                     'prompts', PROMPTS)
+        self.toggle('Mouse look', 'The mouse turns the camera (F7 switches it in game).', 'mouse_look')
+        self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
+                    'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])
+        groups = [(g, en) for g, en, _ in proto_controls.GROUPS]
+        self.stepper('Keys for', 'Click a key box, then press the key or mouse button for it. Delete '
+                     'clears the box, Esc cancels. A key is only on one action at a time.', 'controls_group', groups)
+        full = self.layout()
+        clashes = proto_controls.conflicts(full)
+        group = self.values.get('controls_group', 'move')
+        for action, _, label, _, _, action_group in proto_controls.ACTIONS:
+            if action_group != group:
+                continue
+            y, tag = self.row(label, 'Click a box, then press a key or a mouse button (Delete clears it, '
+                              'Esc cancels).', height=34)
+            keys = full.get(action, [])
+            for slot in range(proto_controls.SLOTS):
+                bx1 = x1 - 32 - (proto_controls.SLOTS - 1 - slot) * 96
+                bx0 = bx1 - 88
+                capturing = getattr(self, 'capture', None) == (action, slot)
+                key = keys[slot] if slot < len(keys) else ''
+                text = 'Press a key…' if capturing else (self.key_text(key) if key else '—')
+                color = C['warn'] if key and key.casefold() in clashes else (C['text'] if key else C['dim'])
+                box = cv.create_rectangle(bx0, y - 12, bx1, y + 12, outline=C['red'] if capturing else C['line'],
+                                          fill=C['track'] if capturing else '', tags=(tag,))
+                item = cv.create_text((bx0 + bx1) / 2, y, text=text, fill=color, font=self.f(9, 'bold'),
+                                      tags=(tag,))
+                for part in (box, item):
+                    cv.tag_bind(part, '<Button-1>', lambda e, a=action, s=slot: self.capture_start(a, s))
+                    cv.tag_bind(part, '<Enter>', lambda e, b=box: (cv.itemconfigure(b, outline=C['muted']),
+                                                                   cv.configure(cursor='hand2')))
+                    cv.tag_bind(part, '<Leave>', lambda e, b=box, c=capturing: (
+                        cv.itemconfigure(b, outline=C['red'] if c else C['line']), cv.configure(cursor='')))
+        self.row_y += 22
+        bx = self.small_button(x0 + 32, self.row_y, 'RESET KEYS', self.reset_controls,
+                               'Puts every key back to the port\'s layout.')
+        if clashes:
+            cv.create_text(bx + 14, self.row_y, text='Orange: a key on two different buttons', anchor='w',
+                           fill=C['warn'], font=self.f(8))
+
+    @staticmethod
+    def key_text(key):
+        short = {'Return': 'Enter', 'Escape': 'Esc', 'Mouse Left': 'Left click', 'Mouse Right': 'Right click', 'Mouse Middle': 'Middle click',
+                 'Mouse X1': 'Mouse 4', 'Mouse X2': 'Mouse 5', 'Left Shift': 'L-Shift', 'Right Shift': 'R-Shift',
+                 'Left Ctrl': 'L-Ctrl', 'Right Ctrl': 'R-Ctrl', 'Left Alt': 'L-Alt', 'Right Alt': 'R-Alt'}
+        return short.get(key, key)
+
+    def capture_start(self, action, slot):
+        if getattr(self, 'capture', None) == (action, slot):
+            return
+        self.capture_stop()
+        self.capture = (action, slot)
+        self.root.bind('<KeyPress>', self.capture_key)
+        self.root.bind('<MouseWheel>', self.capture_wheel)
+        self.root.bind('<Button-4>', lambda e: self.capture_set('Wheel Up'))   # X11 wheel
+        self.root.bind('<Button-5>', lambda e: self.capture_set('Wheel Down'))
+        # The click that started the capture must not bind the left button: listen from the next one.
+        self.root.after(250, lambda: self.root.bind('<ButtonPress-1>', lambda e: self.capture_set('Mouse Left'))
+                        if self.capture else None)
+        self.root.bind('<ButtonPress-2>', lambda e: self.capture_set('Mouse Middle'))
+        self.root.bind('<ButtonPress-3>', lambda e: self.capture_set('Mouse Right'))
+        self.draw()
+
+    def capture_stop(self):
+        self.capture = None
+        for sequence in ('<KeyPress>', '<MouseWheel>', '<Button-4>', '<Button-5>', '<ButtonPress-1>',
+                         '<ButtonPress-2>', '<ButtonPress-3>'):
+            self.root.unbind(sequence)
+
+    def capture_wheel(self, event):
+        self.capture_set('Wheel Up' if event.delta > 0 else 'Wheel Down')
+
+    def capture_key(self, event):
+        if event.keysym == 'Escape':
+            self.capture_stop()
+            self.draw()
+            return 'break'
+        if event.keysym == 'Delete':
+            self.capture_set('')
+            return 'break'
+        key = sdl_key_name(event)
+        if key:
+            self.capture_set(key)
+        return 'break'
+
+    def capture_set(self, key):
+        import proto_controls
+        if not getattr(self, 'capture', None):
+            return
+        action, slot = self.capture
+        self.capture_stop()
+        full = self.layout()
+        if key:  # a key is on one action only: taken from wherever it was
+            for other, keys in full.items():
+                full[other] = [k for k in keys if k.casefold() != key.casefold()]
+        keys = list(full.get(action, []))
+        while len(keys) <= slot:
+            keys.append('')
+        keys[slot] = key
+        full[action] = [k for k in keys if k]
+        self.values['controls'] = proto_controls.changes(full)
+        self.save()
+        self.draw()
+
+    def reset_controls(self):
+        self.capture_stop()
+        self.values['controls'] = {}
+        self.save()
+        self.draw()
 
     def tab_game(self):
         cv = self.canvas

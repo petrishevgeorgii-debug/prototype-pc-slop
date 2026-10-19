@@ -25,6 +25,7 @@ extern "C" void theordergpu_mouse_take(TheOrderMouse* out) {
     *out = mouse;
     out->sensitivity = PortSettings::Get().mouse_sensitivity / 100.0f;
     mouse.dx = mouse.dy = 0.0f; // buttons stay down until released
+    mouse.wheel = 0;
 }
 
 namespace Frontend {
@@ -188,6 +189,16 @@ bool WindowSDL::PollEvents() {
                 mouse.buttons |= SDL_BUTTON_MASK(event.button.button);
             } else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
                 mouse.buttons &= ~SDL_BUTTON_MASK(event.button.button);
+            } else if (event.type == SDL_EVENT_MOUSE_WHEEL) {
+                // Whole notches; high-resolution wheels add up fractions until one is complete.
+                static float wheel_rest = 0.0f;
+                float y = event.wheel.y + wheel_rest;
+                if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                    y = -event.wheel.y + wheel_rest;
+                }
+                const int notches = int(y);
+                wheel_rest = y - float(notches);
+                mouse.wheel += notches;
             }
         }
         switch (event.type) {

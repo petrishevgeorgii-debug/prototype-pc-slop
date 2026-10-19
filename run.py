@@ -203,6 +203,44 @@ def resolve_language(cli_lang, env, ini_path, graphics_options=None):
     return 1
 
 
+def gamepad_connected(probe):
+    """Whether SDL sees a gamepad now (probe --gamepad prints 'Gamepad: none' without one)."""
+    try:
+        result = subprocess.run([str(probe), '--gamepad'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, text=True, timeout=10, creationflags=no_console())
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return any(line.startswith('Gamepad:') and line.strip() != 'Gamepad: none'
+               for line in result.stdout.splitlines())
+
+
+def prototype_controls(env, probe, game, out, derived):
+    """PROTOTYPE's keyboard and mouse layout (THEORDER_PROTO_CONTROLS: the launcher's changes,
+    JSON) for the runtime, and the button prompts: THEORDER_PROMPTS=keyboard shows the keys in
+    the game's texts and hints (files made from the game's own, scripts/proto_prompts.py),
+    gamepad keeps the PS4 buttons, auto (default) picks keyboard when no gamepad is connected."""
+    import proto_controls
+    full = proto_controls.layout(get_env(env, 'PROTO_CONTROLS', ''))
+    if not get_env(env, 'KEY_MAP'):
+        env['THEORDER_KEY_MAP'] = proto_controls.key_map_spec(full)
+        derived.append('THEORDER_KEY_MAP')
+    mode = get_env(env, 'PROMPTS', 'auto')
+    if mode not in ('keyboard', 'gamepad'):
+        mode = 'gamepad' if gamepad_connected(probe) else 'keyboard'
+    print(f'Button prompts: {"keyboard and mouse" if mode == "keyboard" else "controller"}', flush=True)
+    if mode != 'keyboard':
+        return
+    import proto_prompts
+    try:
+        root = proto_prompts.generate(game, out / 'prompts', full, log=lambda m: print(m, flush=True))
+    except (OSError, ValueError, ImportError) as error:
+        print(f'Prompts: keyboard prompts unavailable ({error})', flush=True)
+        return
+    if root:
+        env['THEORDER_FILE_OVERRIDES'] = str(Path(root).resolve())
+        derived.append('THEORDER_FILE_OVERRIDES')
+
+
 def find_probe_executable():
     """Finds the probe executable (theorder-probe)."""
     return find_executable('theorder-probe' + EXE_SUFFIX)
@@ -370,6 +408,7 @@ def main():
             env['THEORDER_GAME'] = 'prototype'
             if 'upscaler' not in graphics_options.read_ini(env['THEORDER_CONFIG']):
                 graphics_options.write_keys(env['THEORDER_CONFIG'], {'upscaler': 'off'})
+            prototype_controls(env, probe, game, out, derived)
         elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
             env.setdefault('THEORDER_UPSCALER', 'none')
         env.setdefault('THEORDER_READBACK_LINEAR', '1')

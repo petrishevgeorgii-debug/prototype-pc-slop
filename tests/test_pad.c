@@ -8,6 +8,8 @@
 
 static int capture;
 int theordergpu_overlay_captures_input(void) { return capture; }
+static TheOrderMouse test_mouse;
+void theordergpu_mouse_take(TheOrderMouse *out) { *out=test_mouse; test_mouse.dx=test_mouse.dy=0; test_mouse.wheel=0; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -188,7 +190,41 @@ int main(void) {
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;
     assert(SDL_DetachVirtualJoystick(id));
+
+    /* THEORDER_KEY_MAP: "!" drops every default, the first entry for a button replaces its
+     * defaults and later ones add, "a+b" chords, mouse and wheel sources, stick targets. */
+    ButtonMap map=key_map;
+    assert(apply_button_map(&map,"!cross=Space,cross=Return,l1+r1=Tab,square=Mouse Left,"
+                                 "up=Wheel Up,lstick_up=W,bogus=E,circle=Nope",true)==6);
+    assert(map.count==6);
+    assert(map.entries[0].source==SDL_SCANCODE_SPACE && map.entries[0].ps==BTN_CROSS);
+    assert(map.entries[1].source==SDL_SCANCODE_RETURN && map.entries[1].ps==BTN_CROSS);
+    assert(map.entries[2].ps==(BTN_L1|BTN_R1));
+    assert(map.entries[3].source==SRC_MOUSE+SDL_BUTTON_LEFT);
+    assert(map.entries[4].source==SRC_WHEEL_UP && map.entries[5].ps==LS_UP);
+    map=key_map;
+    const size_t defaults=map.count;
+    assert(apply_button_map(&map,"cross=Q",true)==1);
+    assert(map.count==defaults-1); /* Space and Return gone, Q added */
+    ButtonMap pads=pad_map;
+    assert(apply_button_map(&pads,"lstick_up=a",false)==0);
+    /* Mouse buttons and wheel notches through the keyboard map (captured mouse only). */
+    key_map=(ButtonMap){{{SRC_MOUSE+SDL_BUTTON_LEFT,BTN_SQUARE},{SRC_WHEEL_DOWN,BTN_DOWN},{SDL_SCANCODE_W,LS_UP}},3};
+    test_mouse=(TheOrderMouse){.captured=1,.buttons=SDL_BUTTON_LMASK,.wheel=-2,.sensitivity=1.0f};
+    data=read_pad();
+    assert((data.buttons & (BTN_SQUARE|BTN_DOWN))==(BTN_SQUARE|BTN_DOWN) && !(data.buttons & STICK_BITS));
+    test_mouse.buttons=0;
+    usleep(80000);
+    data=read_pad();
+    assert(!(data.buttons & BTN_DOWN)); /* the gap between two notches */
+    usleep(60000);
+    data=read_pad();
+    assert(data.buttons & BTN_DOWN); /* the second notch */
+    test_mouse.captured=0;
+    data=read_pad();
+    assert(!(data.buttons & (BTN_SQUARE|BTN_DOWN)));
+
     SDL_Quit();
     unlink(path);
-    puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture");
+    puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map");
 }

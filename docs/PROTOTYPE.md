@@ -73,3 +73,26 @@ How the port hooks FSR in (`THEORDER_GAME=prototype`, set by `run.py`):
   render resolution); FSR rebuilds the full size. Quality 1/1.5, Balanced 1/1.7, Performance
   1/2, Ultra Performance 1/3.
 
+
+## Keyboard, mouse and button prompts
+
+The game's actions sit on fixed PS4 buttons; its text bible names a symbol per button
+(`BJU_SYMBOL` ◊ jump on Cross, `BAT_SYMBOL` £ attack on Square, `BSP_SYMBOL` ³ special on
+Triangle, `BGR_SYMBOL` ± grab on Circle, `BL1` ¹ power wheel, `BR1` ¥ disguise menu, `BL2` »
+target, `BR2` ¼ sprint, `BR3` § camera reset, `BSE` · upgrades, `DPU/DPR/DPD/DPL` ½ ¯ ¾ ¬ the
+quick slots, `ALE`/`ARI` µ ¶ the sticks), which its font draws as the button.
+
+- `scripts/proto_controls.py`: the actions, their PS4 targets and the default keys. The launcher's
+  Controls page saves the changes; `run.py` sends the whole layout as `THEORDER_KEY_MAP` with a
+  leading `!` (`src/runtime_pad.c`: mouse buttons, wheel notches and stick directions are key map
+  sources and targets there).
+- `scripts/proto_prompts.py`: from the player's `p1/art/hud/fe_textbible.p3d.rz` and
+  `textbible_<language>.p3d.rz` (RZ: a 16-byte header and one zlib stream around Pure3D chunks;
+  text bible chunk 0x18202 holds the keys and start/end+1 offsets, chunk 0x18201 the UTF-8 text)
+  every symbol becomes `[KEY]` (Russian key names when the language's text is Cyrillic; the
+  `NEXT_`/`PREVIOUS_` menu hints show the arrows). In `fe_ingame.p3d.rz` the `buttonhint.gfx`
+  pictures (GNF textures, BC3, 1D thin tiling: 8×8 blocks per tile in Morton order, stored upside
+  down) are replaced in place with key caps of the same size. The files go to `out/prompts`, which
+  the runtime reads instead of the game's (`THEORDER_FILE_OVERRIDES`, `src/runtime_file.c`).
+- The prompts are chosen at start (`THEORDER_PROMPTS`: auto, keyboard, gamepad); the game reads
+  its texts once, so switching needs a restart.

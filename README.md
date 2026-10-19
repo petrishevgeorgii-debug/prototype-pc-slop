@@ -41,7 +41,9 @@ fix is applied in memory, and the port checks the executables against the untouc
 - **FSR 1** scaling to the window, **RCAS** sharpening, **anisotropic filtering** up to 16×.
 - An **in-game menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse.
-- A **launcher** (`Prototype.exe`): game folder check, settings, saves and backups, the log.
+- **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
+  the game's hints and tutorials show your keys instead of the PS4 buttons.
+- A **launcher** (`Prototype.exe`): game folder check, settings, controls, saves and backups, the log.
 
 ## Playing
 
@@ -52,7 +54,28 @@ fix is applied in memory, and the port checks the executables against the untouc
    minute); later starts are quick.
 
 The launcher holds the render resolution, FSR 1 and sharpening, anisotropic filtering,
-30 / 60 FPS, display mode, V-Sync and the frame counter.
+30 / 60 FPS, display mode, V-Sync, the frame counter and the keyboard and mouse controls.
+
+### Keyboard and mouse
+
+| Action | Keys | | Action | Keys |
+|---|---|---|---|---|
+| Move | W A S D | | Power wheel (hold) | Tab |
+| Camera | Mouse | | Disguise menu (hold), vehicle weapon | F |
+| Jump | Space | | Offensive / vision / defensive power | 1 / 2 / 3 |
+| Sprint, glide (hold) | Left Shift | | Disguise | 4 or Z |
+| Attack | Left click | | Reset camera | Middle click or V |
+| Special attack, consume | Right click | | Upgrades | U |
+| Grab, throw | E | | Pause | Esc |
+| Target lock, aim (hold) | Q | | Menus | Arrows, Enter, Backspace |
+
+The launcher's **CONTROLS** page changes any of them (two keys per action), and sets the mouse
+sensitivity and the **button prompts**: *Automatic* shows your keys when no controller is
+connected at start, or choose *Keyboard & mouse* / *Controller*. The keyboard prompts are made at
+start from your own game files (the texts and the hint pictures) into `out\prompts`; the game
+folder is not changed. A controller works at any time.
+
+### Port menu
 
 In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu:
 

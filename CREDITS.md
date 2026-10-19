@@ -53,6 +53,7 @@ Each component's own license file is in its folder (submodules: in the submodule
 | Component | Where in the package | License |
 |---|---|---|
 | FSR 4 shader set (v07 INT8; AMD FidelityFX SDK, built by FireBurn's Q2RTX) | `fsr4_shaders` | MIT (`fsr4_shaders/LICENSE-FSR4-v07.txt`) |
+| [Tektur](https://github.com/hyvyys/Tektur) font (Adam Jagosz): the keyboard prompts' key caps | `fonts` | SIL Open Font License 1.1 (`fonts/LICENSE-Tektur-OFL.txt`) |
 | [SDL3](https://github.com/libsdl-org/SDL) | `bin/SDL3.dll` | Zlib |
 | [FFmpeg](https://ffmpeg.org) and the codec libraries of its MSYS2 build (x264, x265, libvpx, dav1d, libaom, rav1e, SVT-AV1, opus, vorbis, …) | `bin/av*.dll`, `bin/sw*.dll`, `bin/lib*.dll` | LGPL-2.1-or-later / GPL-2.0-or-later (x264, x265) / BSD / MIT, per library |
 | [LLVM libc++](https://libcxx.llvm.org), libomp, libwinpthread | `bin/` | Apache-2.0 WITH LLVM-exception / MIT / ZPL |
