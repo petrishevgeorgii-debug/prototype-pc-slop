@@ -26,7 +26,8 @@
  * Each guest fiber runs on its own host stack (1 MiB), not on the context memory the game
  * hands over: runtime functions called from a fiber (file I/O, Windows API) need far more
  * than the 16 KiB the save fiber gets (that overflow crashed saving under shadPS4).
- * Windows uses native fibers so the TEB stack bounds stay correct; elsewhere ucontext. */
+ * Windows uses native fibers so the TEB stack bounds stay correct, with the whole stack
+ * committed (guest code has no stack probes and would skip a guard page); elsewhere ucontext. */
 typedef void (ABI *FiberEntry)(uint64_t arg_on_initialize, uint64_t arg_on_run);
 enum { FIBER_IDLE=0, FIBER_RUNNING=1, FIBER_STACK=1<<20 };
 typedef struct Fiber {
@@ -97,7 +98,7 @@ static Fiber *fiber_of(void *guest) {
 }
 static int fiber_host_create(Fiber *f) {
 #ifdef _WIN32
-    f->host=CreateFiberEx(64*1024,FIBER_STACK,FIBER_FLAG_FLOAT_SWITCH,fiber_main,f);
+    f->host=CreateFiberEx(FIBER_STACK,FIBER_STACK,FIBER_FLAG_FLOAT_SWITCH,fiber_main,f);
     return f->host ? 0 : -1;
 #else
     f->stack=mmap(NULL,FIBER_STACK,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
