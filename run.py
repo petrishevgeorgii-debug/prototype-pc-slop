@@ -380,6 +380,13 @@ def main():
             # PROTOTYPE: THEORDER_FPS60=1 (run-60fps.bat) turns on the 60 FPS patch.
             if is_prototype and get_env(env, 'FPS60') == '1' and 'Prototype 60 FPS' not in names:
                 names.append('Prototype 60 FPS')
+            # THEORDER_PROTO_RES=<w>x<h>: the game's render resolution (launcher setting).
+            proto_res = get_env(env, 'PROTO_RES', '') if is_prototype else ''
+            if proto_res and proto_res != '1920x1080':
+                names.append(f'Render Resolution - {proto_res}')
+            if is_prototype and get_env(env, 'PROTO_TENDRIL_FIX', '1') == '1' and \
+                    'Fix White Consume Tendrils' not in names:
+                names.append('Fix White Consume Tendrils')
             names = graphics_options.restrict_to_available(names, patches.available_patches(profile[1], profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'
@@ -424,9 +431,12 @@ def main():
         env['THEORDER_ENGINE_FPS'] = str(engine_fps)
         derived.append('THEORDER_ENGINE_FPS')
         # The Order runs at half its engine setting: 30 FPS at 60, 60 with the frame rate patch.
-        print(f'Game frame rate: {engine_fps // 2} FPS'
-              + ('' if fps_patched or graphics['engine_fps'] == '60' else
-                 ' (the frame rate patch was not found in this eboot.bin)'), flush=True)
+        if is_prototype:
+            print(f"Game frame rate: {60 if get_env(env, 'FPS60') == '1' else 30} FPS", flush=True)
+        else:
+            print(f'Game frame rate: {engine_fps // 2} FPS'
+                  + ('' if fps_patched or graphics['engine_fps'] == '60' else
+                     ' (the frame rate patch was not found in this eboot.bin)'), flush=True)
         env['THEORDER_DERIVED'] = ','.join(derived)
         # The guest memory pool is committed in full at start: a resolution patch above 1080p
         # can need more than 16 GB of RAM, and the game then closes when the page file cannot grow.
