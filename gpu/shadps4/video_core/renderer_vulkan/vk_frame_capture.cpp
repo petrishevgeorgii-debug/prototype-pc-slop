@@ -41,6 +41,7 @@ std::vector<Entry> entries;
 std::vector<std::pair<Target, bool>> pending_sampled;
 std::vector<std::string> pending_buffers;
 
+bool scene_seen = false; ///< the recording holds a pass into a non-display colour target
 u32 kept_buffers = 0; ///< draws past a pass's first four whose constants were kept
 
 void AddBuffers(Entry& entry, bool keep) {
@@ -238,11 +239,17 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
     display = display && targets.size() == 1;
     const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
                             entries.back().colors == targets);
-    // port: PROTOTYPE writes the display buffers twice in a row (UI, then the next frame's
-    // first pass), so a recording runs on until it holds the scene: MinPasses passes.
-    constexpr size_t MinPasses = 24;
+    // port: PROTOTYPE draws its UI in many passes into the display buffer (between stencil
+    // passes), so a recording runs on until it holds a pass with another colour target (the
+    // scene) and ends at the display pass after it (or after MaxPasses).
+    constexpr size_t MaxPasses = 4000;
     const bool recording = state.load(std::memory_order_relaxed) == Recording;
-    if (display && new_pass && !(recording && entries.size() < MinPasses)) {
+    if (recording && !display && std::ranges::any_of(targets, [](const Target& t) {
+            return t.address != 0;
+        })) {
+        scene_seen = true;
+    }
+    if (display && new_pass && !(recording && !scene_seen && entries.size() < MaxPasses)) {
         if (recording) {
             Write(last_presented.load(std::memory_order_relaxed));
             entries.clear();
@@ -256,6 +263,7 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
         pending_buffers.clear();
         pass_open = false;
         kept_buffers = 0;
+        scene_seen = false;
         state.store(Recording, std::memory_order_release);
     }
     if (state.load(std::memory_order_relaxed) != Recording) {
