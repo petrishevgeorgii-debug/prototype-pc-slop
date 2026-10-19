@@ -343,9 +343,17 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 proto_post_phase = false;
             }
         }
-        if (proto_post_phase && cb_descs[0].first && cb_descs[0].first == proto_main_color &&
-            db_desc.first) {
-            proto_post_phase = false;
+        if (proto_post_phase && db_desc.first && db_desc.first == proto_scene_depth) {
+            proto_post_phase = false; // the next frame's scene (or its depth pre-pass)
+        }
+        // The depth pre-pass (no colour) of a scene-sized, non-square depth: that depth is
+        // the scene depth from the start (jittered like the colour pass that tests against it).
+        if (!proto_post_phase && db_desc.first && key.mrt_mask == 0) {
+            const auto& depth = texture_cache.GetImage(db_desc.first);
+            if (depth.info.props.is_depth && depth.info.size.width != depth.info.size.height &&
+                depth.info.size.width >= 640 && depth.info.size.height >= 360) {
+                camera_motion->OnGBufferPass(db_desc.first);
+            }
         }
         if (!proto_post_phase && db_desc.first && cb_descs[0].first &&
             std::popcount(key.mrt_mask) == 1) {
@@ -359,28 +367,29 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 proto_scene_draw = true;
                 proto_scene_seen = true;
                 camera_motion->OnGBufferPass(db_desc.first);
-                // Scene draws per colour target this frame; the one with the most last
-                // frame is the scene colour (an earlier pass with the scene depth draws
-                // into another RGBA8 target).
+                // Scene draws per colour target this frame. The scene colour is the one with
+                // the most (an earlier pass with the scene depth draws into another RGBA8
+                // target; the game may also alternate two scene colours between frames).
                 const auto color_id = cb_descs[0].first;
                 auto it = std::find_if(proto_color_counts.begin(), proto_color_counts.end(),
                                        [&](const auto& e) { return e.first == color_id; });
+                u32 count = 1;
                 if (it != proto_color_counts.end()) {
-                    ++it->second;
+                    count = ++it->second;
                 } else if (proto_color_counts.size() < 8) {
                     proto_color_counts.push_back({color_id, 1u});
                 }
-                // Only the scene colour's draws carry the main camera (an earlier pass into
-                // another target uses a wider one) and the scene size.
-                proto_camera_draw = color_id == proto_main_color;
-                if (proto_camera_draw) {
-                    proto_scene_depth = db_desc.first;
-                    ++proto_main_draws;
-                    if (upscaler->Enabled()) {
-                        upscaler->OnSceneColor(color_id);
-                        upscaler->NoteNativeScene(dw, dh);
-                    }
+                if (color_id == proto_main_color) {
+                    proto_main_draws = count;
+                } else if (count > proto_main_draws) {
+                    proto_main_color = color_id;
+                    proto_main_draws = count;
+                    proto_main_address = color.info.guest_address;
+                    proto_main_size = {dw, dh};
                 }
+                // Camera: the frame's majority view-projection over all scene draws.
+                proto_camera_draw = true;
+                proto_scene_depth = db_desc.first;
             }
         }
         // Post-processing starts with the first draw that reads the finished scene colour
@@ -406,6 +415,10 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 proto_post_trigger = true;
                 proto_post_phase = true;
                 proto_frame_pending = true;
+                if (upscaler->Enabled()) {
+                    upscaler->OnSceneColor(proto_main_color);
+                    upscaler->NoteNativeScene(proto_main_size[0], proto_main_size[1]);
+                }
             }
         }
     }
@@ -1180,17 +1193,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         }
         proto_scene_seen = false;
         proto_frame_pending = false;
-        // The scene colour of the next frame: this frame's target with the most scene draws.
-        u32 best = 0;
-        for (const auto& [id, count] : proto_color_counts) {
-            if (count > best) {
-                best = count;
-                proto_main_color = id;
-            }
-        }
-        if (best == 0) proto_main_color = {};
-        proto_main_address =
-            proto_main_color ? texture_cache.GetImage(proto_main_color).info.guest_address : 0;
+        proto_main_color = {};
+        proto_main_address = 0;
         proto_color_counts.clear();
         proto_main_draws = 0;
         scene_started = false;

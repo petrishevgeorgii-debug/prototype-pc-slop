@@ -365,6 +365,7 @@ private:
     u32 proto_main_draws = 0;             ///< scene draws into proto_main_color this frame
     VideoCore::ImageId proto_main_color{}; ///< the scene colour (most scene draws last frame)
     VAddr proto_main_address = 0;          ///< its guest address (texture reads of it)
+    std::array<u32, 2> proto_main_size{};
     bool ProtoSamplesSceneColor(const GraphicsPipeline* pipeline) const;
     std::vector<std::pair<VideoCore::ImageId, u32>> proto_color_counts;
     std::unique_ptr<TemporalUpscaler> upscaler; // port: FSR (docs/upscaler.md)
