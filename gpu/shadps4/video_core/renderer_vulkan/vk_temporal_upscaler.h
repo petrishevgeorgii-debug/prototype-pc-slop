@@ -279,6 +279,8 @@ private:
     vk::UniquePipeline merge_pipeline;
     vk::UniquePipeline merge_ldr_pipeline; ///< RGBA8 scene colour (PROTOTYPE)
     SceneResolution::Size pending_native{};  ///< PROTOTYPE scene size seen this frame
+    bool prototype_game = false;
+    bool fsr_ran_last_frame = false;
     u32 diag_frames = 0, diag_triggers = 0, diag_no_scene = 0, diag_no_camera = 0, diag_runs = 0;
     std::array<VideoCore::UniqueImage, 2> taa_history;
     std::array<vk::UniqueImageView, 2> taa_history_views;

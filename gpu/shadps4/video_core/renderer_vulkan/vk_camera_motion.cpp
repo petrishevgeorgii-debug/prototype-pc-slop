@@ -291,11 +291,13 @@ void CameraMotion::OnObjectConstants(const float* data) {
     if (frame_has_camera) {
         return;
     }
+    ++diag_calls;
     Mat4 world, wvp, inv;
     std::memcpy(world.data(), data, sizeof(world));
     std::memcpy(wvp.data(), data + 16, sizeof(wvp));
     // Object-to-world: affine, a sensible scale.
     if (world[3] != 0.0f || world[7] != 0.0f || world[11] != 0.0f || std::abs(world[15] - 1.0f) > 1e-4f) {
+        ++diag_affine;
         return;
     }
     for (const float v : wvp) {
@@ -304,13 +306,16 @@ void CameraMotion::OnObjectConstants(const float* data) {
         }
     }
     if (!InvertAffine(world, inv)) {
+        ++diag_affine;
         return;
     }
     const Mat4 vp = Mul(wvp, inv);
     // Perspective with w = distance along the view axis: row 3 is that axis (unit length).
     const float zx = At(vp, 3, 0), zy = At(vp, 3, 1), zz = At(vp, 3, 2), zw = At(vp, 3, 3);
     const float zlen = std::sqrt(zx * zx + zy * zy + zz * zz);
+    diag_last_zlen = zlen;
     if (zlen < 0.9f || zlen > 1.1f) {
+        ++diag_zlen;
         return;
     }
     // Two draws must imply the same matrix (a draw whose first floats are other data, or a
@@ -325,6 +330,7 @@ void CameraMotion::OnObjectConstants(const float* data) {
         agreed = diff <= 1e-4f * std::max(scale, 1.0f);
     }
     if (!agreed) {
+        ++diag_disagree;
         candidates[candidate_next] = vp;
         candidate_next = (candidate_next + 1) % candidates.size();
         candidate_count = std::min<u32>(candidate_count + 1, u32(candidates.size()));
@@ -371,6 +377,9 @@ void CameraMotion::OnObjectConstants(const float* data) {
     }
     current.proj = {scales[0], scales[1], a, b};
     current.valid = scales[0] > 0.0f && scales[1] > 0.0f && b < 0.0f;
+    ++diag_commits;
+    diag_invalid += !current.valid;
+    diag_last_b = b;
     frame_has_camera = true;
     candidate_count = 0;
 }

@@ -264,7 +264,9 @@ bool TemporalUpscaler::ReducedScene(const VideoCore::Image& color) const {
 }
 
 bool TemporalUpscaler::RasterScaling() const {
-    return !scaled_session && scene_targets.Reduced() && !done_this_frame;
+    // PROTOTYPE: reduced scene passes only while FSR rebuilds them (it ran last frame).
+    return !scaled_session && scene_targets.Reduced() && !done_this_frame &&
+           (!prototype_game || fsr_ran_last_frame);
 }
 
 bool TemporalUpscaler::OnFrameStart() {
@@ -311,13 +313,21 @@ bool TemporalUpscaler::OnFrameStart() {
     // FSR did not run (no scene colour found / no camera yet).
     if (prototype && active && ++diag_frames >= 300) {
         if (diag_runs < diag_frames) {
+            auto& c = camera_motion;
             std::printf("Upscaler: %u frames, post pass seen %u, FSR ran %u, no scene colour %u, "
-                        "no camera %u%s\n",
+                        "no camera %u%s; camera: %u object constants, %u not affine, %u no "
+                        "perspective (|z| %.3f), %u unmatched, %u found, %u invalid (b %.4f)\n",
                         diag_frames, diag_triggers, diag_runs, diag_no_scene, diag_no_camera,
-                        failed ? ", failed" : "");
+                        failed ? ", failed" : "", c.diag_calls, c.diag_affine, c.diag_zlen,
+                        c.diag_last_zlen, c.diag_disagree, c.diag_commits, c.diag_invalid,
+                        c.diag_last_b);
         }
+        camera_motion.diag_calls = camera_motion.diag_affine = camera_motion.diag_zlen = 0;
+        camera_motion.diag_disagree = camera_motion.diag_commits = camera_motion.diag_invalid = 0;
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
+    prototype_game = prototype;
+    fsr_ran_last_frame = dispatched_last_frame;
     // PROTOTYPE: jitter only while FSR resolves it (a frame without FSR would shake).
     const bool jitter_on = active && settings.jitter && !PortToggle::Disabled(1u << 25) &&
                            (!prototype || dispatched_last_frame);

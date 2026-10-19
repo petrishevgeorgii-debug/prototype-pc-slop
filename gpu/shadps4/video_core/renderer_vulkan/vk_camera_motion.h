@@ -109,6 +109,13 @@ private:
     ObjectMotion* object_motion = nullptr;
     Camera current, previous;
     bool frame_has_camera = false;
+public:
+    /// PROTOTYPE diagnostics (OnObjectConstants): calls, rejected as not affine / no
+    /// perspective row / no second matching draw, committed, committed but invalid.
+    u32 diag_calls = 0, diag_affine = 0, diag_zlen = 0, diag_disagree = 0, diag_commits = 0,
+        diag_invalid = 0;
+    float diag_last_zlen = 0.0f, diag_last_b = 0.0f;
+private:
     /// PROTOTYPE: view-projections seen this frame, waiting for a second draw to agree.
     std::array<std::array<float, 16>, 4> candidates{};
     u32 candidate_count = 0, candidate_next = 0;

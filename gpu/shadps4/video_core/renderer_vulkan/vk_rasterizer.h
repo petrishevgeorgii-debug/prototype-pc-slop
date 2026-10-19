@@ -348,7 +348,8 @@ private:
     /// and scene depth); a scene draw happened since the last frame start.
     bool proto_scene_draw = false;
     bool proto_scene_seen = false;
-    bool proto_post_trigger = false;      ///< this draw starts PROTOTYPE's post-processing
+    bool proto_post_trigger = false;
+    bool proto_post_seen = false;         ///< the scene ended this frame: next display draw starts a frame      ///< this draw starts PROTOTYPE's post-processing
     u32 proto_scene_draws = 0;            ///< scene draws into proto_scene_color this frame
     VideoCore::ImageId proto_scene_color{};
     std::unique_ptr<TemporalUpscaler> upscaler; // port: FSR (docs/upscaler.md)

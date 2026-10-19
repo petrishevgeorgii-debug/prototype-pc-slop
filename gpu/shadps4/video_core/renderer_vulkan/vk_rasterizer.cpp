@@ -309,7 +309,8 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     // targets neither it nor the scene depth starts post-processing: FSR runs before it.
     proto_scene_draw = false;
     proto_post_trigger = false;
-    if (PrototypeGame() && camera_motion->Enabled()) {
+    if (PrototypeGame() && camera_motion->Enabled() && !proto_post_seen) {
+        // (After post-processing has started, 3D HUD parts such as the map are not the scene.)
         if (db_desc.first && cb_descs[0].first && std::popcount(key.mrt_mask) == 1) {
             const auto& depth = texture_cache.GetImage(db_desc.first);
             const auto& color = texture_cache.GetImage(cb_descs[0].first);
@@ -336,6 +337,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
             !(cb_descs[0].first && cb_descs[0].first == proto_scene_color) &&
             !(db_desc.first && db_desc.first == camera_motion->Depth())) {
             proto_post_trigger = true;
+            proto_post_seen = true;
             proto_scene_draws = 0;
         }
     }
@@ -1101,8 +1103,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     // a scene starts the next frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
-        (!PrototypeGame() || proto_scene_seen)) {
+        (!PrototypeGame() || proto_post_seen)) {
         proto_scene_seen = false;
+        proto_post_seen = false;
         proto_scene_draws = 0;
         proto_scene_color = {};
         scene_started = false;
