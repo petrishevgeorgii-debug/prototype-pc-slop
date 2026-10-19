@@ -69,11 +69,18 @@
         <PatchList>
             <Line Type="bytes" Address="0x00227b50" Value="48b8000a0000a0050000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff000a0000c7853cfeffffa0050000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
+            <!-- Video memory for the bigger render targets (the held-object fade's blur target
+                 failed to allocate): the "Render" heap's Garlic part 360 -> 640 MiB, and the
+                 Garlic direct memory block (allocation, mapping, "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0000419c" Value="ba0000407d" Pattern="ba 00 00 c0 6b b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x000041b8" Value="be0000407d" Pattern="4c 8b 45 b8 be 00 00 c0 6b" At="4"/>
+            <Line Type="bytes" Address="0x0000427b" Value="c74424080000407d" Pattern="c7 44 24 08 00 00 c0 6b" At="0"/>
+            <Line Type="bytes" Address="0x0056b036" Value="ba00000028" Pattern="be 00 00 20 03 ba 00 00 80 16" At="5"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 3200x1800"
-              Note="Experimental: the game's display device and its back buffers are 3200x1800 instead of 1920x1080. The window shows the image scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 3200x1800 instead of 1920x1080. The window shows the image scaled to its own size. Requires setting DMEM to 1024 MB."
               Author="prototype-port"
               PatchVer="2.0"
               AppVer="01.00"
@@ -82,11 +89,18 @@
         <PatchList>
             <Line Type="bytes" Address="0x00227b50" Value="48b8800c000008070000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff800c0000c7853cfeffff08070000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
+            <!-- Video memory for the bigger render targets (the held-object fade's blur target
+                 failed to allocate): the "Render" heap's Garlic part 360 -> 1000 MiB, and the
+                 Garlic direct memory block (allocation, mapping, "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0000419c" Value="ba0000c093" Pattern="ba 00 00 c0 6b b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x000041b8" Value="be0000c093" Pattern="4c 8b 45 b8 be 00 00 c0 6b" At="4"/>
+            <Line Type="bytes" Address="0x0000427b" Value="c74424080000c093" Pattern="c7 44 24 08 00 00 c0 6b" At="0"/>
+            <Line Type="bytes" Address="0x0056b036" Value="ba0000803e" Pattern="be 00 00 20 03 ba 00 00 80 16" At="5"/>
         </PatchList>
     </Metadata>
     <Metadata Title="Prototype"
               Name="Render Resolution - 3840x2160"
-              Note="Experimental: the game's display device and its back buffers are 3840x2160 instead of 1920x1080. The window shows the image scaled to its own size."
+              Note="Experimental: the game's display device and its back buffers are 3840x2160 instead of 1920x1080. The window shows the image scaled to its own size. Requires setting DMEM to 1024 MB."
               Author="prototype-port"
               PatchVer="2.0"
               AppVer="01.00"
@@ -95,6 +109,13 @@
         <PatchList>
             <Line Type="bytes" Address="0x00227b50" Value="48b8000f000070080000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
             <Line Type="bytes" Address="0x000be820" Value="c78538feffff000f0000c7853cfeffff70080000" Pattern="c7 85 38 fe ff ff 80 07 00 00 c7 85 3c fe ff ff 38 04 00 00" At="0"/>
+            <!-- Video memory for the bigger render targets (the held-object fade's blur target
+                 failed to allocate): the "Render" heap's Garlic part 360 -> 1440 MiB, and the
+                 Garlic direct memory block (allocation, mapping, "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0000419c" Value="ba000040af" Pattern="ba 00 00 c0 6b b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x000041b8" Value="be000040af" Pattern="4c 8b 45 b8 be 00 00 c0 6b" At="4"/>
+            <Line Type="bytes" Address="0x0000427b" Value="c7442408000040af" Pattern="c7 44 24 08 00 00 c0 6b" At="0"/>
+            <Line Type="bytes" Address="0x0056b036" Value="ba0000005a" Pattern="be 00 00 20 03 ba 00 00 80 16" At="5"/>
         </PatchList>
     </Metadata>
 </Patch>
