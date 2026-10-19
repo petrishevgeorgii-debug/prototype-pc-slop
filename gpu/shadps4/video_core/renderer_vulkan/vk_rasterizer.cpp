@@ -310,9 +310,23 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     // post-processing: FSR runs before it.
     proto_scene_draw = false;
     proto_post_trigger = false;
-    if (PrototypeGame() && camera_motion->Enabled() && !proto_post_seen) {
-        // (After post-processing has started, 3D HUD parts such as the map are not the scene.)
-        if (db_desc.first && cb_descs[0].first && std::popcount(key.mrt_mask) == 1) {
+    if (PrototypeGame() && camera_motion->Enabled()) {
+        // From the post-processing trigger until the next frame's scene (a draw into the
+        // scene colour, or a shadow pass: a square depth), 3D HUD parts such as the map are
+        // not the scene.
+        if (proto_post_phase && db_desc.first) {
+            const auto& depth = texture_cache.GetImage(db_desc.first);
+            if (depth.info.props.is_depth && depth.info.size.width == depth.info.size.height &&
+                depth.info.size.width >= 512) {
+                proto_post_phase = false;
+            }
+        }
+        if (proto_post_phase && cb_descs[0].first && cb_descs[0].first == proto_main_color &&
+            db_desc.first) {
+            proto_post_phase = false;
+        }
+        if (!proto_post_phase && db_desc.first && cb_descs[0].first &&
+            std::popcount(key.mrt_mask) == 1) {
             const auto& depth = texture_cache.GetImage(db_desc.first);
             const auto& color = texture_cache.GetImage(cb_descs[0].first);
             const u32 dw = depth.info.size.width, dh = depth.info.size.height;
@@ -345,11 +359,12 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 }
             }
         }
-        if (!proto_scene_draw && proto_main_draws >= 8 &&
+        if (!proto_post_phase && !proto_scene_draw && proto_main_draws >= 8 &&
             !(cb_descs[0].first && cb_descs[0].first == proto_main_color) &&
             !(db_desc.first && db_desc.first == camera_motion->Depth())) {
             proto_post_trigger = true;
-            proto_post_seen = true;
+            proto_post_phase = true;
+            proto_frame_pending = true;
         }
     }
     if (upscaler->Enabled() && cb_descs[0].first) {
@@ -1114,9 +1129,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     // a scene starts the next frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
-        (!PrototypeGame() || proto_post_seen || (proto_scene_seen && proto_main_draws < 8))) {
+        (!PrototypeGame() || proto_frame_pending ||
+         (!proto_post_phase && proto_scene_seen && proto_main_draws < 8))) {
         proto_scene_seen = false;
-        proto_post_seen = false;
+        proto_frame_pending = false;
         // The scene colour of the next frame: this frame's target with the most scene draws.
         u32 best = 0;
         for (const auto& [id, count] : proto_color_counts) {
