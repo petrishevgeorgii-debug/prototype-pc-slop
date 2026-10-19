@@ -252,6 +252,27 @@ VideoCore::ImageId Rasterizer::FindTargetMemoized(VideoCore::TextureCache::Image
     return image_id;
 }
 
+// PROTOTYPE: whether this draw samples the scene colour (its guest address) as a texture.
+bool Rasterizer::ProtoSamplesSceneColor(const GraphicsPipeline* pipeline) const {
+    if (!proto_main_address) {
+        return false;
+    }
+    for (const auto* stage : pipeline->GetStages()) {
+        if (!stage) {
+            continue;
+        }
+        const PreparedStage* prepared = FindPreparedStage(*stage);
+        for (u32 i = 0; i < stage->images.size(); ++i) {
+            const auto tsharp =
+                prepared ? prepared->image_sharps[i] : stage->images[i].GetSharp(*stage);
+            if (tsharp.Address() == proto_main_address) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     // Prefetch render targets to handle overlaps with bound textures (e.g. mipgen)
     const auto& key = pipeline->GetGraphicsKey();
@@ -362,12 +383,20 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 }
             }
         }
+        // Post-processing starts with the first draw that reads the finished scene colour
+        // (not one that only renders a screen-space layer, e.g. fog from the depth, that is
+        // then blended into the scene: that layer must be resolved by FSR too). Fallback: the
+        // first draw into the display buffer.
         if (!proto_post_phase && !proto_scene_draw && proto_main_draws >= 8 &&
-            !(cb_descs[0].first && cb_descs[0].first == proto_main_color) &&
-            !(db_desc.first && db_desc.first == camera_motion->Depth())) {
-            proto_post_trigger = true;
-            proto_post_phase = true;
-            proto_frame_pending = true;
+            !(cb_descs[0].first && cb_descs[0].first == proto_main_color)) {
+            const auto& regs = Regs();
+            const bool display = regs.color_buffers[0] &&
+                                 FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address());
+            if (display || ProtoSamplesSceneColor(pipeline)) {
+                proto_post_trigger = true;
+                proto_post_phase = true;
+                proto_frame_pending = true;
+            }
         }
     }
     if (upscaler->Enabled() && cb_descs[0].first) {
@@ -1145,6 +1174,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
             }
         }
         if (best == 0) proto_main_color = {};
+        proto_main_address =
+            proto_main_color ? texture_cache.GetImage(proto_main_color).info.guest_address : 0;
         proto_color_counts.clear();
         proto_main_draws = 0;
         scene_started = false;
