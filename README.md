@@ -65,8 +65,8 @@ The launcher holds the render resolution, FSR 1 and sharpening, anisotropic filt
 | Jump | Space | | Offensive / vision / defensive power | 1 / 2 / 3 |
 | Sprint, glide (hold) | Left Shift | | Disguise | 4 or Z |
 | Attack | Left click | | Reset camera | Middle click or V |
-| Special attack, consume | Right click | | Pause, upgrades | Esc |
-| Grab, throw | E | | Options button | M |
+| Special attack, consume | Right click | | Pause | Esc |
+| Grab, throw | E | | Web of Intrigue | J |
 | Target lock, aim (hold) | Q | | Menus | Arrows, Enter, Backspace |
 
 The launcher's **CONTROLS** page changes any of them (two keys per action), and sets the mouse
@@ -97,6 +97,8 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 ## Known issues
 
+- Opening the Web of Intrigue (touchpad, J) can end in an endless loading screen. Under
+  investigation: press **F10** while it hangs and send `last_run.log`.
 - PROTOTYPE 2 does not start yet.
 - Render resolutions above 1080p are experimental.
 - FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows

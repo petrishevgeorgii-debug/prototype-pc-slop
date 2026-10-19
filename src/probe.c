@@ -309,7 +309,7 @@ static DWORD WINAPI win_watchdog_thread(LPVOID param) {
  * "count;thread=<name>;frame;..." lines (tools/sample_report.py names them). Nothing is allocated
  * or printed while a thread is suspended: it may hold the heap lock. */
 #define SAMPLE_SLOTS 65536
-#define SAMPLE_DEPTH 8
+#define SAMPLE_DEPTH 12
 typedef struct { uintptr_t frames[SAMPLE_DEPTH]; unsigned thread, count; } SampleSlot;
 static SampleSlot sample_slots[SAMPLE_SLOTS];
 static int sample_add(unsigned thread, const uintptr_t frames[SAMPLE_DEPTH]) {
@@ -322,19 +322,23 @@ static int sample_add(unsigned thread, const uintptr_t frames[SAMPLE_DEPTH]) {
     }
     return 0; /* table full */
 }
-static DWORD WINAPI win_sampler_thread(LPVOID param) {
-    const char *part=(const char *)param, *start=getenv("THEORDER_SAMPLE_START"),
-               *secs=getenv("THEORDER_SAMPLE_SECS"), *out=getenv("THEORDER_SAMPLE_OUT");
-    Sleep((start ? (DWORD)atoi(start) : 60)*1000);
-    wchar_t wpart[256], names[64][64];
+/* Samples the threads whose name holds a '|'-separated part of `part` ("*": all) for `seconds`
+ * into `path`; with `to_log` the most frequent stack of each thread is also printed. */
+#define SAMPLE_THREADS 160
+static void sample_threads(const char *part, unsigned seconds, const char *path, int to_log) {
+    static wchar_t names[SAMPLE_THREADS][64];
+    static HANDLE threads[SAMPLE_THREADS];
+    wchar_t wpart[256];
     MultiByteToWideChar(CP_UTF8,0,part,-1,wpart,256);
-    HANDLE threads[64];
+    memset(sample_slots,0,sizeof(sample_slots));
     int count=0;
+    const DWORD self=GetCurrentThreadId();
     HANDLE snapshot=CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD,0);
     THREADENTRY32 entry={.dwSize=sizeof(entry)};
     if (snapshot!=INVALID_HANDLE_VALUE && Thread32First(snapshot,&entry)) {
         do {
-            if (entry.th32OwnerProcessID!=GetCurrentProcessId() || count==64) continue;
+            if (entry.th32OwnerProcessID!=GetCurrentProcessId() || entry.th32ThreadID==self ||
+                count==SAMPLE_THREADS) continue;
             HANDLE thread=OpenThread(THREAD_SUSPEND_RESUME|THREAD_GET_CONTEXT|THREAD_QUERY_LIMITED_INFORMATION,
                                      FALSE,entry.th32ThreadID);
             if (!thread) continue;
@@ -347,14 +351,17 @@ static DWORD WINAPI win_sampler_thread(LPVOID param) {
                     p+=n+(p[n]==L'|');
                 }
             }
-            if (match) { wcsncpy(names[count],name ? name : L"",63); names[count][63]=0; threads[count++]=thread; }
-            else CloseHandle(thread);
+            if (match) {
+                if (name && *name) { wcsncpy(names[count],name,63); names[count][63]=0; }
+                else swprintf(names[count],64,L"tid %lu",(unsigned long)entry.th32ThreadID);
+                threads[count++]=thread;
+            } else CloseHandle(thread);
             if (name) LocalFree(name);
         } while (Thread32Next(snapshot,&entry));
     }
     if (snapshot!=INVALID_HANDLE_VALUE) CloseHandle(snapshot);
     unsigned long long samples=0, dropped=0;
-    const ULONGLONG end=GetTickCount64()+(secs ? (ULONGLONG)atoi(secs) : 30)*1000;
+    const ULONGLONG end=GetTickCount64()+(ULONGLONG)seconds*1000;
     timeBeginPeriod(1);
     while (count && GetTickCount64()<end) {
         for (int i=0;i<count;++i) {
@@ -377,10 +384,9 @@ static DWORD WINAPI win_sampler_thread(LPVOID param) {
         Sleep(1);
     }
     timeEndPeriod(1);
-    const char *path=out ? out : "out/sample.txt";
+    char where[MAX_PATH+64];
     FILE *f=fopen(path,"w");
     if (f) {
-        char where[MAX_PATH+64];
         for (unsigned i=0;i<SAMPLE_SLOTS;++i) {
             if (!sample_slots[i].count) continue;
             fprintf(f,"%u;thread=%ls",sample_slots[i].count,names[sample_slots[i].thread]);
@@ -392,8 +398,52 @@ static DWORD WINAPI win_sampler_thread(LPVOID param) {
         }
         fclose(f);
     }
+    if (to_log) {
+        for (int t=0;t<count;++t) {
+            const SampleSlot *best=NULL; unsigned total=0;
+            for (unsigned i=0;i<SAMPLE_SLOTS;++i) {
+                const SampleSlot *s=&sample_slots[i];
+                if (!s->count || s->thread!=(unsigned)t) continue;
+                total+=s->count;
+                if (!best || s->count>best->count) best=s;
+            }
+            if (!best) continue;
+            fprintf(stderr,"  %ls: %u%% of %u samples in",names[t],best->count*100/total,total);
+            for (int depth=0; depth<SAMPLE_DEPTH && best->frames[depth]; ++depth) {
+                describe_address(where,sizeof(where),best->frames[depth]);
+                fprintf(stderr,"%s %s",depth ? " <" : "",where);
+            }
+            fputc('\n',stderr);
+        }
+    }
+    for (int i=0;i<count;++i) CloseHandle(threads[i]);
     fprintf(stderr,"Sampler: %d threads matching \"%s\", %llu samples (%llu dropped) in %s\n",
             count,part,samples,dropped,path);
+    fflush(stderr);
+}
+static DWORD WINAPI win_sampler_thread(LPVOID param) {
+    const char *start=getenv("THEORDER_SAMPLE_START"), *secs=getenv("THEORDER_SAMPLE_SECS"),
+               *out=getenv("THEORDER_SAMPLE_OUT");
+    Sleep((start ? (DWORD)atoi(start) : 60)*1000);
+    sample_threads((const char *)param,secs ? (unsigned)atoi(secs) : 30,out ? out : "out/sample.txt",0);
+    return 0;
+}
+/* F10 in the game window: a hang report in the log (the files the game opened last and where
+ * every thread spends its time, 3 seconds of samples; all of them in out/hang_sample.txt). */
+static DWORD WINAPI win_hang_key_thread(LPVOID param) {
+    (void)param;
+    for (;;) {
+        Sleep(150);
+        if (!(GetAsyncKeyState(VK_F10) & 0x8000)) continue;
+        DWORD pid=0;
+        GetWindowThreadProcessId(GetForegroundWindow(),&pid);
+        if (pid!=GetCurrentProcessId()) continue;
+        fprintf(stderr,"Hang report (F10):\n");
+        fflush(stdout);
+        runtime_file_report_recent();
+        sample_threads("*",3,"out/hang_sample.txt",1);
+        while (GetAsyncKeyState(VK_F10) & 0x8000) Sleep(100);
+    }
     return 0;
 }
 #endif
@@ -1110,6 +1160,10 @@ int main(int argc, char **argv) {
     const char *sample = getenv("THEORDER_SAMPLE");
     if (sample && *sample) {
         HANDLE th = CreateThread(NULL, 0, win_sampler_thread, (LPVOID)sample, 0, NULL);
+        if (th) CloseHandle(th);
+    }
+    {
+        HANDLE th = CreateThread(NULL, 0, win_hang_key_thread, NULL, 0, NULL);
         if (th) CloseHandle(th);
     }
 #else

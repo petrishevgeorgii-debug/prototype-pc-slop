@@ -97,4 +97,5 @@ quick slots, `ALE`/`ARI` µ ¶ the sticks), which its font draws as the button.
 - The prompts are chosen at start (`THEORDER_PROMPTS`: auto, keyboard, gamepad); the game reads
   its texts once, so switching needs a restart. Auto follows `out/last_input.txt`, which the
   runtime rewrites when the player switches device (`THEORDER_LAST_INPUT`).
-- Pause is the touchpad on this version (its text: "pause with ·", BSE_SYMBOL), not Options.
+- `BSE_SYMBOL` (·) is the touchpad: the Web of Intrigue (`WOI_TUT_EXP_9`); a few texts also
+  use it for the pause (Options), which has no symbol of its own.

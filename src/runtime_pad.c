@@ -524,6 +524,12 @@ static void sample(PadData *d) {
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
     play_click(d);
+    /* Options and the touchpad change what the game shows (pause, Web of Intrigue): logged. */
+    static uint32_t logged_before;
+    const uint32_t edges=d->buttons & ~logged_before & (BTN_OPTIONS|BTN_TOUCHPAD);
+    logged_before=d->buttons;
+    if (edges & BTN_OPTIONS) puts("Runtime: pad: Options pressed");
+    if (edges & BTN_TOUCHPAD) puts("Runtime: pad: touchpad pressed");
     if (hold_after_capture) {
         if (d->buttons) d->buttons=0;
         else hold_after_capture=0;

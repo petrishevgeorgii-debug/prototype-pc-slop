@@ -14,6 +14,7 @@
 #include <limits.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -451,8 +452,30 @@ static int64_t do_stat_impl(const char *guest,GuestStat *out) {
 }
 /* PROTO_TRACE_FILES=1 prints every guest open/stat and its result. */
 static int trace_files(void) { static int t=-1; if (t<0) { const char *e=getenv("PROTO_TRACE_FILES"); t=e && *e=='1'; } return t; }
+/* The last opens, for the F10 hang report. */
+enum { RECENT_OPENS=24 };
+static struct { char path[160]; int64_t result; uint64_t ms; } recent[RECENT_OPENS];
+static unsigned recent_next;
+static uint64_t now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t); return (uint64_t)t.tv_sec*1000+(uint64_t)t.tv_nsec/1000000; }
+void runtime_file_report_recent(void) {
+    pthread_mutex_lock(&lock);
+    const uint64_t now=now_ms();
+    for (unsigned i=0;i<RECENT_OPENS;++i) {
+        unsigned n=(recent_next+i)%RECENT_OPENS;
+        if (recent[n].path[0])
+            fprintf(stderr,"  opened %s -> %lld, %.1f s ago\n",recent[n].path,(long long)recent[n].result,
+                    (double)(now-recent[n].ms)/1000.0);
+    }
+    pthread_mutex_unlock(&lock);
+}
 static int64_t do_open(const char *guest,int flags,int mode) {
     int64_t r=do_open_impl(guest,flags,mode);
+    pthread_mutex_lock(&lock);
+    snprintf(recent[recent_next].path,sizeof(recent[recent_next].path),"%s",guest ? guest : "");
+    recent[recent_next].result=r;
+    recent[recent_next].ms=now_ms();
+    recent_next=(recent_next+1)%RECENT_OPENS;
+    pthread_mutex_unlock(&lock);
     if (trace_files()) printf("File: open %s flags=0x%x -> %lld\n",guest,flags,(long long)r);
     return r;
 }

@@ -17,7 +17,8 @@ PLAYING
 KEYBOARD AND MOUSE
   WASD move, mouse camera, Space jump, Left Shift sprint/glide, left click attack, right click
   special attack/consume, E grab/throw, Q target lock, Tab power wheel, F disguise menu,
-  1/2/3 powers on/off, 4 or Z disguise, middle click or V reset camera, Esc pause/upgrades;
+  1/2/3 powers on/off, 4 or Z disguise, middle click or V reset camera, Esc pause,
+  J Web of Intrigue;
   menus: arrows, Enter, Backspace. The launcher's CONTROLS page changes the keys, the mouse
   sensitivity and the button icons (your keys or the PlayStation buttons in the game's hints;
   made from your game files at start, the game folder is not changed).
@@ -38,6 +39,8 @@ SAVES AND LOGS
   Log:     last_run.log (send it with any problem report)
 
 KNOWN ISSUES
+  - The Web of Intrigue (touchpad, J) can hang on its loading screen: press F10 while it
+    hangs and send last_run.log.
   - PROTOTYPE 2 (from the bundle menu) is not supported yet: choosing it ends the game.
   - Render resolution above 1080p is experimental.
   - FSR 4.1 needs a driver feature AMD's Windows driver does not have yet; it stays hidden.

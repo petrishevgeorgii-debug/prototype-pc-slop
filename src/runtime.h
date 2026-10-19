@@ -56,6 +56,8 @@ void runtime_set_guest_args(int argc, const char **argv);
 uintptr_t runtime_file_resolve(const char *name);
 uintptr_t runtime_services_resolve(const char *name);
 void runtime_file_report(void);
+/* The last files the game opened, oldest first (the F10 hang report, probe.c). */
+void runtime_file_report_recent(void);
 void runtime_file_configure(const char *app0, const char *user);
 int runtime_file_mount(const char *guest, const char *host);
 void runtime_file_unmount(const char *guest);
