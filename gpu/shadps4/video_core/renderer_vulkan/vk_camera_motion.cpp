@@ -182,10 +182,13 @@ void CameraMotion::RecordMotion(vk::CommandBuffer cmdbuf, vk::ImageView depth_vi
     bool object_valid = false;
     const vk::ImageView object_view = object_motion && object_motion->Enabled()
         ? object_motion->PrepareRead(cmdbuf, width, height, object_valid) : depth_view;
+    // Toggle 1 << 28 (PROTOTYPE menu, diagnostics): clip-space y pointing down the screen.
+    const float flip_y = PortToggle::Disabled(1u << 28) ? -1.0f : 1.0f;
     const PushConstants push{
         .reproject = Multiply(previous.view, current.inv_view),
-        .proj = current.proj,
-        .prev_proj = previous.proj,
+        .proj = {current.proj[0], current.proj[1] * flip_y, current.proj[2], current.proj[3]},
+        .prev_proj = {previous.proj[0], previous.proj[1] * flip_y, previous.proj[2],
+                      previous.proj[3]},
         .size = {float(width), float(height)},
         .jitter = jitter,
         .previous_jitter = previous_jitter,
@@ -490,10 +493,13 @@ void CameraMotion::Overlay(VideoCore::ImageId frame) {
                     vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite);
     runtime.FlushBarriers();
 
+    // Toggle 1 << 28 (PROTOTYPE menu, diagnostics): clip-space y pointing down the screen.
+    const float flip_y = PortToggle::Disabled(1u << 28) ? -1.0f : 1.0f;
     const PushConstants push{
         .reproject = Multiply(previous.view, current.inv_view),
-        .proj = current.proj,
-        .prev_proj = previous.proj,
+        .proj = {current.proj[0], current.proj[1] * flip_y, current.proj[2], current.proj[3]},
+        .prev_proj = {previous.proj[0], previous.proj[1] * flip_y, previous.proj[2],
+                      previous.proj[3]},
         .size = {float(color.info.size.width), float(color.info.size.height)},
         .jitter = jitter,
         .previous_jitter = previous_jitter,

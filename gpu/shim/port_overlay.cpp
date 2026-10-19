@@ -16,6 +16,7 @@
 
 #include <SDL3/SDL.h>
 #include "port_settings.h"
+#include "port_toggles.h"
 #include "port_graphics.h"
 #include "port_perf_stats.h"
 
@@ -840,9 +841,12 @@ void PrototypeMenu() {
     auto Y = [&](float f) { return o.y + H * f; };
 
     // ---- the options of each category
-    static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY"};
-    static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН"};
-    constexpr int CategoryCount = 3;
+    static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY", "FSR TESTS"};
+    static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН", "ТЕСТЫ FSR"};
+    constexpr int CategoryCount = 4;
+    auto toggle_on = [](u64 bit) {
+        return (__atomic_load_n(&runtime_disabled_optimizations, __ATOMIC_RELAXED) & bit) != 0;
+    };
     const bool fsr4 = s.fsr4_supported, fsr411 = s.fsr411_supported;
     std::vector<int> providers = {PortSettings::UpscalerOff, PortSettings::UpscalerFsr3};
     if (fsr4) providers.push_back(PortSettings::UpscalerFsr4);
@@ -925,6 +929,30 @@ void PrototypeMenu() {
                            T("How strong the final sharpening is.", "Насколько сильно повышается резкость."),
                            1, {}, std::clamp(s.rcas_strength.load() / 10, 0, 10), s.rcas.load()});
         break;
+    case 3:
+        options.push_back({T("JITTER", "ДРОЖАНИЕ КАДРА"),
+                           T("FSR shifts the scene by a fraction of a pixel every frame to gather detail. "
+                             "Off: no shimmer from it, but less smoothing. For finding the cause of shimmer.",
+                             "FSR сдвигает сцену на доли пикселя каждый кадр. Выкл: без мерцания от этого, "
+                             "но меньше сглаживания. Для поиска причины мерцания."),
+                           0, {off, on}, s.jitter ? 1 : 0});
+        options.push_back({T("JITTER SIGN", "ЗНАК ДРОЖАНИЯ"),
+                           T("Tells FSR the shift in the other direction. The right one gives a calm image.",
+                             "Сообщает FSR сдвиг в другую сторону. Правильный даёт спокойную картинку."),
+                           0, {T("NORMAL", "ОБЫЧНЫЙ"), T("INVERTED", "ОБРАТНЫЙ")},
+                           toggle_on(1ull << 26) ? 1 : 0});
+        options.push_back({T("VERTICAL MOTION", "ВЕРТИКАЛЬНОЕ ДВИЖЕНИЕ"),
+                           T("Flips the up/down direction of the camera motion given to FSR. The right one "
+                             "keeps the image calm while you look up and down.",
+                             "Меняет направление вертикального движения камеры для FSR. Правильное "
+                             "оставляет картинку спокойной, когда смотришь вверх и вниз."),
+                           0, {T("NORMAL", "ОБЫЧНОЕ"), T("FLIPPED", "ОБРАТНОЕ")},
+                           toggle_on(1ull << 28) ? 1 : 0});
+        options.push_back({T("MOTION VECTORS VIEW", "ВЕКТОРЫ ДВИЖЕНИЯ"),
+                           T("Debug view: dark when nothing moves, red/green for horizontal/vertical motion.",
+                             "Отладка: темно, если ничего не движется; красный/зелёный — движение."),
+                           0, {off, on}, s.debug_view == PortSettings::DebugMotion ? 1 : 0});
+        break;
     default:
         options.push_back({T("DISPLAY MODE", "РЕЖИМ ЭКРАНА"),
                            T("Windowed, borderless window or exclusive fullscreen.",
@@ -961,6 +989,15 @@ void PrototypeMenu() {
         case 32: s.display_mode = value; break;
         case 33: s.vsync = value == 1; break;
         case 34: s.show_fps = value == 1; break;
+        case 48: s.jitter = value == 1; break;
+        case 49:
+        case 50: {
+            const u64 bit = index == 1 ? (1ull << 26) : (1ull << 28);
+            if (value) __atomic_fetch_or(&runtime_disabled_optimizations, bit, __ATOMIC_RELAXED);
+            else __atomic_fetch_and(&runtime_disabled_optimizations, ~bit, __ATOMIC_RELAXED);
+            break;
+        }
+        case 51: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
         default: break;
         }
     };
@@ -996,6 +1033,12 @@ void PrototypeMenu() {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        if (category == 3) {
+            s.jitter = true;
+            s.debug_view = PortSettings::DebugNone;
+            __atomic_fetch_and(&runtime_disabled_optimizations, ~((1ull << 26) | (1ull << 28)),
+                               __ATOMIC_RELAXED);
+        }
         dirty = true;
     }
     bool close = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
@@ -1147,6 +1190,12 @@ void PrototypeMenu() {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        if (category == 3) {
+            s.jitter = true;
+            s.debug_view = PortSettings::DebugNone;
+            __atomic_fetch_and(&runtime_disabled_optimizations, ~((1ull << 26) | (1ull << 28)),
+                               __ATOMIC_RELAXED);
+        }
         dirty = true;
     }
     if (hint(X(0.588f), 3, T("SECTION", "РАЗДЕЛ"), "TAB  ·  Q / E  ·  L1 / R1")) {
