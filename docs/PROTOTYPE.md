@@ -1,6 +1,6 @@
 # PROTOTYPE port — technical notes
 
-First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)).
+First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)). Current: v0.5.0, keyboard and mouse ([notes](releases/v0.5.0.md)).
 
 Game: PROTOTYPE BIOHAZARD BUNDLE, CUSA06545, APP_VER 01.00. `eboot.bin` is PROTOTYPE (with the
 bundle menu); `prototype2_ps4f.elf` is PROTOTYPE 2, started from the menu with
