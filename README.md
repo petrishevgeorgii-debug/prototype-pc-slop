@@ -7,7 +7,7 @@ PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
 **Version 0.4.0 — first public release, October 19, 2026.**
-[Download it from Releases](https://github.com/Glebos222/prototype-pc-port/releases/latest).
+[Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-port/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
 decrypted dump of CUSA06545 (version 01.00). Nothing in your game folder is ever modified: every
@@ -21,7 +21,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 | PROTOTYPE 2 | Not yet: choosing it in the bundle menu ends the game with a message |
 | Platform | Windows 10 / 11, x86-64, a Vulkan 1.3 graphics card with a current driver |
 | AMD Radeon | Tested (RX 9070 XT) |
-| NVIDIA, Intel | **Untested** — reports welcome ([Issues](https://github.com/Glebos222/prototype-pc-port/issues), with `last_run.log`) |
+| NVIDIA, Intel | **Untested** — reports welcome ([Issues](https://github.com/petrishevgeorgii-debug/prototype-pc-port/issues), with `last_run.log`) |
 
 ## Features
 
@@ -45,7 +45,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v0.4.0.zip` from [Releases](https://github.com/Glebos222/prototype-pc-port/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v0.4.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-port/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`) and press **PLAY**. The first start prepares the game (about a
@@ -83,7 +83,7 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 ## Reporting a problem
 
-Open an [issue](https://github.com/Glebos222/prototype-pc-port/issues) with your GPU and driver,
+Open an [issue](https://github.com/petrishevgeorgii-debug/prototype-pc-port/issues) with your GPU and driver,
 what you did, and `last_run.log` from the port folder. For FSR problems, the menu's
 **FSR tests → Save FSR images** writes three frames of FSR's inputs and output to `out\dump`.
 
@@ -111,7 +111,7 @@ what you did, and `last_run.log` from the port folder. For FSR problems, the men
 3. Clone with submodules and build:
 
    ```bat
-   git clone --recursive https://github.com/Glebos222/prototype-pc-port.git
+   git clone --recursive https://github.com/petrishevgeorgii-debug/prototype-pc-port.git
    cd prototype-pc-port
    setup.bat
    ```

@@ -1,4 +1,4 @@
-PROTOTYPE - native PC port (unofficial)            https://github.com/Glebos222/prototype-pc-port
+PROTOTYPE - native PC port (unofficial)            https://github.com/petrishevgeorgii-debug/prototype-pc-port
 ==========================================================================================
 
 A native Windows port of PROTOTYPE from the PS4 "PROTOTYPE BIOHAZARD BUNDLE" (CUSA06545).
