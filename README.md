@@ -35,7 +35,8 @@ Fixes built into the port:
 
 ## Playing
 
-1. Build the port (below), or use a release package.
+1. Download a release package (`PROTOTYPE-PC-Port-v….zip`, see Releases) and unpack it, or build
+   the port (below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`) and press **PLAY**.
 
@@ -82,6 +83,10 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
    cd prototype-pc-port
    setup.bat
    ```
+
+A release package is made with `bash packaging/windows/package_prototype.sh` in the MSYS2
+CLANG64 shell after `setup.bat`: `dist/PROTOTYPE-PC-Port-v<version>.zip`. It refuses to package
+any game file or anything made from one.
 
 `setup.bat` builds the engine (`build.sh`, output in `out\`) and the launcher
 (`Prototype.exe`, PyInstaller in its own environment `out\pyenv`), and puts a shortcut on the

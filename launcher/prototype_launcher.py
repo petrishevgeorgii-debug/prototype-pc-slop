@@ -42,7 +42,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.3.0'
+VERSION = '0.4.0'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -661,10 +661,6 @@ class Launcher:
                      'anisotropy', [(0, 'Game default'), (2, '2× AF'), (4, '4× AF'), (8, '8× AF'), (16, '16× AF')])
         self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.', 'fps60',
                      [(False, '30 FPS'), (True, '60 FPS')])
-        self.section('IN DEVELOPMENT')
-        self.stepper('Temporal upscaling', 'FSR 3.1, FSR 4 and FSR 4.1 need the game\'s camera motion: '
-                     'being connected for PROTOTYPE, coming in a later update.', 'none',
-                     [(None, 'FSR 3.1 / 4 / 4.1')], locked=True)
 
     def tab_display(self):
         self.section('WINDOW', first=True)
@@ -673,7 +669,8 @@ class Launcher:
         self.toggle('V-Sync', 'Waits for the display refresh: no tearing.', 'vsync')
         self.toggle('Frame counter', 'Shows the frame rate in a corner of the screen.', 'show_fps')
         self.section('IN GAME')
-        self.note('Insert (keyboard) or R3 + L2 (controller) opens the port menu while playing.')
+        self.note('Insert (keyboard) or R3 + L2 (controller) opens the port menu while playing: '
+                  'FSR 3.1 / FSR 4 upscaling and the other graphics options.')
 
     def tab_game(self):
         cv = self.canvas
