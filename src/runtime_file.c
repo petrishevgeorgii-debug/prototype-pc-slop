@@ -170,13 +170,41 @@ static Patch *open_patch(const char *guest,uint64_t base_size) {
         printf("Runtime: %s with %u parts from the port's overrides\n",relative,p->count);
     return p;
 }
+/* A positioned read into guest memory. Pages the GPU tracks are write-protected and may be
+ * protected again between touch_for_write and the kernel's copy: the read then fails (EFAULT)
+ * or stops short at that page, and the game takes the file as broken and retries it for ever
+ * (endless loading screens). The rest is read into a host buffer and copied in user mode,
+ * where a protected page goes through the fault handler. */
+static unsigned bounced_reads;
+static int64_t guest_pread(int host,void *buffer,uint64_t size,uint64_t offset) {
+    ssize_t n=pread(host,buffer,size,(int64_t)offset);
+    if (n<0 && errno!=EFAULT) return -errno;
+    uint64_t done=n<0 ? 0 : (uint64_t)n;
+    if (done==size || (n==0 && size)) return (int64_t)done;
+    enum { CHUNK=1<<20 };
+    char *bounce=malloc(CHUNK);
+    if (!bounce) return done ? (int64_t)done : -ENOMEM;
+    while (done<size) {
+        const uint64_t want=size-done<CHUNK ? size-done : CHUNK;
+        ssize_t r=pread(host,bounce,want,(int64_t)(offset+done));
+        if (r<=0) break;
+        memcpy((char *)buffer+done,bounce,(size_t)r);
+        done+=(uint64_t)r;
+        if ((uint64_t)r<want) break;
+    }
+    free(bounce);
+    if (done>(n<0 ? 0 : (uint64_t)n) && __atomic_fetch_add(&bounced_reads,1,__ATOMIC_RELAXED)<32)
+        printf("Runtime: a read into protected memory (%llu bytes) completed through a host buffer\n",
+               (unsigned long long)size);
+    return (int64_t)done;
+}
 static int64_t patched_pread(const Patch *p,int host,void *buffer,uint64_t size,uint64_t offset) {
     if (offset>=p->vsize) return 0;
     uint64_t n=size<p->vsize-offset ? size : p->vsize-offset;
     uint64_t from_base=offset<p->base_size ? (n<p->base_size-offset ? n : p->base_size-offset) : 0;
     if (from_base) {
-        ssize_t r=pread(host,buffer,from_base,(int64_t)offset);
-        if (r<0) return -errno;
+        int64_t r=guest_pread(host,buffer,from_base,offset);
+        if (r<0) return r;
         if ((uint64_t)r<from_base) n=from_base=(uint64_t)r;
     }
     if (n>from_base) memset((char *)buffer+from_base,0,n-from_base);
@@ -185,7 +213,7 @@ static int64_t patched_pread(const Patch *p,int host,void *buffer,uint64_t size,
         uint64_t lo=offset>r->offset ? offset : r->offset;
         uint64_t hi=offset+n<r->offset+r->length ? offset+n : r->offset+r->length;
         if (lo>=hi) continue;
-        if (pread(p->fd,(char *)buffer+(lo-offset),hi-lo,(int64_t)(r->data+(lo-r->offset)))!=(ssize_t)(hi-lo)) return -EIO;
+        if (guest_pread(p->fd,(char *)buffer+(lo-offset),hi-lo,r->data+(lo-r->offset))!=(int64_t)(hi-lo)) return -EIO;
     }
     return (int64_t)n;
 }
@@ -451,6 +479,13 @@ static void touch_for_write(void *buffer,uint64_t size) {
         *b=*b;
     }
 }
+/* Failed reads of game files are logged: the game retries a file it cannot read for ever. */
+static void read_failed(const File *f,uint64_t size,int64_t error) {
+    static unsigned logged;
+    if (__atomic_fetch_add(&logged,1,__ATOMIC_RELAXED)<32)
+        printf("Runtime: read of %s (%llu bytes) failed: errno %lld\n",f ? f->path : "?",
+               (unsigned long long)size,(long long)-error);
+}
 static int64_t do_read(int fd,void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
@@ -460,14 +495,20 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
         pthread_mutex_lock(&pf->io);
         int64_t r;
         if (pf->patch) r=patched_pread(pf->patch,h,buffer,size,pf->vpos);
-        else { ssize_t n=pread(h,buffer,size,(int64_t)pf->vpos); r=n<0 ? -errno : n; }
+        else r=guest_pread(h,buffer,size,pf->vpos);
         if (r>0) pf->vpos+=(uint64_t)r;
         pthread_mutex_unlock(&pf->io);
         if (r>0) { __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)r,__ATOMIC_RELAXED); }
+        if (r<0) read_failed(pf,size,r);
         return r;
     }
     ssize_t n=host_read(h,buffer,size);
-    if (n<0) { if (audio_trace()) printf("Audio trace: read(fd %d, %llu) failed, errno %d\n",fd,(unsigned long long)size,errno); return -errno; }
+    if (n<0 && errno==EFAULT) { /* protected guest memory: as guest_pread, from the current offset */
+        const int64_t at=host_lseek(h,0,SEEK_CUR);
+        const int64_t r=at<0 ? -EFAULT : guest_pread(h,buffer,size,(uint64_t)at);
+        if (r>=0) { host_lseek(h,at+r,SEEK_SET); n=(ssize_t)r; } else errno=(int)-r;
+    }
+    if (n<0) { read_failed(pf,size,-errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
 }
@@ -476,9 +517,10 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
     if (h<0) return -EBADF;
     touch_for_write(buffer,size);
     File *pf=fd>=3 ? get(fd) : NULL;
-    if (pf && pf->patch) return offset<0 ? -EINVAL : patched_pread(pf->patch,h,buffer,size,(uint64_t)offset);
-    ssize_t n=pread(h,buffer,size,offset);
-    if (n<0) { if (audio_trace()) printf("Audio trace: pread(fd %d, %llu @%lld) failed, errno %d\n",fd,(unsigned long long)size,(long long)offset,errno); return -errno; }
+    if (offset<0) return -EINVAL;
+    if (pf && pf->patch) return patched_pread(pf->patch,h,buffer,size,(uint64_t)offset);
+    const int64_t n=guest_pread(h,buffer,size,(uint64_t)offset);
+    if (n<0) { read_failed(pf,size,n); return n; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
     return n;
 }

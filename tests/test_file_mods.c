@@ -21,6 +21,37 @@ static void *pread_worker(void *arg) {
     }
     return NULL;
 }
+/* A read into a write-protected page (GPU tracking) completes: the runtime's fault handler
+ * unprotects on a user-mode write, as this test's handler does. */
+#include <signal.h>
+#include <sys/mman.h>
+static char *guarded;
+static void unprotect(int sig, siginfo_t *info, void *ctx) {
+    (void)sig; (void)ctx;
+    char *page=(char *)((uintptr_t)info->si_addr & ~(uintptr_t)4095);
+    mprotect(page,4096,PROT_READ|PROT_WRITE);
+}
+static void test_protected_read(const char *game) {
+    char path[600]; snprintf(path,sizeof(path),"%s/protected.bin",game);
+    FILE *f=fopen(path,"wb"); assert(f);
+    for (int i=0;i<3*4096;++i) fputc(i%253,f);
+    assert(!fclose(f));
+    struct sigaction sa={0}; sa.sa_sigaction=unprotect; sa.sa_flags=SA_SIGINFO;
+    assert(!sigaction(SIGSEGV,&sa,NULL));
+    guarded=mmap(NULL,3*4096,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    assert(guarded!=MAP_FAILED);
+    int fd=(int)do_open("/app0/protected.bin",0,0); assert(fd>=3);
+    /* protect the middle page after touch_for_write would have run: read with pread directly
+       into it fails in the kernel; guest_pread must complete it */
+    assert(!mprotect(guarded+4096,4096,PROT_READ));
+    assert(guest_pread(files[fd].host,guarded,3*4096,0)==3*4096);
+    for (int i=0;i<3*4096;++i) assert((unsigned char)guarded[i]==(unsigned char)(i%253));
+    /* a short read at the end is not an error */
+    char tail[100]; assert(do_pread(fd,tail,100,3*4096-40)==40);
+    assert(!do_close(fd) && !unlink(path));
+    munmap(guarded,3*4096);
+    signal(SIGSEGV,SIG_DFL);
+}
 static void test_shared_reads(const char *game) {
     char path[600]; snprintf(path,sizeof(path),"%s/shared.bin",game);
     FILE *f=fopen(path,"wb"); assert(f);
@@ -129,6 +160,7 @@ int main(void) {
     }
     assert(found && !do_close(dir));
     test_shared_reads(game);
+    test_protected_read(game);
     int save=(int)do_open("/data/test-save",0x202,0644); assert(save>=3);
     assert(do_write(save,"save",4)==4 && !do_close(save));
     assert(!path_op("/data/test-save",2,0));
@@ -136,6 +168,7 @@ int main(void) {
     const char *dirs[]={"temp0","download0","data"};
     for (int i=0;i<3;++i) { char p[1024]; snprintf(p,sizeof(p),"%s/%s",user,dirs[i]); assert(!rmdir(p)); }
     assert(!rmdir(user) && !rmdir(root));
+    puts("Protected guest memory: reads complete through a host buffer PASS");
     puts("Shared descriptor: seek+read and positioned reads from two threads PASS");
     puts("Guest mod files: reads, stat, merged listing, readonly assets and writable saves PASS");
 }
