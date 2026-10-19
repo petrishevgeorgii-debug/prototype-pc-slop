@@ -11,7 +11,8 @@ The game shows its PS4 buttons two ways:
     upside down like the originals): same size, so nothing else in the package moves.
 
 The results go to <out>/<game path in lower case>; the runtime reads them instead of the game's
-files (THEORDER_FILE_OVERRIDES, src/runtime_file.c). The game folder is only read, and nothing
+files (THEORDER_FILE_OVERRIDES, src/runtime_file.c). Dumps that keep p1 in Radical's archives
+(art.rcf, ...) get a patch per archive instead (<out>/p1/<archive>.patch, patch_archive). The game folder is only read, and nothing
 written here is part of a release.
 """
 import argparse
@@ -31,7 +32,7 @@ HUD = Path('p1') / 'art' / 'hud'
 TEXT_FILES = ('fe_textbible.p3d.rz', 'textbible_english.p3d.rz', 'textbible_french.p3d.rz',
               'textbible_italian.p3d.rz', 'textbible_spanish.p3d.rz')
 HINT_FILE = 'fe_ingame.p3d.rz'
-VERSION = 3  # of this script's output (part of the cache key)
+VERSION = 4  # of this script's output (part of the cache key)
 
 # buttonhint.gfx: the textures of its PA..PDL frames (A = Cross, B = Circle, X = Square,
 # Y = Triangle, the PS3-era names) in its two sets, and the d-pad picture of the small set.
@@ -394,6 +395,106 @@ def patch_hints(data, full, font_path):
     return bytes(out), replaced
 
 
+# --- Archives -----------------------------------------------------------------------------------
+# Dumps straight from the PS4 package keep p1's files in Radical's archives (art.rcf, ...):
+# "ATG CORE CEMENT LIBRARY", u32 directory offset at 0x24 and its length at 0x28, entries of
+# u32 name hash, u32 offset, u32 length. The patched files are added past the archive's end
+# and their entries point there (a G3PATCH1 file the runtime lays over the archive).
+
+RCF_MAGIC = b'ATG CORE CEMENT LIBRARY'
+
+
+def rcf_entries(f):
+    head = f.read(0x3c)
+    if not head.startswith(RCF_MAGIC) or head[0x22] != 0:  # little-endian archives only
+        return []
+    offset, length = struct.unpack_from('<II', head, 0x24)
+    if length % 12 or length > 64 << 20:
+        return []
+    f.seek(offset)
+    table = f.read(length)
+    return [(offset + i, *struct.unpack_from('<III', table, i)) for i in range(0, len(table), 12)]
+
+
+def classify(prefix):
+    """'text', 'hints' or None for the start of an archive member."""
+    try:
+        if prefix.startswith(b'RZ\0\0'):
+            prefix = zlib.decompressobj().decompress(prefix[16:], 256)
+    except zlib.error:
+        return None
+    if not prefix.startswith(b'P3D\xff') or len(prefix) < 40:
+        return None
+    first = struct.unpack_from('<I', prefix, 12)[0]
+    if first == TEXT_BIBLE:
+        return 'text'
+    if first == 0x19000:
+        name = prefix[25:25 + prefix[24]]
+        if name.startswith(b'buttonhint__'):
+            return 'hints'
+        if b'__I' in name:  # a Scaleform movie's images: a HUD package, maybe with the hints
+            return 'hud'
+    return None
+
+
+def patch_archive(path, target, full, font, log):
+    """Writes `target` (a G3PATCH1) for archive `path`; returns (texts, hints) or None."""
+    size = path.stat().st_size
+    found = []
+    with open(path, 'rb') as f:
+        entries = rcf_entries(f)
+        for entry_at, _, offset, length in entries:
+            if length < 64 or offset + length > size:
+                continue
+            f.seek(offset)
+            kind = classify(f.read(min(length, 2048)))
+            if kind:
+                f.seek(offset)
+                found.append((entry_at, kind, f.read(length)))
+    # The hint pictures sit in a HUD package (fe_ingame) whose first picture may be another.
+    if not any(kind == 'hints' for _, kind, _ in found):
+        for i, (entry_at, kind, member) in enumerate(found):
+            if kind == 'hud':
+                data = zlib.decompress(member[16:]) if member.startswith(b'RZ\0\0') else member
+                if b'buttonhint__I16.dds' in data:
+                    found[i] = (entry_at, 'hints', member)
+                    break
+    found = [item for item in found if item[1] != 'hud']
+    if not found:
+        return None
+    texts = hints = 0
+    regions, blobs = [], []
+    end = (size + 0x7ff) & ~0x7ff
+    for entry_at, kind, member in found:
+        packed = member.startswith(b'RZ\0\0')
+        data = zlib.decompress(member[16:]) if packed else member
+        if kind == 'text':
+            data, n = patch_text_bible(data, full)
+            texts += n
+        else:
+            data, n = patch_hints(data, full, font)
+            hints += n
+        if packed:
+            data = b'RZ\0\0' + struct.pack('<III', 0, len(data), 0) + zlib.compress(data, 6)
+        if end + len(data) > 0xffffffff:
+            log(f'Prompts: {path.name} is too large to add to')
+            return None
+        regions.append((entry_at + 4, 8, struct.pack('<II', end, len(data))))
+        regions.append((end, len(data), data))
+        end = (end + len(data) + 0x7ff) & ~0x7ff
+    header = 32 + 24 * len(regions)
+    table, payload, at = [], b'', header
+    for offset, length, data in regions:
+        table.append(struct.pack('<QQQ', offset, length, at))
+        payload += data
+        at += len(data)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix('.tmp')
+    tmp.write_bytes(b'G3PATCH1' + struct.pack('<QQII', size, end, len(regions), 0) + b''.join(table) + payload)
+    tmp.replace(target)
+    return texts, hints
+
+
 # --- Driver -----------------------------------------------------------------------------------
 
 def generate(game, out, full, log=print):
@@ -401,13 +502,16 @@ def generate(game, out, full, log=print):
     None when the game files are not the expected ones."""
     hud = Path(game) / HUD
     sources = [hud / n for n in (*TEXT_FILES, HINT_FILE) if (hud / n).is_file()]
-    if not any(s.name == 'fe_textbible.p3d.rz' for s in sources):
-        log('Prompts: no p1/art/hud/fe_textbible.p3d.rz in the game folder; controller prompts stay')
+    # The game reads an archive before loose files: both are done when both are there.
+    archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
+    if not sources and not archives:
+        log('Prompts: neither p1/art/hud/fe_textbible.p3d.rz nor p1/*.rcf in the game folder; '
+            'controller prompts stay')
         return None
     font = find_font()
     key = hashlib.sha256(json.dumps({
         'v': VERSION, 'layout': full, 'font': str(font),
-        'files': [(s.name, s.stat().st_size, int(s.stat().st_mtime)) for s in sources]},
+        'files': [(s.name, s.stat().st_size, int(s.stat().st_mtime)) for s in (*sources, *archives)]},
         sort_keys=True).encode()).hexdigest()
     out = Path(out)
     stamp = out / 'prompts.json'
@@ -431,6 +535,21 @@ def generate(game, out, full, log=print):
         except (ValueError, OSError, zlib.error, struct.error) as error:
             log(f'Prompts: {source.name} left as it is ({error})')
             (target_dir / source.name.lower()).unlink(missing_ok=True)
+    for archive in archives:
+        target = out / 'p1' / (archive.name.lower() + '.patch')
+        try:
+            result = patch_archive(archive, target, full, font, log)
+        except (ValueError, OSError, zlib.error, struct.error) as error:
+            log(f'Prompts: {archive.name} left as it is ({error})')
+            result = None
+        if result:
+            texts += result[0]
+            hints += result[1]
+            log(f'Prompts: {archive.name}: {result[0]} texts, {result[1]} hint pictures')
+        else:
+            target.unlink(missing_ok=True)
+    if not texts and not hints:
+        log('Prompts: no button texts or hint pictures found in the game files; controller prompts stay')
     stamp.write_text(json.dumps({'key': key}), encoding='utf-8')
     log(f'Prompts: keyboard and mouse ({texts} texts, {hints} hint pictures)')
     return out

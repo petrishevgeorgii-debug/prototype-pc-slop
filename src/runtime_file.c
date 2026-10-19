@@ -48,7 +48,11 @@ typedef struct {
 _Static_assert(sizeof(GuestStat)==120,"FreeBSD stat layout");
 
 typedef struct { char *names; size_t count, *offsets; unsigned char *types; } Listing;
-typedef struct { int used, host; Listing *dir; size_t position; char path[512]; } File;
+/* A game archive with parts replaced (THEORDER_FILE_OVERRIDES, <path>.patch): reads see the
+ * regions' bytes from the patch file and the file grows to vsize. */
+typedef struct { uint64_t offset, length, data; } PatchRegion;
+typedef struct { int fd; uint64_t base_size, vsize; uint32_t count; PatchRegion *regions; } Patch;
+typedef struct { int used, host; Listing *dir; size_t position; char path[512]; Patch *patch; uint64_t vpos; } File;
 typedef struct { char guest[64]; char host[512]; } Mount;
 static File files[MAX_FILES];
 static Mount mounts[MAX_MOUNTS];
@@ -94,22 +98,90 @@ void runtime_file_configure(const char *app0,const char *user) {
 }
 /* THEORDER_FILE_OVERRIDES=<dir>: game files the launcher generated (run.py, scripts/proto_prompts.py:
  * the keyboard and mouse button prompts) are read from <dir>/<game path in lower case> instead
- * of the game folder, which is never written. Only regular files are replaced. */
-static void override_path(const char *relative,char *out,size_t size) {
+ * of the game folder, which is never written. Only regular files are replaced. An archive gets
+ * <dir>/<game path in lower case>.patch instead: regions replaced and data added at its end
+ * (G3PATCH1, open_patch). */
+static int override_candidate(const char *relative,const char *suffix,char *out,size_t size) {
     static const char *dir; static int checked;
     if (!checked) { dir=getenv("THEORDER_FILE_OVERRIDES"); checked=1; }
-    if (!dir || !*dir || !relative || !*relative) return;
-    char candidate[1024];
-    if ((size_t)snprintf(candidate,sizeof(candidate),"%s%s",dir,relative)>=sizeof(candidate)) return;
-    for (char *p=candidate+strlen(dir);*p;++p) {
+    if (!dir || !*dir || !relative || !*relative) return -1;
+    if ((size_t)snprintf(out,size,"%s%s%s",dir,relative,suffix)>=size) return -1;
+    for (char *p=out+strlen(dir);*p;++p) {
         if (*p=='\\') *p='/';
         else if (*p>='A' && *p<='Z') *p=(char)(*p-'A'+'a');
     }
     HostStat st;
-    if (host_stat(candidate,&st) || !S_ISREG(st.st_mode) || strlen(candidate)>=size) return;
+    return host_stat(out,&st) || !S_ISREG(st.st_mode) ? -1 : 0;
+}
+static void override_path(const char *relative,char *out,size_t size) {
+    char candidate[1024];
+    if (override_candidate(relative,"",candidate,sizeof(candidate)) || strlen(candidate)>=size) return;
     static unsigned logged;
     if (__atomic_fetch_add(&logged,1,__ATOMIC_RELAXED)<16) printf("Runtime: %s from the port's overrides\n",relative);
     memcpy(out,candidate,strlen(candidate)+1);
+}
+/* The path under the game mount ("/p1/art.rcf") of a guest path, or -1. */
+static int game_relative(const char *guest,char *out,size_t size) {
+    if (!guest || !*guest) return -1;
+    const char *rest=NULL;
+    if (guest[0]!='/') { snprintf(out,size,"/%s",guest); return 0; }
+    if (!strncmp(guest,"/app0/",6)) rest=guest+5;
+    else if (!strncmp(guest,"/hostapp/",9)) rest=guest+8;
+    if (!rest) return -1;
+    snprintf(out,size,"%s",rest);
+    return 0;
+}
+static void free_patch(Patch *p) { if (p) { if (p->fd>=0) close(p->fd); free(p->regions); free(p); } }
+/* The patch of a game file whose host copy has `base_size` bytes, or NULL. Layout (little
+ * endian): "G3PATCH1", u64 base size, u64 new size, u32 count, u32 0, count x {u64 offset,
+ * u64 length, u64 position of the bytes in this file}. A patch made for another size is ignored. */
+static Patch *open_patch(const char *guest,uint64_t base_size) {
+    char relative[1024], path[1100];
+    if (game_relative(guest,relative,sizeof(relative)) || override_candidate(relative,".patch",path,sizeof(path)))
+        return NULL;
+#ifdef _WIN32
+    int fd=open(path,O_RDONLY|O_BINARY);
+#else
+    int fd=open(path,O_RDONLY|O_CLOEXEC);
+#endif
+    if (fd<0) return NULL;
+    unsigned char head[32];
+    Patch *p=calloc(1,sizeof(*p));
+    if (!p) { close(fd); return NULL; }
+    p->fd=fd;
+    if (pread(fd,head,32,0)!=32 || memcmp(head,"G3PATCH1",8)) { free_patch(p); return NULL; }
+    memcpy(&p->base_size,head+8,8); memcpy(&p->vsize,head+16,8); memcpy(&p->count,head+24,4);
+    if (p->base_size!=base_size || p->count>4096 || p->vsize<base_size) {
+        printf("Runtime: %s: patch for another version of the file, ignored\n",relative);
+        free_patch(p); return NULL;
+    }
+    p->regions=calloc(p->count ? p->count : 1,sizeof(PatchRegion));
+    if (!p->regions || pread(fd,p->regions,sizeof(PatchRegion)*p->count,32)!=(ssize_t)(sizeof(PatchRegion)*p->count)) {
+        free_patch(p); return NULL;
+    }
+    static unsigned logged;
+    if (__atomic_fetch_add(&logged,1,__ATOMIC_RELAXED)<16)
+        printf("Runtime: %s with %u parts from the port's overrides\n",relative,p->count);
+    return p;
+}
+static int64_t patched_pread(const Patch *p,int host,void *buffer,uint64_t size,uint64_t offset) {
+    if (offset>=p->vsize) return 0;
+    uint64_t n=size<p->vsize-offset ? size : p->vsize-offset;
+    uint64_t from_base=offset<p->base_size ? (n<p->base_size-offset ? n : p->base_size-offset) : 0;
+    if (from_base) {
+        ssize_t r=pread(host,buffer,from_base,(int64_t)offset);
+        if (r<0) return -errno;
+        if ((uint64_t)r<from_base) n=from_base=(uint64_t)r;
+    }
+    if (n>from_base) memset((char *)buffer+from_base,0,n-from_base);
+    for (uint32_t i=0;i<p->count;++i) {
+        const PatchRegion *r=&p->regions[i];
+        uint64_t lo=offset>r->offset ? offset : r->offset;
+        uint64_t hi=offset+n<r->offset+r->length ? offset+n : r->offset+r->length;
+        if (lo>=hi) continue;
+        if (pread(p->fd,(char *)buffer+(lo-offset),hi-lo,(int64_t)(r->data+(lo-r->offset)))!=(ssize_t)(hi-lo)) return -EIO;
+    }
+    return (int64_t)n;
 }
 /* Resolve a guest path to a host path; returns 0 or a host errno. */
 static int translate(const char *guest,char *out,size_t size) {
@@ -343,6 +415,7 @@ static int64_t do_close(int fd) {
     if (!f) { pthread_mutex_unlock(&lock); return -EBADF; }
     if (f->host>=0) close(f->host);
     free_listing(f->dir);
+    free_patch(f->patch);
     *f=(File){0};
     pthread_mutex_unlock(&lock);
     return 0;
@@ -375,6 +448,12 @@ static int64_t do_read(int fd,void *buffer,uint64_t size) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     touch_for_write(buffer,size);
+    File *pf=fd>=3 ? get(fd) : NULL;
+    if (pf && pf->patch) {
+        int64_t r=patched_pread(pf->patch,h,buffer,size,pf->vpos);
+        if (r>0) pf->vpos+=(uint64_t)r;
+        return r;
+    }
     ssize_t n=host_read(h,buffer,size);
     if (n<0) { if (audio_trace()) printf("Audio trace: read(fd %d, %llu) failed, errno %d\n",fd,(unsigned long long)size,errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
@@ -384,6 +463,8 @@ static int64_t do_pread(int fd,void *buffer,uint64_t size,int64_t offset) {
     int h=host_fd(fd);
     if (h<0) return -EBADF;
     touch_for_write(buffer,size);
+    File *pf=fd>=3 ? get(fd) : NULL;
+    if (pf && pf->patch) return offset<0 ? -EINVAL : patched_pread(pf->patch,h,buffer,size,(uint64_t)offset);
     ssize_t n=pread(h,buffer,size,offset);
     if (n<0) { if (audio_trace()) printf("Audio trace: pread(fd %d, %llu @%lld) failed, errno %d\n",fd,(unsigned long long)size,(long long)offset,errno); return -errno; }
     __atomic_add_fetch(&reads,1,__ATOMIC_RELAXED); __atomic_add_fetch(&bytes_read,(uint64_t)n,__ATOMIC_RELAXED);
@@ -412,6 +493,12 @@ static int64_t do_lseek(int fd,int64_t offset,int whence) {
         if (whence==0 && offset>=0) { f->position=(size_t)offset; return offset; }
         return -EINVAL;
     }
+    if (f->patch) {
+        int64_t base=whence==0 ? 0 : whence==1 ? (int64_t)f->vpos : (int64_t)f->patch->vsize;
+        if (base+offset<0) return -EINVAL;
+        f->vpos=(uint64_t)(base+offset);
+        return (int64_t)f->vpos;
+    }
     int64_t r=host_lseek(f->host,offset,whence);
     return r<0 ? -errno : r;
 }
@@ -431,7 +518,10 @@ static int64_t do_fstat(int fd,GuestStat *out) {
 #endif
     if (!out) return -EFAULT;
     if (host_fstat(h,&s)) return -errno;
-    convert_stat(&s,out); return 0;
+    convert_stat(&s,out);
+    File *pf=fd>=3 ? get(fd) : NULL;
+    if (pf && pf->patch) out->size=(int64_t)pf->patch->vsize;
+    return 0;
 }
 static int64_t do_stat_impl(const char *guest,GuestStat *out) {
     char path[1024]; HostStat s;
@@ -448,7 +538,12 @@ static int64_t do_stat_impl(const char *guest,GuestStat *out) {
         }
         return -errno;
     }
-    convert_stat(&s,out); return 0;
+    convert_stat(&s,out);
+    if (S_ISREG(s.st_mode)) {
+        Patch *p=open_patch(guest,(uint64_t)s.st_size);
+        if (p) { out->size=(int64_t)p->vsize; free_patch(p); }
+    }
+    return 0;
 }
 /* PROTO_TRACE_FILES=1 prints every guest open/stat and its result. */
 static int trace_files(void) { static int t=-1; if (t<0) { const char *e=getenv("PROTO_TRACE_FILES"); t=e && *e=='1'; } return t; }
@@ -470,6 +565,18 @@ void runtime_file_report_recent(void) {
 }
 static int64_t do_open(const char *guest,int flags,int mode) {
     int64_t r=do_open_impl(guest,flags,mode);
+    if (r>=3 && game_path(guest)) {
+        File *f=get((int)r);
+        HostStat st;
+        if (f && f->host>=0 && !f->dir && !host_fstat(f->host,&st) && S_ISREG(st.st_mode)) {
+            Patch *p=open_patch(guest,(uint64_t)st.st_size);
+            if (p) {
+                pthread_mutex_lock(&lock);
+                f->patch=p; f->vpos=0;
+                pthread_mutex_unlock(&lock);
+            }
+        }
+    }
     pthread_mutex_lock(&lock);
     snprintf(recent[recent_next].path,sizeof(recent[recent_next].path),"%s",guest ? guest : "");
     recent[recent_next].result=r;

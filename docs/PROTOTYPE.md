@@ -94,6 +94,11 @@ quick slots, `ALE`/`ARI` µ ¶ the sticks), which its font draws as the button.
   pictures (GNF textures, BC3, 1D thin tiling: 8×8 blocks per tile in Morton order, stored upside
   down) are replaced in place with key caps of the same size. The files go to `out/prompts`, which
   the runtime reads instead of the game's (`THEORDER_FILE_OVERRIDES`, `src/runtime_file.c`).
+- Dumps straight from the PS4 package keep p1 in Radical's archives (`art.rcf`, ...: "ATG CORE
+  CEMENT LIBRARY", directory of {u32 hash, u32 offset, u32 length} at the u32 offset 0x24). The
+  members are found by their contents (a text bible, the HUD package with `buttonhint__I16.dds`);
+  the patched ones are added past the archive's end and their entries moved there, as
+  `out/prompts/p1/<archive>.patch` (G3PATCH1), which the runtime lays over the archive.
 - The prompts are chosen at start (`THEORDER_PROMPTS`: auto, keyboard, gamepad); the game reads
   its texts once, so switching needs a restart. Auto follows `out/last_input.txt`, which the
   runtime rewrites when the player switches device (`THEORDER_LAST_INPUT`).

@@ -36,6 +36,27 @@ int main(void) {
     char ov_content[16]={0}; assert(do_read(ov,ov_content,9)==9 && !strcmp(ov_content,"generated"));
     GuestStat ov_info; assert(!do_stat("/app0/HUD/Text.rz",&ov_info) && ov_info.size==9);
     assert(!do_close(ov));
+    /* An archive with a .patch: two bytes replaced, four added past its end. */
+    char arc[700], patch[700];
+    snprintf(arc,sizeof(arc),"%s/arc.rcf",game);
+    snprintf(patch,sizeof(patch),"%s/arc.rcf.patch",overrides);
+    f=fopen(arc,"wb"); assert(f); assert(fwrite("0123456789",1,10,f)==10); assert(!fclose(f));
+    f=fopen(patch,"wb"); assert(f);
+    const uint64_t head[3]={10,16,0}; /* base size, new size, count (u32) + pad */
+    uint64_t counted[3]; memcpy(counted,head,sizeof(head)); counted[2]=2;
+    assert(fwrite("G3PATCH1",1,8,f)==8 && fwrite(counted,8,3,f)==3);
+    const uint64_t regions[6]={2,2,80, 12,4,82};
+    assert(fwrite(regions,8,6,f)==6 && fwrite("ABWXYZ",1,6,f)==6 && !fclose(f));
+    int pf=(int)do_open("/app0/arc.rcf",0,0); assert(pf>=3);
+    char got[32]={0};
+    assert(do_read(pf,got,32)==16 && !memcmp(got,"01AB456789\0\0WXYZ",16));
+    assert(do_lseek(pf,-4,2)==12);
+    memset(got,0,sizeof(got)); assert(do_read(pf,got,8)==4 && !memcmp(got,"WXYZ",4));
+    memset(got,0,sizeof(got)); assert(do_pread(pf,got,3,1)==3 && !memcmp(got,"1AB",3));
+    GuestStat ps; assert(!do_fstat(pf,&ps) && ps.size==16);
+    assert(!do_stat("/app0/arc.rcf",&ps) && ps.size==16);
+    assert(!do_close(pf));
+    assert(!unlink(patch) && !unlink(arc));
     assert(!unlink(ov_file) && !rmdir(ov_dir) && !rmdir(overrides) && !unlink(game_file) && !rmdir(game_dir));
     for (int i=0;i<3;++i) {
         const char *path=i==0 ? "/app0/asset.dcx" : i==1 ? "/hostapp/asset.dcx" : "asset.dcx";
