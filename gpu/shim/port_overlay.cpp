@@ -860,10 +860,16 @@ void PrototypeMenu() {
     switch (category) {
     case 0: {
         Option up{T("UPSCALER", "АПСКЕЙЛЕР"),
-                  T("Temporal anti-aliasing and reconstruction by AMD FidelityFX Super Resolution. FSR 4 "
-                    "and 4.1 need a Radeon RX 9000 series GPU.",
-                    "Временное сглаживание и реконструкция AMD FidelityFX Super Resolution. FSR 4 и 4.1 "
-                    "требуют видеокарту Radeon RX 9000."),
+                  fsr411 ? T("Temporal anti-aliasing and reconstruction by AMD FidelityFX Super Resolution. "
+                             "FSR 4 and 4.1 need a Radeon RX 9000 series GPU.",
+                             "Временное сглаживание и реконструкция AMD FidelityFX Super Resolution. FSR 4 "
+                             "и 4.1 требуют видеокарту Radeon RX 9000.")
+                         : T("Temporal anti-aliasing and reconstruction by AMD FidelityFX Super Resolution. "
+                             "FSR 4 needs a Radeon RX 9000 GPU; FSR 4.1 is hidden: your driver lacks the "
+                             "extension it needs (so far only Linux Mesa drivers have it).",
+                             "Временное сглаживание и реконструкция AMD FidelityFX Super Resolution. FSR 4 "
+                             "требует Radeon RX 9000; FSR 4.1 скрыт: драйвер не поддерживает нужное "
+                             "расширение (пока оно есть только в драйверах Mesa для Linux)."),
                   0, {}, 0};
         for (size_t i = 0; i < providers.size(); ++i) {
             up.values.push_back(provider_name(providers[i]));

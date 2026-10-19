@@ -180,8 +180,8 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_CS")) {
         trigger_hash = std::strtoull(hash, nullptr, 16);
     }
-    if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_VS")) {
-        draw_trigger_vs = std::strtoull(hash, nullptr, 16);
+    if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_FS")) {
+        draw_trigger_fs = std::strtoull(hash, nullptr, 16);
     }
     if (const char* hash = std::getenv("THEORDER_UI_TRIGGER_VS")) {
         ui_trigger_vs = std::strtoull(hash, nullptr, 16);
@@ -299,6 +299,21 @@ bool TemporalUpscaler::OnFrameStart() {
     const int preset = PortSettings::RenderPreset();
     if (applied_preset != preset || settings.upscaler == PortSettings::UpscalerOff) failed = false;
     const bool active = Active();
+    // PROTOTYPE: every ~5 s while FSR is on, how many frames reached the post pass, and why
+    // FSR did not run (no scene colour found / no camera yet).
+    static const bool prototype = [] {
+        const char* game = std::getenv("THEORDER_GAME");
+        return game && std::strcmp(game, "prototype") == 0;
+    }();
+    if (prototype && active && ++diag_frames >= 300) {
+        if (diag_runs < diag_frames) {
+            std::printf("Upscaler: %u frames, post pass seen %u, FSR ran %u, no scene colour %u, "
+                        "no camera %u%s\n",
+                        diag_frames, diag_triggers, diag_runs, diag_no_scene, diag_no_camera,
+                        failed ? ", failed" : "");
+        }
+        diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
+    }
     const bool jitter_on = active && settings.jitter && !PortToggle::Disabled(1u << 25);
     const int upscaler = settings.upscaler.load();
     const int output = settings.output_res.load();
@@ -362,15 +377,23 @@ bool TemporalUpscaler::OnFrameStart() {
     return changed;
 }
 
-void TemporalUpscaler::OnDrawTrigger(u64 vs_hash) {
-    if (vs_hash != draw_trigger_vs || done_this_frame || failed || Scaled()) {
+void TemporalUpscaler::OnDrawTrigger(u64 fs_hash) {
+    if (fs_hash != draw_trigger_fs || done_this_frame || failed || Scaled()) {
         return;
     }
     done_this_frame = true;
-    if (!scene_color || !camera_motion.Ready() || !Active()) {
+    ++diag_triggers;
+    if (!Active()) {
         reset = true;
         return;
     }
+    if (!scene_color || !camera_motion.Ready()) {
+        diag_no_scene += !scene_color;
+        diag_no_camera += !camera_motion.Ready();
+        reset = true;
+        return;
+    }
+    ++diag_runs;
     Run();
 }
 
@@ -1031,6 +1054,12 @@ void TemporalUpscaler::Run() {
     if ((!hdr && color_format != vk::Format::eR8G8B8A8Unorm) ||
         depth.info.size.width != ow || depth.info.size.height != oh ||
         !(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) {
+        static bool told = false;
+        if (!told) {
+            told = true;
+            std::printf("Upscaler: scene colour %ux%u format %d / depth %ux%u not usable\n", ow, oh,
+                        int(color_format), depth.info.size.width, depth.info.size.height);
+        }
         return;
     }
     if (!EnsureResources(w, h, ow, oh, hdr)) {

@@ -66,7 +66,7 @@ public:
 
     /// Before a draw (PROTOTYPE): the first post-processing draw's vertex shader triggers the
     /// upscale of the scene colour (RGBA8 or RGBA16F).
-    void OnDrawTrigger(u64 vs_hash);
+    void OnDrawTrigger(u64 fs_hash);
 
     /// Start of a frame in the command stream (display pass).
     bool OnFrameStart();
@@ -272,7 +272,8 @@ private:
     vk::UniquePipelineLayout merge_pipeline_layout;
     vk::UniquePipeline merge_pipeline;
     vk::UniquePipeline merge_ldr_pipeline; ///< RGBA8 scene colour (PROTOTYPE)
-    u64 draw_trigger_vs = 0x4bc9c66a;     ///< PROTOTYPE: depth-of-field/post pass
+    u64 draw_trigger_fs = 0xd9caa112;     ///< PROTOTYPE: first post pass (reads scene colour)
+    u32 diag_frames = 0, diag_triggers = 0, diag_no_scene = 0, diag_no_camera = 0, diag_runs = 0;
     std::array<VideoCore::UniqueImage, 2> taa_history;
     std::array<vk::UniqueImageView, 2> taa_history_views;
     u32 taa_next = 0;

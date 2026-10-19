@@ -62,7 +62,7 @@ How the port hooks FSR in (`THEORDER_GAME=prototype`, set by `run.py`):
 - **Camera** (`vk_camera_motion.cpp`, `OnObjectConstants`): material vertex constants hold
   World (floats 0–15) and WVP (16–31). VP = WVP·World⁻¹ is accepted when two draws agree, then split
   into the view matrix and the projection (scale x/y, depth = a + b/z; near ≈ 0.3, far ≈ 7500).
-- **When**: FSR runs right before the first post-processing draw (vertex shader `0x4bc9c66a`,
-  override with `THEORDER_UPSCALE_BEFORE_VS`), and the result is written back into the scene
+- **When**: FSR runs right before the first post-processing draw (pixel shader `0xd9caa112`,
+  override with `THEORDER_UPSCALE_BEFORE_FS`; its vertex shader is shared with the shadow pass), and the result is written back into the scene
   colour (`upscale_merge.comp`, `SCENE_LDR` variant).
 - Quality is Native AA (render size = output size) for now.

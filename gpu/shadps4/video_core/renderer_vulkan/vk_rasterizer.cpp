@@ -1112,7 +1112,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     PrepareRenderState(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
     if (PrototypeGame() && upscaler->Enabled()) {
-        upscaler->OnDrawTrigger(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash);
+        const Shader::Info* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        upscaler->OnDrawTrigger(fs ? fs->pgm_hash : 0);
     }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
@@ -1340,7 +1341,8 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     PrepareRenderState(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
     if (PrototypeGame() && upscaler->Enabled()) {
-        upscaler->OnDrawTrigger(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash);
+        const Shader::Info* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+        upscaler->OnDrawTrigger(fs ? fs->pgm_hash : 0);
     }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
