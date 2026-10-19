@@ -17,7 +17,6 @@ import sys
 import threading
 import time
 import hashlib
-import random
 
 # Modules run.py and scripts/ use: imported here so the packaged executable carries them.
 import argparse  # noqa: F401
@@ -43,7 +42,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.2.1'
+VERSION = '0.3.0'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -254,19 +253,20 @@ def leftovers(folder):
 # Look.
 
 C = {
-    'bg': '#09090a', 'panel': '#111113', 'line': '#2a2a2e', 'text': '#ece7e2', 'muted': '#8d8a87',
-    'dim': '#55524f', 'red': '#c8141c', 'red_hot': '#ec2129', 'red_dark': '#5e0a0e', 'ok': '#6fbf73',
-    'warn': '#e0a43a', 'bad': '#e0453a',
+    'bg': '#0c0d0f', 'panel': '#111215', 'line': '#232529', 'hair': '#1b1c20', 'text': '#e6e3df',
+    'muted': '#8e8c89', 'dim': '#55555a', 'red': '#b0161d', 'red_hot': '#c91f27', 'red_dark': '#3b0d10',
+    'track': '#2a2b30', 'ok': '#7db37c', 'warn': '#d2a04c', 'bad': '#d6564c',
 }
-W, H = 1200, 690
-PANEL = (700, 64, 1162, 636)
+W, H = 1200, 700
+SIDE = 772                      # the art and the play area; the settings panel fills the rest
+PANEL = (SIDE, 0, W, H)
 
 
 def pick_fonts(root):
     from tkinter import font as tkfont
     families = set(tkfont.families(root))
-    title = next((f for f in ('Impact', 'Bahnschrift SemiBold Condensed', 'Oswald', 'DejaVu Sans Condensed')
-                  if f in families), 'TkDefaultFont')
+    title = next((f for f in ('Bahnschrift SemiBold Condensed', 'Bahnschrift Condensed', 'Bahnschrift',
+                              'Segoe UI Semibold', 'DejaVu Sans Condensed') if f in families), 'TkDefaultFont')
     ui = next((f for f in ('Bahnschrift', 'Segoe UI', 'DejaVu Sans Condensed', 'DejaVu Sans') if f in families),
               'TkDefaultFont')
     return title, ui
@@ -282,77 +282,49 @@ def find_art(game_dir):
 
 def render_background(game_dir):
     """The window background (PIL image), or None without Pillow: the game's own key art from
-    the player's dump, toned black and red, faded into the panels."""
+    the player's dump, muted to greys with its reds kept, darkened under the text."""
     try:
-        from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
+        from PIL import Image, ImageDraw, ImageEnhance
     except ImportError:
         return None
     canvas = Image.new('RGB', (W, H), C['bg'])
-    # A dim red glow behind the figure.
-    glow = Image.new('L', (W, H), 0)
-    ImageDraw.Draw(glow).ellipse((300, 40, 980, 760), fill=255)
-    glow = glow.filter(ImageFilter.GaussianBlur(140))
-    canvas = Image.composite(Image.new('RGB', (W, H), '#3a0609'), canvas, Image.eval(glow, lambda v: int(v * 0.55)))
     art_path = find_art(game_dir)
     if art_path:
         try:
             art = Image.open(art_path).convert('RGB')
-            # The key art's left half: Alex Mercer (PROTOTYPE). Its white backdrop becomes
-            # transparent; the figure is toned black and blood red, its own reds kept hot.
-            half = art.crop((0, 0, art.width // 2, art.height))
-            scale = H * 1.06 / half.height
-            half = half.resize((int(half.width * scale), int(half.height * scale)), Image.LANCZOS)
-            gray = ImageOps.autocontrast(ImageOps.grayscale(half), cutoff=1)
-            toned = ImageOps.colorize(gray, black='#060505', mid='#5c1216', white='#ddd5ce', midpoint=105)
-            sat = half.convert('HSV').split()[1]
-            red = ImageOps.autocontrast(Image.eval(sat, lambda v: max(0, v - 60) * 2))
-            toned = Image.composite(Image.new('RGB', half.size, '#d0141c'), toned,
-                                    Image.eval(red, lambda v: int(v * 0.85)))
-            lum = ImageOps.grayscale(half)
-            alpha = Image.eval(lum, lambda v: 255 if v < 170 else max(0, int(255 * (236 - v) / 66)))
-            alpha = alpha.filter(ImageFilter.GaussianBlur(1.2))
-            # Fade the figure out toward the bottom and the left.
-            fade = Image.linear_gradient('L').resize(half.size)  # 0 at the top, 255 at the bottom
-            fade = Image.eval(fade, lambda v: 255 if v < 184 else max(0, int(255 * (255 - v) / 71)))
-            side = Image.linear_gradient('L').rotate(90, expand=True).transpose(Image.FLIP_LEFT_RIGHT).resize(half.size)
-            side = Image.eval(side, lambda v: min(255, v * 4))
-            alpha = ImageChops.multiply(ImageChops.multiply(alpha, fade), side)
-            canvas.paste(toned, (330, H - half.height + 20), alpha)
+            # The key art's left half (Alex Mercer), filling the play area.
+            art = art.crop((0, 0, art.width // 2, art.height))
+            scale = SIDE / art.width
+            art = art.resize((SIDE, int(art.height * scale)), Image.LANCZOS)
+            top = max(0, min(art.height - H, int(art.height * 0.04)))
+            art = art.crop((0, top, SIDE, top + H))
+            # Greys everywhere but the reds (the virus), then darker overall.
+            gray = Image.merge('RGB', [art.convert('L')] * 3)
+            hsv = art.convert('HSV').split()
+            red_mask = Image.eval(hsv[1], lambda v: 0 if v < 90 else min(255, (v - 90) * 3))
+            hue_mask = Image.eval(hsv[0], lambda h: 255 if h < 14 or h > 238 else 0)
+            from PIL import ImageChops
+            mask = ImageChops.multiply(red_mask, hue_mask)
+            art = Image.composite(ImageEnhance.Color(art).enhance(0.85), gray, mask)
+            art = ImageEnhance.Brightness(art).enhance(0.42)
+            art = ImageEnhance.Contrast(art).enhance(1.12)
+            canvas.paste(art, (0, 0))
         except Exception as error:
             print(f'launcher: art not used: {error}')
-    draw = ImageDraw.Draw(canvas, 'RGBA')
-    # Veins: a few branching red strands on the left, glowing.
-    veins = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    vd = ImageDraw.Draw(veins)
-    rng = random.Random(2009)
-    for strand in range(7):
-        x, y = rng.uniform(-40, 120), rng.uniform(0, H)
-        angle = rng.uniform(-0.6, 0.6)
-        width = rng.uniform(2.0, 4.5)
-        for _ in range(140):
-            import math
-            angle += rng.uniform(-0.25, 0.25)
-            nx, ny = x + math.cos(angle) * 6, y + math.sin(angle) * 6
-            vd.line([(x, y), (nx, ny)], fill=(150, 10, 18, int(70 + 80 * width / 4.5)), width=max(1, int(width)))
-            x, y, width = nx, ny, max(0.6, width * 0.985)
-            if rng.random() < 0.03:
-                bx, by, ba = x, y, angle + rng.choice((-0.9, 0.9))
-                for _ in range(30):
-                    ba += rng.uniform(-0.3, 0.3)
-                    nbx, nby = bx + math.cos(ba) * 5, by + math.sin(ba) * 5
-                    vd.line([(bx, by), (nbx, nby)], fill=(120, 8, 14, 90), width=1)
-                    bx, by = nbx, nby
-    glow = veins.filter(ImageFilter.GaussianBlur(6))
-    canvas.paste(glow, (0, 0), glow)
-    canvas.paste(veins, (0, 0), veins)
-    # Settings panel: translucent dark card with a thin border.
-    x0, y0, x1, y1 = PANEL
-    draw.rectangle((x0, y0, x1, y1), fill=(10, 10, 11, 205))
-    draw.rectangle((x0, y0, x1, y1), outline=(255, 255, 255, 24))
-    draw.rectangle((x0, y0, x0 + 3, y0 + 48), fill=(200, 20, 28, 255))
-    # Film grain.
-    noise = Image.effect_noise((W, H), 18).convert('L')
-    canvas = Image.blend(canvas, Image.merge('RGB', (noise, noise, noise)), 0.035)
+    # Shade: the lower part (title, play) and the edge toward the panel go to the background.
+    shade = Image.new('L', (SIDE, H), 0)
+    px = shade.load()
+    for y in range(H):
+        bottom = max(0.0, (y - H * 0.38) / (H * 0.62)) ** 1.3
+        for x in range(SIDE):
+            right = max(0.0, (x - SIDE * 0.72) / (SIDE * 0.28)) ** 1.6
+            px[x, y] = int(255 * min(1.0, bottom * 0.92 + right * 0.85))
+    left = canvas.crop((0, 0, SIDE, H))
+    left = Image.composite(Image.new('RGB', (SIDE, H), C['bg']), left, shade)
+    canvas.paste(left, (0, 0))
+    draw = ImageDraw.Draw(canvas)
+    draw.rectangle((SIDE, 0, W, H), fill=C['panel'])
+    draw.line((SIDE, 0, SIDE, H), fill=C['line'])
     return canvas
 
 
@@ -367,9 +339,8 @@ class Launcher:
         self.values = load_settings()
         self.process = None
         self.busy = None
-        self.hover_desc = None
         self.checks, self.sfo = [], {}
-        root.title('PROTOTYPE — Native PC Port')
+        root.title('PROTOTYPE')
         root.geometry(f'{W}x{H}')
         root.resizable(False, False)
         root.configure(bg=C['bg'])
@@ -413,11 +384,11 @@ class Launcher:
         self.checks, self.sfo = check_game(self.values['game_dir'])
         bad = [c for c in self.checks if c[1] == 'bad']
         if not self.values['game_dir']:
-            self.set_status('Select your PROTOTYPE BIOHAZARD BUNDLE folder to begin', C['warn'])
+            self.set_status('Select your game folder to begin', C['warn'])
         elif bad:
             self.set_status(f'{bad[0][0]}: {bad[0][2]}', C['bad'])
         else:
-            self.set_status('Ready', C['ok'])
+            self.set_status('Ready to play', C['muted'])
         if redraw:
             self.bg_image = None
             self.window_icon()
@@ -426,6 +397,11 @@ class Launcher:
     @property
     def ready(self):
         return bool(self.checks) and not any(state == 'bad' for _, state, _ in self.checks)
+
+    def hover(self, item, normal, hot):
+        cv = self.canvas
+        cv.tag_bind(item, '<Enter>', lambda e: (cv.itemconfigure(item, fill=hot), cv.configure(cursor='hand2')))
+        cv.tag_bind(item, '<Leave>', lambda e: (cv.itemconfigure(item, fill=normal), cv.configure(cursor='')))
 
     # ---- drawing
     def draw(self):
@@ -439,80 +415,87 @@ class Launcher:
         if self.bg_image is not None:
             cv.create_image(0, 0, image=self.bg_image, anchor='nw')
         else:
-            x0, y0, x1, y1 = PANEL
-            cv.create_rectangle(x0, y0, x1, y1, fill=C['panel'], outline=C['line'])
-            cv.create_rectangle(x0, y0, x0 + 3, y0 + 48, fill=C['red'], outline='')
+            cv.create_rectangle(SIDE, 0, W, H, fill=C['panel'], outline='')
+            cv.create_line(SIDE, 0, SIDE, H, fill=C['line'])
         self.draw_left()
         self.draw_panel()
 
     def draw_left(self):
         cv = self.canvas
-        x = 64
-        cv.create_text(x, 86, text='B I O H A Z A R D   B U N D L E', anchor='w', fill=C['red'],
-                       font=self.f(11, 'bold'))
-        cv.create_text(x - 3, 146, text='PROTOTYPE', anchor='w', fill=C['text'],
-                       font=(self.title_font, 64))
-        cv.create_rectangle(x, 208, x + 120, 211, fill=C['red'], outline='')
-        cv.create_text(x + 132, 210, text='NATIVE PC PORT', anchor='w', fill=C['muted'], font=self.f(10, 'bold'))
-        # Game tiles.
-        self.tile(x, 248, 'PROTOTYPE', 'READY' if self.ready else 'NEEDS SETUP', selected=True)
-        self.tile(x + 214, 248, 'PROTOTYPE 2', 'COMING SOON', selected=False, disabled=True)
+        x = 56
+        kicker = cv.create_text(x, 42, text='PROTOTYPE BIOHAZARD BUNDLE', anchor='w', fill=C['muted'],
+                                font=self.f(9, 'bold'))
+        cv.create_text(cv.bbox(kicker)[2] + 18, 42, text='NATIVE PC PORT', anchor='w', fill=C['dim'], font=self.f(9))
+        # Game selection.
+        gy = 392
+        active = cv.create_text(x, gy, text='PROTOTYPE', anchor='w', fill=C['text'], font=self.f(10, 'bold'))
+        bbox = cv.bbox(active)
+        cv.create_rectangle(bbox[0], gy + 13, bbox[2], gy + 15, fill=C['red'], outline='')
+        other = cv.create_text(bbox[2] + 26, gy, text='PROTOTYPE 2', anchor='w', fill=C['dim'], font=self.f(10, 'bold'))
+        cv.create_text(cv.bbox(other)[2] + 8, gy, text='SOON', anchor='w', fill=C['dim'], font=self.f(7, 'bold'))
+        # Title.
+        cv.create_text(x - 2, 452, text='PROTOTYPE', anchor='w', fill=C['text'], font=(self.title_font, 46, 'bold'))
+        version = self.sfo.get('APP_VER')
+        sub = 'Biohazard Bundle' + (f'   ·   {TITLE_ID}   ·   v{version}' if version else '')
+        cv.create_text(x, 496, text=sub, anchor='w', fill=C['muted'], font=self.f(10))
         # Play.
+        by = 534
         running = self.process is not None and self.process.poll() is None
         if running:
-            self.slant_button(x, 350, 404, 74, 'RUNNING', None, fill=C['line'], hot=C['line'], size=24)
-            self.link(x + 404 - 4, 448, 'STOP GAME', self.stop, anchor='e')
+            self.button(x, by, 220, 50, 'RUNNING', None, fill=C['track'], hot=C['track'])
+            stop = cv.create_text(x + 240, by + 25, text='STOP', anchor='w', fill=C['muted'], font=self.f(9, 'bold'))
+            self.hover(stop, C['muted'], C['text'])
+            cv.tag_bind(stop, '<Button-1>', lambda e: self.stop())
+            sx = x + 290
         elif self.busy:
-            self.slant_button(x, 350, 404, 74, self.busy.upper(), None, fill=C['red_dark'], hot=C['red_dark'], size=22)
+            self.button(x, by, 220, 50, self.busy.upper() + '…', None, fill=C['red_dark'], hot=C['red_dark'])
+            sx = x + 240
         else:
             enabled = self.ready
-            self.slant_button(x, 350, 404, 74, 'PLAY', self.play if enabled else None,
-                              fill=C['red'] if enabled else C['red_dark'], hot=C['red_hot'], size=28,
-                              icon=True)
-        self.status_item = self.canvas.create_text(x, 448, text=getattr(self, 'status_text', ''), anchor='w',
-                                                   fill=getattr(self, 'status_color', C['muted']),
-                                                   font=self.f(11), width=320)
-        # Footer.
-        fy = H - 46
-        self.link(x, fy, 'GAME FOLDER', self.choose_folder)
-        self.link(x + 128, fy, 'OPEN LOG', self.open_log)
-        self.link(x + 226, fy, 'PORT FOLDER', lambda: self.open_path(PORT_DIR))
-        cv.create_text(x, H - 20, text=f'v{VERSION} · requires your own game dump · not affiliated with the publisher',
-                       anchor='w', fill=C['dim'], font=self.f(8))
+            self.button(x, by, 220, 50, 'PLAY', self.play if enabled else None,
+                        fill=C['red'] if enabled else C['red_dark'], hot=C['red_hot'])
+            sx = x + 240
+        self.status_item = cv.create_text(sx, by + 25, text=getattr(self, 'status_text', ''), anchor='w',
+                                          fill=getattr(self, 'status_color', C['muted']), font=self.f(10),
+                                          width=SIDE - sx - 40)
+        # Footer links.
+        fy = H - 40
+        cv.create_line(x, fy - 22, SIDE - 56, fy - 22, fill=C['hair'])
+        lx = x
+        for text, command in (('Game folder', self.choose_folder), ('Saves', self.open_saves),
+                              ('Save backups', self.open_backups), ('Log', self.open_log),
+                              ('Port folder', lambda: self.open_path(PORT_DIR))):
+            item = cv.create_text(lx, fy, text=text, anchor='w', fill=C['muted'], font=self.f(9))
+            self.hover(item, C['muted'], C['text'])
+            cv.tag_bind(item, '<Button-1>', lambda e, c=command: c())
+            lx = cv.bbox(item)[2] + 24
+        cv.create_text(SIDE - 56, fy, text=f'v{VERSION}', anchor='e', fill=C['dim'], font=self.f(8))
 
-    def tile(self, x, y, title, sub, selected, disabled=False):
+    def button(self, x, y, w, h, text, command, fill, hot):
         cv = self.canvas
-        w, h = 198, 72
-        cv.create_rectangle(x, y, x + w, y + h, fill='#0e0e10', outline=C['red'] if selected else C['line'],
-                            width=2 if selected else 1)
-        if selected:
-            cv.create_rectangle(x, y + h - 4, x + w, y + h, fill=C['red'], outline='')
-        cv.create_text(x + 16, y + 26, text=title, anchor='w', fill=C['dim'] if disabled else C['text'],
-                       font=(self.title_font, 18))
-        color = C['dim'] if disabled else (C['ok'] if sub == 'READY' else C['warn'])
-        cv.create_text(x + 16, y + 52, text=sub, anchor='w', fill=color, font=self.f(9, 'bold'))
-
-    def slant_button(self, x, y, w, h, text, command, fill, hot, size=20, icon=False):
-        cv = self.canvas
-        s = 18
-        pts = (x + s, y, x + w, y, x + w - s, y + h, x, y + h)
-        tag = f'btn{id(command)}{x}{y}'
-        poly = cv.create_polygon(*pts, fill=fill, outline='', tags=(tag,))
-        label = f'▶  {text}' if icon else text
-        cv.create_text(x + w / 2, y + h / 2, text=label, fill=C['text'] if command else C['muted'],
-                       font=self.f(size, 'bold'), tags=(tag,))
+        tag = f'btn{x}_{y}'
+        rect = cv.create_rectangle(x, y, x + w, y + h, fill=fill, outline='', tags=(tag,))
+        cv.create_text(x + w / 2, y + h / 2, text=text, fill=C['text'] if command else C['muted'],
+                       font=self.f(12, 'bold'), tags=(tag,))
         if command:
-            cv.tag_bind(tag, '<Enter>', lambda e: (cv.itemconfigure(poly, fill=hot), cv.configure(cursor='hand2')))
-            cv.tag_bind(tag, '<Leave>', lambda e: (cv.itemconfigure(poly, fill=fill), cv.configure(cursor='')))
+            cv.tag_bind(tag, '<Enter>', lambda e: (cv.itemconfigure(rect, fill=hot), cv.configure(cursor='hand2')))
+            cv.tag_bind(tag, '<Leave>', lambda e: (cv.itemconfigure(rect, fill=fill), cv.configure(cursor='')))
             cv.tag_bind(tag, '<Button-1>', lambda e: command())
 
-    def link(self, x, y, text, command, anchor='w', size=10, color=None):
+    def small_button(self, x, y, text, command, desc=''):
+        """An outlined button; returns its right edge."""
         cv = self.canvas
-        item = cv.create_text(x, y, text=text, anchor=anchor, fill=color or C['muted'], font=self.f(size, 'bold'))
-        cv.tag_bind(item, '<Enter>', lambda e: (cv.itemconfigure(item, fill=C['red_hot']), cv.configure(cursor='hand2')))
-        cv.tag_bind(item, '<Leave>', lambda e: (cv.itemconfigure(item, fill=color or C['muted']), cv.configure(cursor='')))
-        cv.tag_bind(item, '<Button-1>', lambda e: command())
-        return item
+        label = cv.create_text(x + 12, y, text=text, anchor='w', fill=C['text'], font=self.f(9, 'bold'))
+        b = cv.bbox(label)
+        rect = cv.create_rectangle(x, y - 13, b[2] + 12, y + 13, outline=C['line'], fill='')
+        cv.tag_raise(label)
+        for item in (rect, label):
+            cv.tag_bind(item, '<Enter>', lambda e: (cv.itemconfigure(rect, outline=C['muted']), self.describe(desc),
+                                                    cv.configure(cursor='hand2')))
+            cv.tag_bind(item, '<Leave>', lambda e: (cv.itemconfigure(rect, outline=C['line']), self.describe(''),
+                                                    cv.configure(cursor='')))
+            cv.tag_bind(item, '<Button-1>', lambda e: command())
+        return b[2] + 12
 
     # ---- settings panel
     TABS = ('GRAPHICS', 'DISPLAY', 'GAME')
@@ -520,25 +503,24 @@ class Launcher:
     def draw_panel(self):
         cv = self.canvas
         x0, y0, x1, y1 = PANEL
-        tx = x0 + 26
+        tx = x0 + 32
         for i, name in enumerate(self.TABS):
             active = self.values['tab'] == i
-            item = cv.create_text(tx, y0 + 26, text=name, anchor='w', fill=C['text'] if active else C['muted'],
-                                  font=self.f(13, 'bold'))
+            item = cv.create_text(tx, 40, text=name, anchor='w', fill=C['text'] if active else C['muted'],
+                                  font=self.f(10, 'bold'))
             bbox = cv.bbox(item)
             if active:
-                cv.create_rectangle(bbox[0], y0 + 42, bbox[2], y0 + 45, fill=C['red'], outline='')
+                cv.create_rectangle(bbox[0], 63, bbox[2], 65, fill=C['red'], outline='')
             else:
-                cv.tag_bind(item, '<Enter>', lambda e, it=item: (cv.itemconfigure(it, fill=C['text']), cv.configure(cursor='hand2')))
-                cv.tag_bind(item, '<Leave>', lambda e, it=item: (cv.itemconfigure(it, fill=C['muted']), cv.configure(cursor='')))
+                self.hover(item, C['muted'], C['text'])
                 cv.tag_bind(item, '<Button-1>', lambda e, i=i: self.switch_tab(i))
-            tx += 124
-        cv.create_line(x0 + 20, y0 + 56, x1 - 20, y0 + 56, fill=C['line'])
-        self.row_y = y0 + 86
-        # Description area.
-        cv.create_line(x0 + 20, y1 - 74, x1 - 20, y1 - 74, fill=C['line'])
-        self.desc_item = cv.create_text(x0 + 24, y1 - 62, text='', anchor='nw', fill=C['muted'],
-                                        font=self.f(10), width=x1 - x0 - 48)
+            tx += 108
+        cv.create_line(x0, 65, x1, 65, fill=C['line'])
+        self.row_y = 108
+        # Description of the row under the pointer.
+        cv.create_line(x0 + 32, y1 - 92, x1 - 32, y1 - 92, fill=C['hair'])
+        self.desc_item = cv.create_text(x0 + 32, y1 - 76, text='', anchor='nw', fill=C['muted'],
+                                        font=self.f(9), width=x1 - x0 - 64)
         [self.tab_graphics, self.tab_display, self.tab_game][self.values['tab']]()
 
     def switch_tab(self, i):
@@ -549,64 +531,58 @@ class Launcher:
     def describe(self, text):
         self.canvas.itemconfigure(self.desc_item, text=text or '')
 
-    def row(self, label, desc, height=46, locked=False):
+    def row(self, label, desc, height=44, locked=False):
         cv = self.canvas
         x0, _, x1, _ = PANEL
         y = self.row_y
         tag = f'row{y}'
-        hit = cv.create_rectangle(x0 + 14, y - height / 2 + 2, x1 - 14, y + height / 2 - 2, fill='', outline='',
-                                  tags=(tag,))
-        cv.create_text(x0 + 26, y, text=label, anchor='w', fill=C['dim'] if locked else C['text'],
-                       font=self.f(12), tags=(tag,))
+        cv.create_rectangle(x0 + 1, y - height / 2, x1, y + height / 2, fill='', outline='', tags=(tag,))
+        cv.create_text(x0 + 32, y, text=label, anchor='w', fill=C['dim'] if locked else C['text'],
+                       font=self.f(10), tags=(tag,))
+        cv.create_line(x0 + 32, y + height / 2, x1 - 32, y + height / 2, fill=C['hair'])
         cv.tag_bind(tag, '<Enter>', lambda e: self.describe(desc))
         cv.tag_bind(tag, '<Leave>', lambda e: self.describe(''))
         self.row_y += height
-        del hit
         return y, tag
 
     def stepper(self, label, desc, key, options, locked=False):
-        """◀ value ▶ over a list of (value, text)."""
+        """‹ value › over a list of (value, text)."""
         cv = self.canvas
         y, tag = self.row(label, desc, locked=locked)
-        x1 = PANEL[2] - 26
-        width = 224
+        x1 = PANEL[2] - 32
+        width = 176
         current = self.values.get(key)
         index = next((i for i, (v, _) in enumerate(options) if v == current), 0)
-        text = options[index][1]
-        cx = x1 - width / 2
-        cv.create_text(cx, y, text=text, fill=C['dim'] if locked else C['text'], font=self.f(12, 'bold'), tags=(tag,))
-        for direction, ax in ((-1, x1 - width + 8), (1, x1 - 8)):
-            arrow = cv.create_text(ax, y, text='◀' if direction < 0 else '▶', fill=C['dim'] if locked else C['red'],
-                                   font=self.f(12), tags=(tag,))
+        cv.create_text(x1 - width / 2, y, text=options[index][1], fill=C['dim'] if locked else C['text'],
+                       font=self.f(10, 'bold'), tags=(tag,))
+        for direction, ax in ((-1, x1 - width + 6), (1, x1 - 6)):
+            arrow = cv.create_text(ax, y - 1, text='‹' if direction < 0 else '›', fill=C['dim'] if locked else C['muted'],
+                                   font=self.f(15), tags=(tag,))
             if locked:
                 continue
+
             def step(e, d=direction):
                 self.values[key] = options[(index + d) % len(options)][0]
                 self.save()
                 self.draw()
                 self.describe(desc)
             cv.tag_bind(arrow, '<Button-1>', step)
-            cv.tag_bind(arrow, '<Enter>', lambda e, a=arrow: (cv.itemconfigure(a, fill=C['red_hot']), cv.configure(cursor='hand2')))
-            cv.tag_bind(arrow, '<Leave>', lambda e, a=arrow: (cv.itemconfigure(a, fill=C['red']), cv.configure(cursor='')))
-        cv.create_line(x1 - width + 22, y + 13, x1 - 22, y + 13, fill=C['line'], tags=(tag,))
+            self.hover(arrow, C['muted'], C['text'])
 
     def toggle(self, label, desc, key, locked=False):
         cv = self.canvas
         y, tag = self.row(label, desc, locked=locked)
-        x1 = PANEL[2] - 26
+        x1 = PANEL[2] - 32
         on = bool(self.values.get(key)) and not locked
-        w, h = 46, 22
+        w, h = 34, 16
         x = x1 - w
-        fill = C['red'] if on else '#26262a'
         sw = f'sw{y}'
-        cv.create_oval(x, y - h / 2, x + h, y + h / 2, fill=fill, outline='', tags=(tag, sw))
-        cv.create_oval(x + w - h, y - h / 2, x + w, y + h / 2, fill=fill, outline='', tags=(tag, sw))
-        cv.create_rectangle(x + h / 2, y - h / 2, x + w - h / 2, y + h / 2, fill=fill, outline='', tags=(tag, sw))
-        kx = x + w - h + 3 if on else x + 3
-        cv.create_oval(kx, y - h / 2 + 3, kx + h - 6, y + h / 2 - 3, fill=C['text'] if not locked else C['dim'],
-                       outline='', tags=(tag, sw))
-        cv.create_text(x - 12, y, text='ON' if on else 'OFF', anchor='e', fill=C['muted'], font=self.f(9, 'bold'),
-                       tags=(tag,))
+        cv.create_rectangle(x, y - h / 2, x + w, y + h / 2, fill=C['red'] if on else C['track'], outline='',
+                            tags=(tag, sw))
+        kx = x + w - h + 2 if on else x + 2
+        cv.create_rectangle(kx, y - h / 2 + 2, kx + h - 4, y + h / 2 - 2, fill=C['text'] if not locked else C['dim'],
+                            outline='', tags=(tag, sw))
+        cv.create_text(x - 12, y, text='On' if on else 'Off', anchor='e', fill=C['muted'], font=self.f(9), tags=(tag,))
         if not locked:
             def flip(e):
                 self.values[key] = not self.values.get(key)
@@ -620,104 +596,111 @@ class Launcher:
     def slider(self, label, desc, key, low, high, locked=False):
         cv = self.canvas
         y, tag = self.row(label, desc, locked=locked)
-        x1 = PANEL[2] - 26
-        width = 196
+        x1 = PANEL[2] - 32
+        width = 176
         x = x1 - width
+        span = width - 44
         value = int(self.values.get(key, low))
-        cv.create_line(x, y, x1 - 40, y, fill='#2c2c30', width=4, tags=(tag,))
-        frac = (value - low) / (high - low)
-        kx = x + frac * (width - 40)
-        bar = cv.create_line(x, y, kx, y, fill=C['dim'] if locked else C['red'], width=4, tags=(tag,))
-        knob = cv.create_oval(kx - 7, y - 7, kx + 7, y + 7, fill=C['text'] if not locked else C['dim'], outline='', tags=(tag,))
-        num = cv.create_text(x1, y, text=f'{value}%', anchor='e', fill=C['muted'], font=self.f(10, 'bold'), tags=(tag,))
+        cv.create_line(x, y, x + span, y, fill=C['track'], width=2, tags=(tag,))
+        kx = x + (value - low) / (high - low) * span
+        bar = cv.create_line(x, y, kx, y, fill=C['dim'] if locked else C['red'], width=2, tags=(tag,))
+        knob = cv.create_rectangle(kx - 4, y - 7, kx + 4, y + 7, fill=C['text'] if not locked else C['dim'],
+                                   outline='', tags=(tag,))
+        num = cv.create_text(x1, y, text=f'{value}', anchor='e', fill=C['muted'], font=self.f(9), tags=(tag,))
         if locked:
             return
+        hit = cv.create_rectangle(x - 6, y - 10, x + span + 6, y + 10, fill='', outline='', tags=(tag,))
 
         def move(e):
-            frac = min(1.0, max(0.0, (e.x - x) / (width - 40)))
+            frac = min(1.0, max(0.0, (e.x - x) / span))
             v = int(round(low + frac * (high - low)))
             self.values[key] = v
-            nx = x + frac * (width - 40)
+            nx = x + frac * span
             cv.coords(bar, x, y, nx, y)
-            cv.coords(knob, nx - 7, y - 7, nx + 7, y + 7)
-            cv.itemconfigure(num, text=f'{v}%')
+            cv.coords(knob, nx - 4, y - 7, nx + 4, y + 7)
+            cv.itemconfigure(num, text=f'{v}')
 
-        for item in (bar, knob):
+        for item in (hit, bar, knob):
             cv.tag_bind(item, '<Button-1>', move)
             cv.tag_bind(item, '<B1-Motion>', move)
             cv.tag_bind(item, '<ButtonRelease-1>', lambda e: self.save())
 
     def note(self, text, color=None, height=30):
-        y = self.row_y - 14
-        self.canvas.create_text(PANEL[0] + 26, y, text=text, anchor='nw', fill=color or C['dim'], font=self.f(10),
-                                width=PANEL[2] - PANEL[0] - 52)
+        self.canvas.create_text(PANEL[0] + 32, self.row_y - 16, text=text, anchor='nw', fill=color or C['muted'],
+                                font=self.f(9), width=PANEL[2] - PANEL[0] - 64)
         self.row_y += height
 
-    def section(self, text):
-        y = self.row_y - 8
-        self.canvas.create_text(PANEL[0] + 26, y, text=text, anchor='w', fill=C['red'], font=self.f(9, 'bold'))
-        self.row_y += 22
+    def section(self, text, first=False):
+        if not first:
+            self.row_y += 14
+        self.canvas.create_text(PANEL[0] + 32, self.row_y - 8, text=text, anchor='w', fill=C['dim'],
+                                font=self.f(8, 'bold'))
+        self.row_y += 24
 
     def tab_graphics(self):
-        res = [(r, r.replace('x', ' × ') + ('  (PS4)' if r == '1920x1080' else '')) for r in RESOLUTIONS]
-        self.section('IMAGE')
-        self.stepper('Render resolution', 'EXPERIMENTAL. The resolution the game renders at. Above your window '
-                     'size it supersamples (sharper, heavier); below it, FSR 1 scales it up. If the game '
-                     'misbehaves, set it back to 1920 × 1080.', 'render_res', res)
-        self.toggle('FSR 1 upscaling', 'AMD FidelityFX Super Resolution 1: scales the game image to your window '
-                    'with edge-aware upscaling instead of plain filtering.', 'fsr1')
-        self.toggle('Sharpening (RCAS)', 'Contrast-adaptive sharpening of the final image.', 'rcas')
+        res = [(r, r.replace('x', ' × ')) for r in RESOLUTIONS]
+        self.section('IMAGE', first=True)
+        self.stepper('Render resolution', 'Experimental. The resolution the game renders at; 1920 × 1080 is '
+                     'the PS4\'s. Higher supersamples (sharper, heavier); lower is scaled up by FSR 1. If the '
+                     'game misbehaves, set it back to 1920 × 1080.', 'render_res', res)
+        self.toggle('FSR 1 upscaling', 'AMD FidelityFX Super Resolution 1: scales the game image to the window '
+                    'with edge-aware filtering. Only active when the window is larger than the image.', 'fsr1')
+        self.toggle('Sharpening', 'Contrast-adaptive sharpening (RCAS) of the final image.', 'rcas')
         self.slider('Sharpness', 'Strength of the sharpening.', 'rcas_strength', 0, 100, locked=not self.values['rcas'])
-        self.stepper('Anisotropic filtering', 'Sharper textures at grazing angles (ground, walls). '
-                     'Cheap on any modern GPU.', 'anisotropy',
-                     [(0, 'Game default'), (2, '2×'), (4, '4×'), (8, '8×'), (16, '16×')])
-        self.stepper('Frame rate', '60 FPS: gameplay at 60, videos and menus keep their normal speed.', 'fps60',
-                     [(False, '30 FPS (PS4)'), (True, '60 FPS')])
+        self.stepper('Texture filtering', 'Anisotropic filtering: sharper ground and walls at steep angles.',
+                     'anisotropy', [(0, 'Game default'), (2, '2× AF'), (4, '4× AF'), (8, '8× AF'), (16, '16× AF')])
+        self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.', 'fps60',
+                     [(False, '30 FPS'), (True, '60 FPS')])
         self.section('IN DEVELOPMENT')
-        self.stepper('Temporal upscaler', 'FSR 3.1, FSR 4 and FSR 4.1 need motion vectors from the game\'s '
-                     'camera: being hooked up for PROTOTYPE, coming in a later update.', 'none',
-                     [(None, 'FSR 3.1 · 4 · 4.1')], locked=True)
+        self.stepper('Temporal upscaling', 'FSR 3.1, FSR 4 and FSR 4.1 need the game\'s camera motion: '
+                     'being connected for PROTOTYPE, coming in a later update.', 'none',
+                     [(None, 'FSR 3.1 / 4 / 4.1')], locked=True)
 
     def tab_display(self):
-        self.section('WINDOW')
-        self.stepper('Window mode', 'Borderless fills the screen and switches instantly with Alt+Tab.',
+        self.section('WINDOW', first=True)
+        self.stepper('Display mode', 'Borderless fills the screen and switches instantly with Alt+Tab.',
                      'display_mode', [('windowed', 'Windowed'), ('borderless', 'Borderless'), ('fullscreen', 'Fullscreen')])
         self.toggle('V-Sync', 'Waits for the display refresh: no tearing.', 'vsync')
-        self.toggle('Show FPS', 'Frame rate counter in the corner.', 'show_fps')
+        self.toggle('Frame counter', 'Shows the frame rate in a corner of the screen.', 'show_fps')
         self.section('IN GAME')
-        self.note('Insert (keyboard) or R3 + L2 (controller) opens the port menu while playing.', C['muted'], 40)
+        self.note('Insert (keyboard) or R3 + L2 (controller) opens the port menu while playing.')
 
     def tab_game(self):
         cv = self.canvas
         x0, _, x1, _ = PANEL
-        self.section('GAME FOLDER')
-        folder = self.values['game_dir'] or 'not selected'
-        if len(folder) > 46:
-            folder = '…' + folder[-45:]
-        cv.create_text(x0 + 26, self.row_y - 4, text=folder, anchor='w', fill=C['text'], font=self.f(11))
-        self.link(x1 - 26, self.row_y - 4, 'CHANGE', self.choose_folder, anchor='e', color=C['red'])
-        self.row_y += 30
+        self.section('GAME FOLDER', first=True)
+        folder = self.values['game_dir'] or 'Not selected'
+        if len(folder) > 44:
+            folder = '…' + folder[-43:]
+        cv.create_text(x0 + 32, self.row_y - 6, text=folder, anchor='w', fill=C['text'], font=self.f(10))
+        change = cv.create_text(x1 - 32, self.row_y - 6, text='Change', anchor='e', fill=C['muted'], font=self.f(9, 'bold'))
+        self.hover(change, C['muted'], C['text'])
+        cv.tag_bind(change, '<Button-1>', lambda e: self.choose_folder())
+        self.row_y += 26
         for label, state, detail in self.checks:
-            mark = {'ok': '●', 'warn': '▲', 'bad': '✖'}[state]
-            cv.create_text(x0 + 30, self.row_y - 6, text=mark, anchor='w', fill=C[state], font=self.f(11, 'bold'))
-            cv.create_text(x0 + 52, self.row_y - 6, text=label, anchor='w', fill=C['text'], font=self.f(11))
-            cv.create_text(x1 - 26, self.row_y - 6, text=detail, anchor='e', fill=C['muted'], font=self.f(10))
-            self.row_y += 24
-        self.row_y += 8
-        bx = x0 + 26
-        actions = [('PREPARE', self.prepare, 'Converts the game into the native image now (also done at every start).')]
+            cv.create_rectangle(x0 + 33, self.row_y - 9, x0 + 37, self.row_y - 5, fill=C[state], outline='')
+            cv.create_text(x0 + 48, self.row_y - 7, text=label, anchor='w', fill=C['text'], font=self.f(9))
+            cv.create_text(x1 - 32, self.row_y - 7, text=detail, anchor='e', fill=C['muted'], font=self.f(9))
+            self.row_y += 22
+        self.row_y += 18
+        bx = x0 + 32
+        bx = self.small_button(bx, self.row_y, 'PREPARE', self.prepare,
+                               'Converts the game into the native image now (also done at every start).') + 10
         if self.values['game_dir'] and restorable(self.values['game_dir']):
-            actions.append(('RESTORE ORIGINAL', self.restore, 'Puts the original executables back from the .orig backups.'))
-        actions.append(('CLEAN UP', self.clean, 'Deletes files earlier fixes and debugging left in the game folder.'))
-        for text, command, desc in actions:
-            item = self.link(bx, self.row_y, f'[ {text} ]', command, color=C['text'])
-            cv.tag_bind(item, '<Enter>', lambda e, d=desc, it=item: (self.describe(d), cv.itemconfigure(it, fill=C['red_hot']),
-                                                                     cv.configure(cursor='hand2')), add=False)
-            bx = cv.bbox(item)[2] + 18
-        self.row_y += 36
-        self.section('OPTIONS')
-        self.toggle('Fix white tendrils', 'Consume tendrils show their red veins (a fix for a GPU emulation '
-                    'difference; keep it on).', 'tendril_fix')
+            bx = self.small_button(bx, self.row_y, 'RESTORE ORIGINAL', self.restore,
+                                   'Puts the original executables back from the .orig backups.') + 10
+        self.small_button(bx, self.row_y, 'CLEAN UP', self.clean,
+                          'Deletes files earlier fixes and debugging left in the game folder.')
+        self.row_y += 30
+        self.section('SAVES')
+        bx = self.small_button(x0 + 32, self.row_y, 'OPEN SAVE FOLDER', self.open_saves,
+                               'Your saves: user\\savedata in the port folder.') + 10
+        self.small_button(bx, self.row_y, 'OPEN BACKUPS', self.open_backups,
+                          'A copy of your saves is made at every start (the latest ones are kept).')
+        self.row_y += 30
+        self.section('FIXES')
+        self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation difference). '
+                    'Keep it on.', 'tendril_fix')
 
     # ---- actions
     def choose_folder(self):
@@ -741,6 +724,25 @@ class Launcher:
                 subprocess.Popen(['xdg-open', str(path)])
         except OSError as error:
             self.set_status(f'Cannot open {path}: {error}', C['bad'])
+
+    def save_folder(self):
+        root = PORT_DIR / 'user' / 'savedata'
+        candidates = sorted(root.glob(f'*/{TITLE_ID}')) if root.is_dir() else []
+        return candidates[0] if candidates else root
+
+    def open_saves(self):
+        folder = self.save_folder()
+        if folder.is_dir():
+            self.open_path(folder)
+        else:
+            self.set_status('No saves yet: they appear after the first save in game', C['muted'])
+
+    def open_backups(self):
+        folder = PORT_DIR / 'user' / 'savedata_backups'
+        if folder.is_dir():
+            self.open_path(folder)
+        else:
+            self.set_status('No save backups yet', C['muted'])
 
     def open_log(self):
         if LOG_FILE.is_file():

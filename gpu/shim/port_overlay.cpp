@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cfloat>
+#include <string>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -555,57 +557,166 @@ void TextEntryBox() {
     ImGui::End();
 }
 
+// PROTOTYPE port: the save/load list as a full-screen dialog in the game's colors (charcoal,
+// blood red accent), each save a row with its picture, title, location and date.
+namespace Theme {
+constexpr ImU32 Dim = IM_COL32(0, 0, 0, 170);
+constexpr ImU32 Panel = IM_COL32(12, 12, 14, 246);
+constexpr ImU32 Border = IM_COL32(255, 255, 255, 22);
+constexpr ImU32 Red = IM_COL32(200, 20, 28, 255);
+constexpr ImU32 RedSoft = IM_COL32(200, 20, 28, 34);
+constexpr ImU32 Text = IM_COL32(236, 231, 226, 255);
+constexpr ImU32 Muted = IM_COL32(150, 146, 142, 255);
+constexpr ImU32 Faint = IM_COL32(95, 92, 89, 255);
+constexpr ImU32 Line = IM_COL32(255, 255, 255, 14);
+constexpr ImU32 Slot = IM_COL32(26, 26, 29, 255);
+} // namespace Theme
+
+// A key hint: a small framed key label followed by its action.
+float KeyHint(ImDrawList* dl, ImVec2 pos, const char* key, const char* action, float size, bool measure_only = false) {
+    ImFont* font = ImGui::GetFont();
+    const ImVec2 ks = font->CalcTextSizeA(size * 0.82f, FLT_MAX, 0.0f, key);
+    const ImVec2 as = font->CalcTextSizeA(size, FLT_MAX, 0.0f, action);
+    const float pad = size * 0.35f, gap = size * 0.45f;
+    const float width = ks.x + pad * 2 + gap + as.x;
+    if (!measure_only) {
+        const ImVec2 kmin(pos.x, pos.y), kmax(pos.x + ks.x + pad * 2, pos.y + size * 1.25f);
+        dl->AddRect(kmin, kmax, Theme::Muted, 2.0f, 0, 1.0f);
+        dl->AddText(font, size * 0.82f, ImVec2(kmin.x + pad, kmin.y + (kmax.y - kmin.y - ks.y) * 0.5f), Theme::Text, key);
+        dl->AddText(font, size, ImVec2(kmax.x + gap, pos.y + (size * 1.25f - as.y) * 0.5f), Theme::Muted, action);
+    }
+    return width;
+}
+
+std::string Upper(std::string text) {
+    for (char& c : text) c = char(std::toupper(static_cast<unsigned char>(c)));
+    return text;
+}
+
 void ChoiceBox() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
-                                   viewport->WorkPos.y + viewport->WorkSize.y * 0.5f),
-                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(viewport->WorkSize.x * 0.36f, 0.0f),
-                                        ImVec2(viewport->WorkSize.x * 0.8f, viewport->WorkSize.y * 0.8f));
-    ImGui::SetNextWindowBgAlpha(0.94f);
+    const float s = base_scale;
+    ImDrawList* bg = ImGui::GetBackgroundDrawList();
+    // The game behind dims; the dialog sits in the middle.
+    bg->AddRectFilled(viewport->WorkPos, ImVec2(viewport->WorkPos.x + viewport->WorkSize.x,
+                                                viewport->WorkPos.y + viewport->WorkSize.y), Theme::Dim);
+    const ImVec2 picture(228.0f * 0.78f * s, 128.0f * 0.78f * s);
+    const float row_h = picture.y + 22.0f * s, pad = 28.0f * s;
+    const float width = std::min(860.0f * s, viewport->WorkSize.x * 0.9f);
+    const float list_h = std::min(row_h * float(std::max<size_t>(choice_items.size(), 1)),
+                                  viewport->WorkSize.y * 0.62f);
+    const float header_h = 92.0f * s, footer_h = 64.0f * s;
+    const ImVec2 size(width, header_h + list_h + footer_h);
+    const ImVec2 origin(viewport->WorkPos.x + (viewport->WorkSize.x - size.x) * 0.5f,
+                        viewport->WorkPos.y + (viewport->WorkSize.y - size.y) * 0.5f);
+    ImGui::SetNextWindowPos(origin, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(size, ImGuiCond_Always);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
     ImGui::Begin("##choice", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
-                     ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
-                     ImGuiWindowFlags_NoFocusOnAppearing);
-    ImGui::TextColored(ImVec4(0.85f, 0.72f, 0.45f, 1.0f), "%s", choice_title.c_str());
-    ImGui::Separator();
-    // Save pictures are 228x128; rows without one keep the text aligned when others have one.
-    const bool pictures = std::any_of(choice_textures.begin(), choice_textures.end(),
-                                      [](ImTextureData* tex) { return tex != nullptr; });
-    const ImVec2 picture_size(228.0f * base_scale, 128.0f * base_scale);
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
+                     ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoScrollbar);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImFont* font = ImGui::GetFont();
+    const float fs = ImGui::GetFontSize();
+    const ImVec2 end(origin.x + size.x, origin.y + size.y);
+    dl->AddRectFilled(origin, end, Theme::Panel);
+    dl->AddRect(origin, end, Theme::Border);
+    dl->AddRectFilled(origin, ImVec2(origin.x + 4.0f * s, origin.y + header_h - 18.0f * s), Theme::Red);
+    // Header: a small red label above the title.
+    dl->AddText(font, fs * 0.8f, ImVec2(origin.x + pad, origin.y + 20.0f * s), Theme::Red, "SAVE DATA");
+    dl->AddText(font, fs * 1.55f, ImVec2(origin.x + pad, origin.y + 38.0f * s), Theme::Text,
+                Upper(choice_title).c_str());
+    char count[48];
+    const int saves = int(std::count_if(choice_items.begin(), choice_items.end(),
+                                        [](const std::string& t) { return t != "New save"; }));
+    std::snprintf(count, sizeof(count), "%d SAVE%s", saves, saves == 1 ? "" : "S");
+    const ImVec2 cs = font->CalcTextSizeA(fs * 0.72f, FLT_MAX, 0.0f, count);
+    dl->AddText(font, fs * 0.72f, ImVec2(end.x - pad - cs.x, origin.y + 26.0f * s), Theme::Faint, count);
+    dl->AddLine(ImVec2(origin.x + pad, origin.y + header_h - 6.0f * s),
+                ImVec2(end.x - pad, origin.y + header_h - 6.0f * s), Theme::Line);
+    // The list scrolls inside its own region; the selected row stays in view.
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + header_h));
+    ImGui::BeginChild("##choice_list", ImVec2(size.x, list_h), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoScrollbar |
+                          ImGuiWindowFlags_NoBackground);
+    ImDrawList* ld = ImGui::GetWindowDrawList();
     for (int i = 0; i < int(choice_items.size()); ++i) {
         const bool selected = i == choice_index;
-        ImGui::BeginGroup();
+        const ImVec2 rmin = ImGui::GetCursorScreenPos();
+        const ImVec2 rmax(rmin.x + size.x, rmin.y + row_h);
+        if (selected) {
+            ld->AddRectFilled(ImVec2(rmin.x + pad * 0.5f, rmin.y), ImVec2(rmax.x - pad * 0.5f, rmax.y), Theme::RedSoft);
+            ld->AddRectFilled(ImVec2(rmin.x + pad * 0.5f, rmin.y), ImVec2(rmin.x + pad * 0.5f + 3.0f * s, rmax.y), Theme::Red);
+        }
+        const ImVec2 pmin(rmin.x + pad, rmin.y + (row_h - picture.y) * 0.5f);
+        const ImVec2 pmax(pmin.x + picture.x, pmin.y + picture.y);
         ImTextureData* tex = i < int(choice_textures.size()) ? choice_textures[i] : nullptr;
         if (tex) {
-            ImGui::Image(tex->GetTexRef(), picture_size);
-        } else if (pictures) {
-            ImGui::Dummy(picture_size);
-        }
-        if (pictures) {
-            ImGui::SameLine();
-        }
-        if (selected) {
-            ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.55f, 1.0f), "> %s", choice_items[i].c_str());
+            ld->AddImage(tex->GetTexRef(), pmin, pmax);
         } else {
-            ImGui::Text("  %s", choice_items[i].c_str());
+            ld->AddRectFilled(pmin, pmax, Theme::Slot);
+            const float c = 9.0f * s;
+            const ImVec2 mid((pmin.x + pmax.x) * 0.5f, (pmin.y + pmax.y) * 0.5f);
+            ld->AddLine(ImVec2(mid.x - c, mid.y), ImVec2(mid.x + c, mid.y), selected ? Theme::Red : Theme::Faint, 2.0f * s);
+            ld->AddLine(ImVec2(mid.x, mid.y - c), ImVec2(mid.x, mid.y + c), selected ? Theme::Red : Theme::Faint, 2.0f * s);
         }
-        ImGui::EndGroup();
+        ld->AddRect(pmin, pmax, selected ? Theme::Red : Theme::Border, 0.0f, 0, selected ? 2.0f * s : 1.0f);
+        // Title, location and date (the save's lines).
+        const std::string& item = choice_items[i];
+        std::vector<std::string> lines;
+        for (size_t at = 0;;) {
+            const size_t nl = item.find('\n', at);
+            lines.push_back(item.substr(at, nl == std::string::npos ? std::string::npos : nl - at));
+            if (nl == std::string::npos) break;
+            at = nl + 1;
+        }
+        const float tx = pmax.x + 22.0f * s;
+        const float clip = rmax.x - pad;
+        float ty = pmin.y + 4.0f * s;
+        if (lines.size() == 1) {
+            ty = (pmin.y + pmax.y) * 0.5f - fs * 0.6f;
+        }
+        for (size_t l = 0; l < lines.size(); ++l) {
+            const bool first = l == 0;
+            const float size_l = first ? fs * 1.12f : fs * 0.86f;
+            const ImU32 color = first ? (selected ? Theme::Text : IM_COL32(205, 200, 195, 255))
+                                      : (l + 1 == lines.size() && lines.size() > 1 ? Theme::Faint : Theme::Muted);
+            const std::string text = first ? Upper(lines[l]) : lines[l];
+            ld->AddText(font, size_l, ImVec2(tx, ty), color, text.c_str(), nullptr, 0.0f,
+                        nullptr);
+            ty += size_l + 6.0f * s;
+            (void)clip;
+        }
+        if (i + 1 < int(choice_items.size()) && !selected && i + 1 != choice_index) {
+            ld->AddLine(ImVec2(rmin.x + pad, rmax.y), ImVec2(rmax.x - pad, rmax.y), Theme::Line);
+        }
+        ImGui::Dummy(ImVec2(size.x, row_h));
         if (selected) {
-            if (pictures) {
-                const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
-                const float pad = 3.0f * base_scale;
-                ImGui::GetWindowDrawList()->AddRect(ImVec2(min.x - pad, min.y - pad),
-                                                    ImVec2(max.x + pad, max.y + pad),
-                                                    IM_COL32(255, 230, 140, 255), 0.0f, 0,
-                                                    2.0f * base_scale);
-            }
-            ImGui::SetScrollHereY();
+            ImGui::SetScrollHereY(0.5f);
         }
     }
-    ImGui::Separator();
-    ImGui::TextDisabled("%s", PadText("Up/Down or D-pad: choose   Enter or Cross (A): OK   Esc or Circle (B): cancel", "Up/Down or D-pad: choose   Enter or A: OK   Esc or B: cancel", "Up/Down or D-pad: choose   Enter or B: OK   Esc or A: cancel"));
+    ImGui::EndChild();
+    // Footer: key hints, right-aligned.
+    const float fy = end.y - footer_h + 20.0f * s;
+    dl->AddLine(ImVec2(origin.x + pad, end.y - footer_h + 4.0f * s), ImVec2(end.x - pad, end.y - footer_h + 4.0f * s),
+                Theme::Line);
+    const char* ok = PadText("ENTER / CROSS", "ENTER / A", "ENTER / B");
+    const char* back = PadText("ESC / CIRCLE", "ESC / B", "ESC / A");
+    const float hs = fs * 0.92f;
+    const float w1 = KeyHint(dl, ImVec2(), "UP / DOWN", "Select", hs, true);
+    const float w2 = KeyHint(dl, ImVec2(), ok, "Confirm", hs, true);
+    const float w3 = KeyHint(dl, ImVec2(), back, "Back", hs, true);
+    const float gap = 26.0f * s;
+    float x = end.x - pad - (w1 + w2 + w3 + gap * 2);
+    x += KeyHint(dl, ImVec2(x, fy), "UP / DOWN", "Select", hs) + gap;
+    x += KeyHint(dl, ImVec2(x, fy), ok, "Confirm", hs) + gap;
+    KeyHint(dl, ImVec2(x, fy), back, "Back", hs);
     ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(3);
 }
 
 void LoadingScreen() {
