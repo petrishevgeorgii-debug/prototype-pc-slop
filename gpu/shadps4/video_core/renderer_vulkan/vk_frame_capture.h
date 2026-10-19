@@ -44,7 +44,9 @@ public:
     /// opened the pass.
     static void BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_colors,
                           const VideoCore::ImageInfo* depth, std::string census);
-    static void Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_instances);
+    /// `keep_buffers`: keep this draw's constants too (not only a pass's first draws').
+    static void Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_instances,
+                     bool keep_buffers = false);
     static void Dispatch(u64 cs_hash, u32 x, u32 y, u32 z);
     static void Sampled(const VideoCore::ImageInfo& info, bool storage);
     /// Contents of a bound buffer (first 1 KiB), kept for small passes and a pass's first draw.

@@ -1459,7 +1459,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     });
     if (FrameCapture::Active()) {
         const auto* ps = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
-        FrameCapture::Draw(vs_info.pgm_hash, ps ? ps->pgm_hash : 0, num_indices, num_instances);
+        // Constants of blended draws into a pass with depth (translucent scene objects).
+        const bool keep = regs.blend_control[0].enable && regs.depth_buffer.DepthValid();
+        FrameCapture::Draw(vs_info.pgm_hash, ps ? ps->pgm_hash : 0, num_indices, num_instances,
+                           keep);
         FrameCapture::Note(DrawStateNote(regs, vs_info.pgm_hash, ps ? ps->pgm_hash : 0,
                                          num_indices, num_instances)
                                .c_str());

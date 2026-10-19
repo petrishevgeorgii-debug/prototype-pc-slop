@@ -41,10 +41,15 @@ std::vector<Entry> entries;
 std::vector<std::pair<Target, bool>> pending_sampled;
 std::vector<std::string> pending_buffers;
 
-void AddBuffers(Entry& entry) {
+u32 kept_buffers = 0; ///< draws past a pass's first four whose constants were kept
+
+void AddBuffers(Entry& entry, bool keep) {
     // Constants of full-screen passes (post-processing: camera matrices) and of the first draw
-    // of each geometry pass.
-    if (entry.draws <= 4) {
+    // of each geometry pass; port: and of up to 400 more draws the rasterizer asks for
+    // (blended scene draws).
+    const bool kept = entry.draws > 4 && keep && kept_buffers < 400;
+    kept_buffers += kept;
+    if (entry.draws <= 4 || kept) {
         for (auto& b : pending_buffers) {
             entry.buffers.push_back(std::move(b));
         }
@@ -233,8 +238,12 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
     display = display && targets.size() == 1;
     const bool new_pass = !(pass_open && !entries.empty() && !entries.back().compute &&
                             entries.back().colors == targets);
-    if (display && new_pass) {
-        if (state.load(std::memory_order_relaxed) == Recording) {
+    // port: PROTOTYPE writes the display buffers twice in a row (UI, then the next frame's
+    // first pass), so a recording runs on until it holds the scene: MinPasses passes.
+    constexpr size_t MinPasses = 24;
+    const bool recording = state.load(std::memory_order_relaxed) == Recording;
+    if (display && new_pass && !(recording && entries.size() < MinPasses)) {
+        if (recording) {
             Write(last_presented.load(std::memory_order_relaxed));
             entries.clear();
             pending_sampled.clear();
@@ -246,6 +255,7 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
         pending_sampled.clear();
         pending_buffers.clear();
         pass_open = false;
+        kept_buffers = 0;
         state.store(Recording, std::memory_order_release);
     }
     if (state.load(std::memory_order_relaxed) != Recording) {
@@ -263,7 +273,8 @@ void FrameCapture::BeginPass(const VideoCore::ImageInfo* const* colors, u32 num_
     pass_open = true;
 }
 
-void FrameCapture::Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_instances) {
+void FrameCapture::Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_instances,
+                        bool keep_buffers) {
     if (state.load(std::memory_order_relaxed) != Recording || entries.empty() ||
         entries.back().compute) {
         return;
@@ -274,7 +285,7 @@ void FrameCapture::Draw(u64 vs_hash, u64 ps_hash, u32 num_indices, u32 num_insta
     AddShader(e, vs_hash);
     AddShader(e, ps_hash);
     AddSampled(e);
-    AddBuffers(e);
+    AddBuffers(e, keep_buffers);
 }
 
 void FrameCapture::Dispatch(u64 cs_hash, u32 x, u32 y, u32 z) {
@@ -291,7 +302,7 @@ void FrameCapture::Dispatch(u64 cs_hash, u32 x, u32 y, u32 z) {
         entries.back().note = std::format("groups {}x{}x{}", x, y, z);
     }
     AddSampled(entries.back());
-    AddBuffers(entries.back());
+    AddBuffers(entries.back(), false);
     pass_open = false;
 }
 
