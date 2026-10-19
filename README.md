@@ -6,45 +6,55 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-> **First release: October 21, 2026.** Until then this is a work in progress; build it from
-> source if you want to try it early.
->
-> **Tested on AMD Radeon only. NVIDIA GPUs are untested** — reports (with `last_run.log`) are
-> welcome in Issues.
+**Version 0.4.0 — first public release, October 19, 2026.**
+[Download it from Releases](https://github.com/Glebos222/prototype-pc-port/releases/latest).
 
-**This repository contains no game files.** You need your own legally obtained, decrypted dump of
-CUSA06545. Nothing in your game folder is ever modified: every fix is applied in memory.
+**This repository and its releases contain no game files.** You need your own legally obtained,
+decrypted dump of CUSA06545 (version 01.00). Nothing in your game folder is ever modified: every
+fix is applied in memory, and the port checks the executables against the untouched originals.
 
 ## Status
 
 | | |
 |---|---|
-| PROTOTYPE | Playable: tested through the early missions (saving, loading, cutscenes, videos) |
-| PROTOTYPE 2 | Not yet (the bundle menu's choice ends the game with a message) |
-| Platform | Windows 10/11, x86-64, Vulkan 1.3 GPU |
-| GPUs | AMD Radeon: tested. NVIDIA: untested. Intel: untested |
-| Release | October 21, 2026 |
+| PROTOTYPE | Playable; tested through the early missions: saving, loading, cutscenes, videos, combat, consume, HUD and map |
+| PROTOTYPE 2 | Not yet: choosing it in the bundle menu ends the game with a message |
+| Platform | Windows 10 / 11, x86-64, a Vulkan 1.3 graphics card with a current driver |
+| AMD Radeon | Tested (RX 9070 XT) |
+| NVIDIA, Intel | **Untested** — reports welcome ([Issues](https://github.com/Glebos222/prototype-pc-port/issues), with `last_run.log`) |
 
-Fixes built into the port:
+## Features
+
+**Fixes for running the PS4 game on a PC**
 
 - **Game speed** — the game assumes the PS4's fixed 1.59 GHz timestamp counter; the port's counter ticks at exactly that rate.
 - **Saving** — game fibers run on their own 1 MiB stacks (the game gives its save fiber 16 KiB).
 - **White consume tendrils** — the dummy vertex stream is zero-filled, as the PS4 GPU reads it.
-- **60 FPS** (optional) — gameplay at 60; videos and menu/UI animation keep their normal speed.
 - **Frame pacing** — presentation capped at the PS4's 60 Hz.
+
+**Improvements over the PS4 version**
+
+- **60 FPS** (optional) — gameplay at 60; videos and menu/UI animation keep their normal speed.
+- **Render resolution** — 1280 × 720 up to 3840 × 2160 (above 1080p is experimental); the HUD is drawn at the same resolution.
+- **FSR 3.1 and FSR 4** temporal anti-aliasing and upscaling: *Native AA*, *Quality*, *Balanced*,
+  *Performance*, *Ultra Performance*, switchable while playing. FSR 4 needs a Radeon RX 9000 GPU.
+- **FSR 1** scaling to the window, **RCAS** sharpening, **anisotropic filtering** up to 16×.
+- An **in-game menu drawn like the game's own options screens** (English or Russian with the game
+  language), with keyboard, controller and mouse.
+- A **launcher** (`Prototype.exe`): game folder check, settings, saves and backups, the log.
 
 ## Playing
 
-1. Download a release package (`PROTOTYPE-PC-Port-v….zip`, see Releases) and unpack it, or build
-   the port (below).
+1. Download `PROTOTYPE-PC-Port-v0.4.0.zip` from [Releases](https://github.com/Glebos222/prototype-pc-port/releases/latest)
+   and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
-   `sce_module`, `p1`, `p2`) and press **PLAY**.
+   `sce_module`, `p1`, `p2`) and press **PLAY**. The first start prepares the game (about a
+   minute); later starts are quick.
 
-The launcher holds the settings: render resolution (experimental), FSR 1 upscaling and
-sharpening, anisotropic filtering, 30/60 FPS, display mode, V-Sync, frame counter.
+The launcher holds the render resolution, FSR 1 and sharpening, anisotropic filtering,
+30 / 60 FPS, display mode, V-Sync and the frame counter.
 
-In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu, drawn like the
-game's own options screens:
+In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu:
 
 | | Keyboard | Controller |
 |---|---|---|
@@ -54,13 +64,35 @@ game's own options screens:
 | Defaults of the section | Backspace | Triangle |
 | Close | Esc | Circle |
 
-Sections: **Upscaling** (FSR 3.1, FSR 4 and FSR 4.1 temporal anti-aliasing at the render
-resolution — experimental; FSR 4/4.1 need a Radeon RX 9000 GPU), **Image** (FSR 1, sharpening),
-**Display**. Choices are saved to `theorder.ini`.
+Sections: **Upscaling** (FSR 3.1 / FSR 4, quality preset, FSR sharpening), **Image** (FSR 1,
+sharpening), **Display** (window mode, V-Sync, frame counter) and **FSR tests** (switches and a
+motion-vector view for problem reports). Choices are saved to `theorder.ini`.
 
 Saves are kept in `user\savedata` in the port folder and backed up at every start to
 `user\savedata_backups` (the launcher has buttons for both). The log of the last run is
 `last_run.log`.
+
+## Known issues
+
+- PROTOTYPE 2 does not start yet.
+- Render resolutions above 1080p are experimental.
+- FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows
+  driver does not offer yet; the menu hides it.
+- Characters can ghost slightly with FSR (the port gives FSR the camera motion; animated objects
+  have no motion vectors of their own yet).
+
+## Reporting a problem
+
+Open an [issue](https://github.com/Glebos222/prototype-pc-port/issues) with your GPU and driver,
+what you did, and `last_run.log` from the port folder. For FSR problems, the menu's
+**FSR tests → Save FSR images** writes three frames of FSR's inputs and output to `out\dump`.
+
+## Roadmap
+
+- PROTOTYPE 2
+- Object motion vectors for FSR (less ghosting on characters)
+- Higher shadow resolution and more draw distance
+- NVIDIA and Intel testing and fixes
 
 ## Building
 

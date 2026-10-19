@@ -1,5 +1,7 @@
 # PROTOTYPE port — technical notes
 
+First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)).
+
 Game: PROTOTYPE BIOHAZARD BUNDLE, CUSA06545, APP_VER 01.00. `eboot.bin` is PROTOTYPE (with the
 bundle menu); `prototype2_ps4f.elf` is PROTOTYPE 2, started from the menu with
 `sceSystemServiceLoadExec`. Engine: Radical's Pure3D (`.p3d`, `.rcf` data; Scaleform GFx UI; Bink
