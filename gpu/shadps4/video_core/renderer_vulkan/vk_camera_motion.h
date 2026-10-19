@@ -72,6 +72,13 @@ public:
     /// A bound constant buffer of 864 bytes: checks the scene constant signature.
     void OnConstants(const float* data);
 
+    /// PROTOTYPE: a scene material draw's vertex constants (column-major object-to-world at
+    /// floats 0-15, world-view-projection at 16-31). The view-projection they imply becomes
+    /// this frame's camera once two draws agree on it.
+    void OnObjectConstants(const float* data);
+    /// Far plane of the current projection (3000 when it cannot be derived).
+    [[nodiscard]] float Far() const noexcept;
+
     /// The G-buffer pass (5+ color targets): its depth is the scene depth.
     void OnGBufferPass(VideoCore::ImageId depth);
 
@@ -102,6 +109,9 @@ private:
     ObjectMotion* object_motion = nullptr;
     Camera current, previous;
     bool frame_has_camera = false;
+    /// PROTOTYPE: view-projections seen this frame, waiting for a second draw to agree.
+    std::array<std::array<float, 16>, 4> candidates{};
+    u32 candidate_count = 0, candidate_next = 0;
     std::array<float, 2> jitter{}, previous_jitter{};
     std::array<u32, 2> render_size{};
     VideoCore::ImageId depth_id{};

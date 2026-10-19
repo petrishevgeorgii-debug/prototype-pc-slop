@@ -19,6 +19,7 @@
 #include "port_toggles.h"
 #include "ffx_vk_portable.h"
 #include "video_core/host_shaders/upscale_merge_comp.h"
+#include "video_core/host_shaders/upscale_merge_ldr_comp.h"
 #include "video_core/host_shaders/upscale_reactive_comp.h"
 #include "video_core/host_shaders/taa_comp.h"
 #include "video_core/host_shaders/taa_sharpen_comp.h"
@@ -178,6 +179,9 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     enabled = !(env && std::strcmp(env, "none") == 0);
     if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_CS")) {
         trigger_hash = std::strtoull(hash, nullptr, 16);
+    }
+    if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_VS")) {
+        draw_trigger_vs = std::strtoull(hash, nullptr, 16);
     }
     if (const char* hash = std::getenv("THEORDER_UI_TRIGGER_VS")) {
         ui_trigger_vs = std::strtoull(hash, nullptr, 16);
@@ -356,6 +360,18 @@ bool TemporalUpscaler::OnFrameStart() {
     jitter_index = jitter_index % phases + 1;
     jitter = {Halton(jitter_index, 2) - 0.5f, Halton(jitter_index, 3) - 0.5f};
     return changed;
+}
+
+void TemporalUpscaler::OnDrawTrigger(u64 vs_hash) {
+    if (vs_hash != draw_trigger_vs || done_this_frame || failed || Scaled()) {
+        return;
+    }
+    done_this_frame = true;
+    if (!scene_color || !camera_motion.Ready() || !Active()) {
+        reset = true;
+        return;
+    }
+    Run();
 }
 
 void TemporalUpscaler::OnDispatch(u64 cs_hash) {
@@ -603,6 +619,7 @@ void TemporalUpscaler::CreatePipelines() {
         }));
     }
     merge_pipeline = compute(UPSCALE_MERGE_COMP, *merge_pipeline_layout);
+    merge_ldr_pipeline = compute(UPSCALE_MERGE_LDR_COMP, *merge_pipeline_layout);
     storage_layout(3, reactive_desc_layout, reactive_pipeline_layout, 3 * sizeof(float));
     reactive_pipeline = compute(UPSCALE_REACTIVE_COMP, *reactive_pipeline_layout);
     storage_layout(2, taa_sharpen_desc_layout, taa_sharpen_pipeline_layout, sizeof(float));
@@ -1008,20 +1025,22 @@ void TemporalUpscaler::Run() {
     const bool reduced = ReducedScene(color) && scene_targets.EligibleScene(depth);
     const u32 w = reduced ? scene_targets.Size().width : ow;
     const u32 h = reduced ? scene_targets.Size().height : oh;
-    if (color.info.pixel_format != vk::Format::eR16G16B16A16Sfloat ||
+    // HDR scene colour (God of War III, The Order) or PROTOTYPE's tonemapped RGBA8 one.
+    const auto color_format = color.info.pixel_format;
+    const bool hdr = color_format == vk::Format::eR16G16B16A16Sfloat;
+    if ((!hdr && color_format != vk::Format::eR8G8B8A8Unorm) ||
         depth.info.size.width != ow || depth.info.size.height != oh ||
         !(color.usage_flags & vk::ImageUsageFlagBits::eStorage)) {
         return;
     }
-    if (!EnsureResources(w, h, ow, oh, true)) {
+    if (!EnsureResources(w, h, ow, oh, hdr)) {
         failed = true;
         return;
     }
     const auto depth_format = depth.info.pixel_format;
     const auto depth_view =
         CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
-    const auto color_view =
-        CachedView(color, vk::Format::eR16G16B16A16Sfloat, vk::ImageAspectFlagBits::eColor);
+    const auto color_view = CachedView(color, color_format, vk::ImageAspectFlagBits::eColor);
 
     scheduler.EndRendering();
     runtime.Transit(&depth, vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
@@ -1135,7 +1154,7 @@ void TemporalUpscaler::Run() {
         info.frameTimeMilliseconds = frame_ms;
         info.preExposure = 1.0f;
         info.cameraNear = camera_motion.Near();
-        info.cameraFar = 3000.0f;
+        info.cameraFar = camera_motion.Far();
         info.cameraVerticalFovRadians = camera_motion.VerticalFov();
         info.viewSpaceToMeters = 1.0f;
         // RCAS strength 0..1 (menu, THEORDER_FSR_SHARPNESS); jitter at 1:1 softens the image slightly.
@@ -1147,7 +1166,9 @@ void TemporalUpscaler::Run() {
     
         FfxVkPortableUpscaleCreateInfo create_info{};
         create_info.structSize = sizeof(create_info);
-        create_info.flags = FFX_VK_PORTABLE_CONTEXT_HDR_COLOR_INPUT | FFX_VK_PORTABLE_CONTEXT_AUTO_EXPOSURE;
+        create_info.flags = hdr ? FFX_VK_PORTABLE_CONTEXT_HDR_COLOR_INPUT |
+                                      FFX_VK_PORTABLE_CONTEXT_AUTO_EXPOSURE
+                                : 0;
         create_info.maxRenderSize = {w, h};
         create_info.maxOutputSize = {ow, oh};
         if (const u64 issues = ffxVkPortableValidateUpscaleDispatchInfo(&create_info, &info)) {
@@ -1221,7 +1242,7 @@ void TemporalUpscaler::Run() {
                              ? 1
                          : debug_view == PortSettings::DebugMotion ? 2
                                                                  : 0;
-        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, *merge_pipeline);
+        cmdbuf.bindPipeline(vk::PipelineBindPoint::eCompute, hdr ? *merge_pipeline : *merge_ldr_pipeline);
         cmdbuf.pushDescriptorSetKHR(vk::PipelineBindPoint::eCompute, *merge_pipeline_layout, 0,
                                     writes);
         cmdbuf.pushConstants(*merge_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0,
@@ -1957,7 +1978,7 @@ bool TemporalUpscaler::RecordFsr4(vk::CommandBuffer cmdbuf, Fsr4Upscaler::Image 
         .jitter = {sign * jitter[0], sign * jitter[1]},
         .frame_ms = frame_ms,
         .near_plane = camera_motion.Near(),
-        .far_plane = 3000.0f,
+        .far_plane = camera_motion.Far(),
         .vertical_fov = camera_motion.VerticalFov(),
         .sharpness = std::min(settings.sharpness.load(), 1.0f),
         .sharpen = settings.sharpen,

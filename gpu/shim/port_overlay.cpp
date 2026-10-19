@@ -53,6 +53,32 @@ asm(".section .rodata\n"
 extern "C" const unsigned char port_font_ttf[];
 extern "C" const unsigned char port_font_ttf_end[];
 
+// Tektur (SIL OFL 1.1), semi-condensed instance: the PROTOTYPE port menu's typeface, close to
+// the game's own menus (Latin and Cyrillic).
+#ifdef _WIN32
+asm(".section .rdata,\"dr\"\n"
+    ".balign 16\n"
+    ".global port_menu_font_ttf\n"
+    "port_menu_font_ttf:\n"
+    ".incbin \"" THEORDER_MENU_FONT_PATH "\"\n"
+    ".global port_menu_font_ttf_end\n"
+    "port_menu_font_ttf_end:\n"
+    ".text\n");
+#else
+asm(".section .rodata\n"
+    ".balign 16\n"
+    ".hidden port_menu_font_ttf\n"
+    ".global port_menu_font_ttf\n"
+    "port_menu_font_ttf:\n"
+    ".incbin \"" THEORDER_MENU_FONT_PATH "\"\n"
+    ".hidden port_menu_font_ttf_end\n"
+    ".global port_menu_font_ttf_end\n"
+    "port_menu_font_ttf_end:\n"
+    ".previous\n");
+#endif
+extern "C" const unsigned char port_menu_font_ttf[];
+extern "C" const unsigned char port_menu_font_ttf_end[];
+
 namespace PortOverlay {
 
 namespace {
@@ -81,6 +107,7 @@ std::vector<PortPng::Image> choice_pictures;
 std::vector<ImTextureData*> choice_textures, choice_retired;
 std::atomic<bool> choice_retiring{false};
 float base_scale = 1.0f;
+ImFont* menu_font = nullptr; // Tektur (the PROTOTYPE menu)
 
 // Present rate for the FPS counter.
 std::chrono::steady_clock::time_point last_present{};
@@ -719,6 +746,409 @@ void ChoiceBox() {
     ImGui::PopStyleVar(3);
 }
 
+// ---------------------------------------------------------------------------------------------
+// PROTOTYPE: the port menu drawn like the game's own options screens (black and blood red,
+// orange labels, the selected row on a dark red bar, value bars of eleven cells, the frame
+// lines and markers, button hints at the bottom). Keyboard, controller and mouse.
+
+bool PrototypeMenuEnabled() {
+    static const bool on = [] {
+        const char* game = std::getenv("THEORDER_GAME");
+        return game && std::strcmp(game, "prototype") == 0;
+    }();
+    return on;
+}
+
+namespace Proto {
+constexpr ImU32 Red = IM_COL32(224, 18, 26, 255);
+constexpr ImU32 RedDim = IM_COL32(110, 10, 14, 255);
+constexpr ImU32 RedLine = IM_COL32(150, 12, 18, 200);
+constexpr ImU32 RedFaint = IM_COL32(120, 8, 12, 110);
+constexpr ImU32 Orange = IM_COL32(255, 150, 54, 255);
+constexpr ImU32 OrangeGlow = IM_COL32(255, 90, 20, 46);
+constexpr ImU32 Cream = IM_COL32(255, 236, 214, 255);
+constexpr ImU32 Bar = IM_COL32(92, 0, 2, 235);
+constexpr ImU32 Cell = IM_COL32(176, 14, 22, 255);
+constexpr ImU32 CellOff = IM_COL32(44, 4, 6, 255);
+constexpr ImU32 Marker = IM_COL32(230, 120, 30, 255);
+
+bool russian() {
+    static const bool ru = [] {
+        const char* lang = std::getenv("THEORDER_LANGUAGE");
+        return lang && std::strcmp(lang, "8") == 0;
+    }();
+    return ru;
+}
+const char* T(const char* en, const char* ru) {
+    return russian() ? ru : en;
+}
+
+// Text with the game's soft orange/red glow.
+void GlowText(ImDrawList* dl, ImFont* font, float size, ImVec2 pos, ImU32 color, const char* text,
+              ImU32 glow = OrangeGlow) {
+    const float r = size * 0.06f;
+    for (int i = 0; i < 8; ++i) {
+        const float a = float(i) * 0.7853982f;
+        dl->AddText(font, size, ImVec2(pos.x + std::cos(a) * r, pos.y + std::sin(a) * r), glow, text);
+    }
+    dl->AddText(font, size, pos, color, text);
+}
+
+// A controller button glyph (circle with its symbol) as in the game's hints.
+void ButtonGlyph(ImDrawList* dl, ImVec2 c, float r, int symbol, ImU32 color) {
+    dl->AddCircle(c, r, color, 32, r * 0.14f);
+    const float s = r * 0.5f, t = r * 0.13f;
+    switch (symbol) {
+    case 0: // cross
+        dl->AddLine(ImVec2(c.x - s, c.y - s), ImVec2(c.x + s, c.y + s), color, t);
+        dl->AddLine(ImVec2(c.x - s, c.y + s), ImVec2(c.x + s, c.y - s), color, t);
+        break;
+    case 1: // circle
+        dl->AddCircle(c, s, color, 24, t);
+        break;
+    case 2: // triangle
+        dl->AddTriangle(ImVec2(c.x, c.y - s), ImVec2(c.x + s * 0.95f, c.y + s * 0.7f),
+                        ImVec2(c.x - s * 0.95f, c.y + s * 0.7f), color, t);
+        break;
+    default: // square
+        dl->AddRect(ImVec2(c.x - s * 0.8f, c.y - s * 0.8f), ImVec2(c.x + s * 0.8f, c.y + s * 0.8f), color, 0.0f, 0, t);
+        break;
+    }
+}
+
+struct Option {
+    const char* label;
+    const char* help;
+    int kind;                       // 0 choice, 1 bar (11 cells), 2 info
+    std::vector<std::string> values; // choice texts
+    int value;                      // current index (bar: 0..10)
+    bool enabled = true;
+};
+
+int category = 0;
+int row = 0;
+} // namespace Proto
+
+void PrototypeMenu() {
+    using namespace Proto;
+    auto& s = PortSettings::Get();
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float W = vp->WorkSize.x, H = vp->WorkSize.y;
+    const ImVec2 o = vp->WorkPos;
+    ImFont* font = menu_font ? menu_font : ImGui::GetFont();
+    auto X = [&](float f) { return o.x + W * f; };
+    auto Y = [&](float f) { return o.y + H * f; };
+
+    // ---- the options of each category
+    static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY"};
+    static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН"};
+    constexpr int CategoryCount = 3;
+    const bool fsr4 = s.fsr4_supported, fsr411 = s.fsr411_supported;
+    std::vector<int> providers = {PortSettings::UpscalerOff, PortSettings::UpscalerFsr3};
+    if (fsr4) providers.push_back(PortSettings::UpscalerFsr4);
+    if (fsr411) providers.push_back(PortSettings::UpscalerFsr411);
+    auto provider_name = [&](int u) -> std::string {
+        switch (u) {
+        case PortSettings::UpscalerFsr3: return "FSR 3.1";
+        case PortSettings::UpscalerFsr4: return "FSR 4";
+        case PortSettings::UpscalerFsr411: return "FSR 4.1";
+        default: return T("OFF", "ВЫКЛ");
+        }
+    };
+    const std::string on = T("ON", "ВКЛ"), off = T("OFF", "ВЫКЛ");
+    std::vector<Option> options;
+    switch (category) {
+    case 0: {
+        Option up{T("UPSCALER", "АПСКЕЙЛЕР"),
+                  T("Temporal anti-aliasing and reconstruction by AMD FidelityFX Super Resolution. FSR 4 "
+                    "and 4.1 need a Radeon RX 9000 series GPU.",
+                    "Временное сглаживание и реконструкция AMD FidelityFX Super Resolution. FSR 4 и 4.1 "
+                    "требуют видеокарту Radeon RX 9000."),
+                  0, {}, 0};
+        for (size_t i = 0; i < providers.size(); ++i) {
+            up.values.push_back(provider_name(providers[i]));
+            if (providers[i] == s.upscaler) up.value = int(i);
+        }
+        options.push_back(up);
+        const bool active = s.upscaler != PortSettings::UpscalerOff;
+        options.push_back({T("QUALITY", "КАЧЕСТВО"),
+                           T("Native AA: FSR works at the render resolution chosen in the launcher (best "
+                             "image). Upscaling presets come in a later update.",
+                             "Native AA: FSR работает в разрешении, выбранном в лаунчере (лучшее качество). "
+                             "Режимы повышения разрешения появятся в следующем обновлении."),
+                           0, {"NATIVE AA"}, 0, active});
+        options.push_back({T("FSR SHARPENING", "РЕЗКОСТЬ FSR"),
+                           T("FSR's own contrast-adaptive sharpening.", "Встроенное повышение резкости FSR."),
+                           0, {off, on}, s.sharpen ? 1 : 0, active});
+        options.push_back({T("SHARPNESS", "СИЛА РЕЗКОСТИ"),
+                           T("How strong FSR's sharpening is.", "Насколько сильно FSR повышает резкость."),
+                           1, {}, std::clamp(int(std::lround(s.sharpness.load() * 5.0f)), 0, 10),
+                           active && s.sharpen});
+        options.push_back({T("MOTION VECTORS VIEW", "ВЕКТОРЫ ДВИЖЕНИЯ"),
+                           T("Debug view: the camera motion FSR receives (red/green = horizontal/vertical).",
+                             "Отладка: движение камеры, которое получает FSR (красный/зелёный)."),
+                           0, {off, on}, s.debug_view == PortSettings::DebugMotion ? 1 : 0, active});
+        const char* problem = s.fsr4_problem;
+        char status[160];
+        if (problem && PortSettings::IsFsr4(s.upscaler)) {
+            std::snprintf(status, sizeof(status), "%s", problem);
+        } else if (active) {
+            std::snprintf(status, sizeof(status), "%s  %d × %d", provider_name(s.upscaler).c_str(),
+                          s.image_width.load(), s.image_height.load());
+        } else {
+            std::snprintf(status, sizeof(status), "%s", T("OFF", "ВЫКЛ"));
+        }
+        options.push_back({T("STATUS", "СОСТОЯНИЕ"), "", 2, {status}, 0, true});
+        break;
+    }
+    case 1:
+        options.push_back({T("FSR 1 UPSCALING", "FSR 1"),
+                           T("Scales the game image to the window with FSR 1 when the window is larger.",
+                             "Масштабирует изображение игры до окна с помощью FSR 1, если окно больше."),
+                           0, {off, on}, s.fsr1 ? 1 : 0});
+        options.push_back({T("FINAL SHARPENING", "ИТОГОВАЯ РЕЗКОСТЬ"),
+                           T("Contrast-adaptive sharpening (RCAS) of the final image.",
+                             "Повышение резкости итогового изображения (RCAS)."),
+                           0, {off, on}, s.rcas ? 1 : 0});
+        options.push_back({T("SHARPENING STRENGTH", "СИЛА РЕЗКОСТИ"),
+                           T("How strong the final sharpening is.", "Насколько сильно повышается резкость."),
+                           1, {}, std::clamp(s.rcas_strength.load() / 10, 0, 10), s.rcas.load()});
+        break;
+    default:
+        options.push_back({T("DISPLAY MODE", "РЕЖИМ ЭКРАНА"),
+                           T("Windowed, borderless window or exclusive fullscreen.",
+                             "Окно, окно без рамки или полный экран."),
+                           0, {T("WINDOWED", "ОКНО"), T("BORDERLESS", "БЕЗ РАМКИ"), T("FULLSCREEN", "ПОЛНЫЙ ЭКРАН")},
+                           std::clamp(s.display_mode.load(), 0, 2)});
+        options.push_back({T("V-SYNC", "ВЕРТ. СИНХРОНИЗАЦИЯ"),
+                           T("Waits for the monitor: no tearing.", "Ждёт монитор: без разрывов кадра."),
+                           0, {off, on}, s.vsync ? 1 : 0});
+        options.push_back({T("FRAME COUNTER", "СЧЁТЧИК КАДРОВ"),
+                           T("Frame rate in a corner of the screen.", "Частота кадров в углу экрана."),
+                           0, {off, on}, s.show_fps ? 1 : 0});
+        break;
+    }
+    const int count = int(options.size());
+    row = std::clamp(row, 0, count - 1);
+
+    // ---- input
+    auto apply = [&](int index, int value) {
+        Option& opt = options[index];
+        if (!opt.enabled || opt.kind == 2) return;
+        if (opt.kind == 0) value = (value % int(opt.values.size()) + int(opt.values.size())) % int(opt.values.size());
+        else value = std::clamp(value, 0, 10);
+        dirty = true;
+        switch (category * 16 + index) {
+        case 0: s.upscaler = providers[value]; break;
+        case 2: s.sharpen = value == 1; break;
+        case 3: s.sharpness = float(value) / 5.0f; break;
+        case 4: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
+        case 16: s.fsr1 = value == 1; break;
+        case 17: s.rcas = value == 1; break;
+        case 18: s.rcas_strength = value * 10; break;
+        case 32: s.display_mode = value; break;
+        case 33: s.vsync = value == 1; break;
+        case 34: s.show_fps = value == 1; break;
+        default: break;
+        }
+    };
+    auto pressed = [](ImGuiKey a, ImGuiKey b = ImGuiKey_None) {
+        return ImGui::IsKeyPressed(a, true) || (b != ImGuiKey_None && ImGui::IsKeyPressed(b, true));
+    };
+    if (pressed(ImGuiKey_UpArrow, ImGuiKey_GamepadDpadUp)) {
+        for (int i = 1; i <= count; ++i) {
+            const int r = (row - i + count) % count;
+            if (options[r].kind != 2) { row = r; break; }
+        }
+    }
+    if (pressed(ImGuiKey_DownArrow, ImGuiKey_GamepadDpadDown)) {
+        for (int i = 1; i <= count; ++i) {
+            const int r = (row + i) % count;
+            if (options[r].kind != 2) { row = r; break; }
+        }
+    }
+    if (pressed(ImGuiKey_LeftArrow, ImGuiKey_GamepadDpadLeft)) apply(row, options[row].value - 1);
+    if (pressed(ImGuiKey_RightArrow, ImGuiKey_GamepadDpadRight) || pressed(ImGuiKey_Enter, ImGuiKey_GamepadFaceDown))
+        apply(row, options[row].value + 1);
+    if (ImGui::IsKeyPressed(ImGuiKey_Q, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadL1, false)) {
+        category = (category + CategoryCount - 1) % CategoryCount;
+        row = 0;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_E, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadR1, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_Tab, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft, false)) {
+        category = (category + 1) % CategoryCount;
+        row = 0;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
+        // Defaults of this category.
+        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
+        if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        dirty = true;
+    }
+    bool close = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+
+    // ---- frame: dim the game, the screen's lines, markers and side decoration
+    ImGui::SetNextWindowPos(o);
+    ImGui::SetNextWindowSize(vp->WorkSize);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0, 0, 0, 0));
+    ImGui::Begin("##proto_menu", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(o, ImVec2(o.x + W, o.y + H), IM_COL32(0, 0, 0, 228));
+    // A dull red haze behind the options.
+    dl->AddRectFilledMultiColor(ImVec2(X(0.31f), Y(0.45f)), ImVec2(X(0.80f), Y(0.89f)), IM_COL32(60, 0, 0, 0),
+                                IM_COL32(60, 0, 0, 0), IM_COL32(90, 4, 6, 120), IM_COL32(90, 4, 6, 120));
+    const float lw = std::max(1.0f, H / 900.0f);
+    for (const float y : {0.043f, 0.055f, 0.092f, 0.889f, 0.929f, 0.94f}) {
+        dl->AddLine(ImVec2(o.x, Y(y)), ImVec2(o.x + W, Y(y)), y == 0.092f || y == 0.889f ? RedLine : RedFaint, lw);
+    }
+    const float m = H * 0.005f;
+    for (const float x : {0.078f, 0.378f, 0.73f, 0.95f}) {
+        dl->AddTriangleFilled(ImVec2(X(x) - m, Y(0.046f)), ImVec2(X(x) + m, Y(0.046f)), ImVec2(X(x), Y(0.046f) + m), Marker);
+        dl->AddTriangleFilled(ImVec2(X(x) - m, Y(0.937f)), ImVec2(X(x) + m, Y(0.937f)), ImVec2(X(x), Y(0.937f) - m), Marker);
+    }
+    // Left rail: the bent line, its scale numbers, the hatched strip.
+    const ImVec2 rail[] = {{X(0.079f), Y(0.095f)}, {X(0.079f), Y(0.265f)}, {X(0.092f), Y(0.29f)},
+                           {X(0.092f), Y(0.51f)},  {X(0.085f), Y(0.545f)}, {X(0.085f), Y(0.889f)}};
+    dl->AddPolyline(rail, 6, RedLine, 0, lw * 1.6f);
+    const float small = H * 0.0115f;
+    for (int i = 0; i < 6; ++i) {
+        char n[8];
+        std::snprintf(n, sizeof(n), "%d", 103 + i);
+        dl->AddText(font, small, ImVec2(X(0.06f), Y(0.128f + 0.139f * float(i))), RedDim, n);
+    }
+    for (float y = Y(0.6f); y < Y(0.885f); y += H * 0.011f) {
+        dl->AddLine(ImVec2(X(0.099f), y + H * 0.009f), ImVec2(X(0.109f), y), RedFaint, lw * 2.0f);
+    }
+    // Static "data" dashes in the left column.
+    static std::vector<ImVec4> dashes = [] {
+        std::vector<ImVec4> out;
+        u32 seed = 0x50524f54;
+        auto rnd = [&seed] { seed = seed * 1664525u + 1013904223u; return float(seed >> 8) / 16777216.0f; };
+        for (int i = 0; i < 160; ++i) {
+            out.push_back(ImVec4(0.19f + rnd() * 0.12f, 0.12f + rnd() * 0.76f, 0.005f + rnd() * 0.04f, rnd()));
+        }
+        return out;
+    }();
+    for (const auto& d : dashes) {
+        dl->AddLine(ImVec2(X(d.x), Y(d.y)), ImVec2(X(d.x + d.z), Y(d.y)), IM_COL32(150, 10, 16, int(30 + 70 * d.w)),
+                    lw * 1.5f);
+    }
+    // The options panel's frame.
+    dl->AddLine(ImVec2(X(0.3125f), Y(0.093f)), ImVec2(X(0.3125f), Y(0.889f)), RedLine, lw * 1.5f);
+    dl->AddLine(ImVec2(X(0.796f), Y(0.093f)), ImVec2(X(0.796f), Y(0.889f)), RedLine, lw * 1.5f);
+
+    // ---- the category title and list
+    const char* const* names = russian() ? categories_ru : categories_en;
+    GlowText(dl, font, H * 0.036f, ImVec2(X(0.085f), Y(0.222f)), Red, names[category], IM_COL32(255, 20, 20, 40));
+    for (int c = 0; c < CategoryCount; ++c) {
+        const bool sel = c == category;
+        const std::string text = sel ? std::string("[") + names[c] + "]" : std::string(names[c]);
+        const ImVec2 p(X(0.098f), Y(0.307f + 0.041f * float(c)));
+        const float size = H * 0.03f;
+        if (sel) GlowText(dl, font, size, p, Orange, text.c_str());
+        else dl->AddText(font, size, p, RedDim, text.c_str());
+        const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text.c_str());
+        if (ImGui::IsMouseHoveringRect(p, ImVec2(p.x + ts.x, p.y + ts.y)) && ImGui::IsMouseClicked(0)) {
+            category = c;
+            row = 0;
+        }
+    }
+
+    // ---- the option rows
+    const float row_h = H * 0.0444f, text_size = H * 0.0285f;
+    const float px0 = X(0.3135f), px1 = X(0.7955f);
+    const float label_x = X(0.33f), value_cx = X(0.684f);
+    float y = Y(0.315f);
+    const char* help = "";
+    for (int i = 0; i < count; ++i) {
+        const Option& opt = options[i];
+        const bool sel = i == row && opt.kind != 2;
+        const ImVec2 rmin(px0, y), rmax(px1, y + row_h * 0.92f);
+        const bool hover = ImGui::IsMouseHoveringRect(rmin, rmax) && opt.kind != 2;
+        if (hover && (ImGui::GetIO().MouseDelta.x != 0.0f || ImGui::GetIO().MouseDelta.y != 0.0f)) row = i;
+        if (sel) {
+            dl->AddRectFilled(rmin, rmax, Bar);
+            help = opt.help;
+        }
+        const float ty = y + (row_h * 0.92f - text_size) * 0.5f;
+        const ImU32 label_color = !opt.enabled ? RedDim : sel ? Cream : Orange;
+        if (opt.enabled && !sel) GlowText(dl, font, text_size, ImVec2(label_x, ty), label_color, opt.label);
+        else dl->AddText(font, text_size, ImVec2(label_x, ty), label_color, opt.label);
+        const ImU32 value_color = !opt.enabled ? RedDim : sel ? Cream : Orange;
+        if (opt.kind == 1) {
+            const float cw = H * 0.0105f, gap = H * 0.0092f, ch = row_h * 0.62f;
+            const float total = 11 * cw + 10 * gap;
+            float cx = value_cx - total * 0.5f;
+            const float cy = y + (row_h * 0.92f - ch) * 0.5f;
+            for (int c = 0; c < 11; ++c) {
+                const ImU32 color = !opt.enabled ? CellOff : c == opt.value ? Cream : c < opt.value ? Cell : CellOff;
+                dl->AddRectFilled(ImVec2(cx, cy), ImVec2(cx + cw, cy + ch), color, cw * 0.3f);
+                cx += cw + gap;
+            }
+        } else {
+            const std::string& text = opt.values.empty() ? std::string() : opt.values[std::clamp(opt.value, 0, int(opt.values.size()) - 1)];
+            const float vsize = opt.kind == 2 ? text_size * 0.8f : text_size;
+            const ImVec2 ts = font->CalcTextSizeA(vsize, FLT_MAX, 0.0f, text.c_str());
+            const ImVec2 vp2(value_cx - ts.x * 0.5f, y + (row_h * 0.92f - ts.y) * 0.5f);
+            if (opt.enabled && !sel && opt.kind != 2) GlowText(dl, font, vsize, vp2, value_color, text.c_str());
+            else dl->AddText(font, vsize, vp2, opt.kind == 2 ? RedDim : value_color, text.c_str());
+        }
+        // Arrows on the selected row (the mouse clicks them).
+        if (sel && opt.enabled && opt.kind != 2) {
+            const float a = row_h * 0.22f, cy = y + row_h * 0.46f;
+            const float lx = X(0.597f), rx = X(0.772f);
+            dl->AddTriangleFilled(ImVec2(lx - a * 0.6f, cy), ImVec2(lx + a * 0.6f, cy - a), ImVec2(lx + a * 0.6f, cy + a), Red);
+            dl->AddTriangleFilled(ImVec2(rx + a * 0.6f, cy), ImVec2(rx - a * 0.6f, cy - a), ImVec2(rx - a * 0.6f, cy + a), Red);
+            if (ImGui::IsMouseClicked(0)) {
+                const ImVec2 mp = ImGui::GetIO().MousePos;
+                if (mp.y >= rmin.y && mp.y <= rmax.y) {
+                    if (std::abs(mp.x - lx) < a * 2.0f) apply(i, opt.value - 1);
+                    else if (std::abs(mp.x - rx) < a * 2.0f || (mp.x > label_x && mp.x < lx - a * 2.0f)) apply(i, opt.value + 1);
+                }
+            }
+        }
+        y += row_h;
+    }
+    // The selected option's description, under the rows.
+    if (help && *help) {
+        dl->AddText(font, H * 0.019f, ImVec2(label_x, Y(0.80f)), IM_COL32(190, 60, 40, 255), help, nullptr,
+                    px1 - label_x - W * 0.02f);
+    }
+
+    // ---- button hints
+    const float hy = Y(0.909f), gr = H * 0.017f, hs = H * 0.028f;
+    auto hint = [&](float x, int symbol, const char* text, const char* key) -> bool {
+        ButtonGlyph(dl, ImVec2(x, hy), gr, symbol, Red);
+        const ImVec2 tp(x + gr * 1.5f, hy - hs * 0.55f);
+        dl->AddText(font, hs, tp, Red, text);
+        const ImVec2 ts = font->CalcTextSizeA(hs, FLT_MAX, 0.0f, text);
+        dl->AddText(font, hs * 0.55f, ImVec2(tp.x + ts.x + gr * 0.6f, hy - hs * 0.2f), RedDim, key);
+        return ImGui::IsMouseHoveringRect(ImVec2(x - gr, hy - gr), ImVec2(tp.x + ts.x, hy + gr)) && ImGui::IsMouseClicked(0);
+    };
+    if (hint(X(0.09f), 1, T("BACK", "НАЗАД"), "ESC")) close = true;
+    if (hint(X(0.338f), 2, T("DEFAULTS", "ПО УМОЛЧАНИЮ"), "BACKSPACE")) {
+        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
+        if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        dirty = true;
+    }
+    if (hint(X(0.588f), 3, T("SECTION", "РАЗДЕЛ"), "TAB  ·  Q / E  ·  L1 / R1")) {
+        category = (category + 1) % CategoryCount;
+        row = 0;
+    }
+    ImGui::End();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(2);
+    if (close) {
+        SetOpen(false);
+    }
+}
+
 void LoadingScreen() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
@@ -808,6 +1238,11 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     font_config.FontDataOwnedByAtlas = false;
     io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(port_font_ttf),
                                    int(port_font_ttf_end - port_font_ttf), 18.0f, &font_config);
+    ImFontConfig menu_config;
+    menu_config.FontDataOwnedByAtlas = false;
+    menu_font = io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(port_menu_font_ttf),
+                                               int(port_menu_font_ttf_end - port_menu_font_ttf), 32.0f,
+                                               &menu_config);
 
     const vk::Instance vk_instance = instance.GetInstance();
     ImGui_ImplVulkan_LoadFunctions(
@@ -1133,7 +1568,11 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
         LoadingScreen();
     }
     if (menu_open) {
-        Menu();
+        if (PrototypeMenuEnabled()) {
+            PrototypeMenu();
+        } else {
+            Menu();
+        }
     }
     if (PortSettings::Get().show_fps && !menu_open) {
         FpsCounter();

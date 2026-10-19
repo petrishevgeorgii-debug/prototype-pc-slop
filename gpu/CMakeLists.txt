@@ -120,6 +120,7 @@ add_host_shader(fsr.comp fsr_rcas_comp SAMPLE_RCAS=1)
 add_host_shader(post_process.frag post_process_frag)
 add_host_shader(camera_motion.comp camera_motion_comp)
 add_host_shader(upscale_merge.comp upscale_merge_comp)
+add_host_shader(upscale_merge.comp upscale_merge_ldr_comp SCENE_LDR=1)
 add_host_shader(upscale_reactive.comp upscale_reactive_comp)
 add_host_shader(taa.comp taa_comp)
 add_host_shader(taa_sharpen.comp taa_sharpen_comp)
@@ -167,9 +168,10 @@ target_sources(theordergpu PRIVATE third_party/imgui/imgui.cpp third_party/imgui
     third_party/imgui/backends/imgui_impl_vulkan.cpp)
 target_include_directories(theordergpu PRIVATE third_party/imgui third_party/imgui/backends)
 target_compile_definitions(theordergpu PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES
-    THEORDER_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf")
+    THEORDER_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf"
+    THEORDER_MENU_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/Tektur-SemiCondensed.ttf")
 set_source_files_properties(shim/port_overlay.cpp PROPERTIES
-    OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf)
+    OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/DejaVuSans.ttf;${CMAKE_CURRENT_SOURCE_DIR}/third_party/fonts/Tektur-SemiCondensed.ttf")
 target_include_directories(theordergpu PRIVATE shim shadps4 ${SHADER_INCLUDE} third_party/gcn/include third_party/half/include)
 target_compile_definitions(theordergpu PRIVATE BOOST_ASIO_STANDALONE NDEBUG)
 target_compile_options(theordergpu PRIVATE -Wno-deprecated-declarations -Wno-missing-field-initializers)

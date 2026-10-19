@@ -64,6 +64,10 @@ public:
     /// Before a compute dispatch: the post-processing combine shader triggers the upscale.
     void OnDispatch(u64 cs_hash);
 
+    /// Before a draw (PROTOTYPE): the first post-processing draw's vertex shader triggers the
+    /// upscale of the scene colour (RGBA8 or RGBA16F).
+    void OnDrawTrigger(u64 vs_hash);
+
     /// Start of a frame in the command stream (display pass).
     bool OnFrameStart();
     bool RasterScaling() const;
@@ -267,6 +271,8 @@ private:
     vk::UniqueDescriptorSetLayout merge_desc_layout;
     vk::UniquePipelineLayout merge_pipeline_layout;
     vk::UniquePipeline merge_pipeline;
+    vk::UniquePipeline merge_ldr_pipeline; ///< RGBA8 scene colour (PROTOTYPE)
+    u64 draw_trigger_vs = 0x4bc9c66a;     ///< PROTOTYPE: depth-of-field/post pass
     std::array<VideoCore::UniqueImage, 2> taa_history;
     std::array<vk::UniqueImageView, 2> taa_history_views;
     u32 taa_next = 0;

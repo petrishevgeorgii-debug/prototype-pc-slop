@@ -32,8 +32,22 @@ Fixes built into the port:
    `sce_module`, `p1`, `p2`) and press **PLAY**.
 
 The launcher holds the settings: render resolution (experimental), FSR 1 upscaling and
-sharpening, anisotropic filtering, 30/60 FPS, display mode, V-Sync, frame counter. In game,
-**Insert** (keyboard) or **R3 + L2** (controller) opens the port menu.
+sharpening, anisotropic filtering, 30/60 FPS, display mode, V-Sync, frame counter.
+
+In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu, drawn like the
+game's own options screens:
+
+| | Keyboard | Controller |
+|---|---|---|
+| Choose option | Up / Down | D-pad up / down |
+| Change value | Left / Right, Enter | D-pad left / right, Cross |
+| Next / previous section | Tab, E / Q | Square, R1 / L1 |
+| Defaults of the section | Backspace | Triangle |
+| Close | Esc | Circle |
+
+Sections: **Upscaling** (FSR 3.1, FSR 4 and FSR 4.1 temporal anti-aliasing at the render
+resolution — experimental; FSR 4/4.1 need a Radeon RX 9000 GPU), **Image** (FSR 1, sharpening),
+**Display**. Choices are saved to `theorder.ini`.
 
 Saves are kept in `user\savedata` in the port folder and backed up at every start to
 `user\savedata_backups` (the launcher has buttons for both). The log of the last run is

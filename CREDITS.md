@@ -39,6 +39,7 @@ This project is a fork of, and would not exist without:
 | AMD GCN register headers | `gpu/third_party/gcn` | MIT (in each header) |
 | [half](https://half.sourceforge.net) | `gpu/third_party/half` | MIT |
 | [DejaVu fonts](https://dejavu-fonts.github.io) | `gpu/third_party/fonts` | DejaVu Fonts License ([text](gpu/third_party/fonts/LICENSE-DejaVu.txt)) |
+| [Tektur](https://github.com/hyvyys/Tektur) (in-game menu font) | `gpu/third_party/fonts` | SIL Open Font License 1.1 ([text](gpu/third_party/fonts/LICENSE-Tektur-OFL.txt)) |
 | [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9) | `third_party/LibAtrac9` | MIT |
 | [SDL3](https://github.com/libsdl-org/SDL) | linked from MSYS2 | Zlib |
 | [FFmpeg](https://ffmpeg.org) | linked from MSYS2 | LGPL-2.1-or-later |

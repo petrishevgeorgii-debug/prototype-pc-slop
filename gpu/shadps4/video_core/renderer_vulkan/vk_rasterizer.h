@@ -344,6 +344,10 @@ private:
     bool motion_draw = false;
     u64 motion_geometry{};    ///< vertex-stream identity of the current direct draw
     bool gbuffer_draw = false;
+    /// PROTOTYPE (THEORDER_GAME=prototype): this draw is a scene material draw (scene color
+    /// and scene depth); a scene draw happened since the last frame start.
+    bool proto_scene_draw = false;
+    bool proto_scene_seen = false;
     std::unique_ptr<TemporalUpscaler> upscaler; // port: FSR (docs/upscaler.md)
     std::array<float, 2> draw_jitter{};         ///< viewport offset of the current draw, pixels
     std::array<float, 2> target_scale{1.0f, 1.0f}; ///< pass drawn into the upscaler's output-size images

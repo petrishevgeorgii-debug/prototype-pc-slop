@@ -129,6 +129,17 @@ def load_settings():
         values.update(json.loads(CONFIG_FILE.read_text(encoding='utf-8')))
     except (OSError, ValueError):
         pass
+    # The in-game menu saves into theorder.ini: its values win over the launcher's last ones.
+    try:
+        import graphics_options
+        ini = graphics_options.read_ini(PORT_DIR / 'theorder.ini')
+        for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
+                          ('rcas', bool), ('rcas_strength', int), ('anisotropy', int)):
+            if key in ini:
+                raw = ini[key]
+                values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
+    except Exception:
+        pass
     if values['render_res'] not in RESOLUTIONS:
         values['render_res'] = '1920x1080'
     # 0.2.1: the render resolution patch changed; every setup starts again from the PS4's size.
@@ -156,7 +167,7 @@ def write_ini(values):
             'display_mode': values['display_mode'], 'vsync': int(values['vsync']),
             'show_fps': int(values['show_fps']), 'anisotropy': int(values['anisotropy']),
             'fsr1': int(values['fsr1']), 'rcas': int(values['rcas']),
-            'rcas_strength': int(values['rcas_strength']), 'upscaler': 'off',
+            'rcas_strength': int(values['rcas_strength']),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -170,7 +181,6 @@ def game_environment(values):
         'THEORDER_PROTO_RES': values['render_res'],
         'THEORDER_PROTO_TENDRIL_FIX': '1' if values['tendril_fix'] else '0',
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
-        'THEORDER_UPSCALER': 'none',
         'PYTHONIOENCODING': 'utf-8',
     })
     return env

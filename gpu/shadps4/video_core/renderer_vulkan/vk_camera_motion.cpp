@@ -240,6 +240,151 @@ void CameraMotion::OnConstants(const float* data) {
     frame_has_camera = true;
 }
 
+namespace {
+using Mat4 = std::array<float, 16>; // column-major: m[col * 4 + row]
+
+float At(const Mat4& m, int row, int col) {
+    return m[col * 4 + row];
+}
+
+// Inverse of an affine matrix (last row 0 0 0 1); false when singular.
+bool InvertAffine(const Mat4& m, Mat4& out) {
+    const float a = At(m, 0, 0), b = At(m, 0, 1), c = At(m, 0, 2);
+    const float d = At(m, 1, 0), e = At(m, 1, 1), f = At(m, 1, 2);
+    const float g = At(m, 2, 0), h = At(m, 2, 1), i = At(m, 2, 2);
+    const float det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+    if (std::abs(det) < 1e-12f) {
+        return false;
+    }
+    const float inv = 1.0f / det;
+    float r[3][3] = {{(e * i - f * h) * inv, (c * h - b * i) * inv, (b * f - c * e) * inv},
+                     {(f * g - d * i) * inv, (a * i - c * g) * inv, (c * d - a * f) * inv},
+                     {(d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv}};
+    const float t[3] = {At(m, 0, 3), At(m, 1, 3), At(m, 2, 3)};
+    out = {};
+    for (int row = 0; row < 3; ++row) {
+        for (int col = 0; col < 3; ++col) {
+            out[col * 4 + row] = r[row][col];
+        }
+        out[12 + row] = -(r[row][0] * t[0] + r[row][1] * t[1] + r[row][2] * t[2]);
+    }
+    out[15] = 1.0f;
+    return true;
+}
+
+Mat4 Mul(const Mat4& a, const Mat4& b) {
+    Mat4 out{};
+    for (int row = 0; row < 4; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            float v = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                v += At(a, row, k) * At(b, k, col);
+            }
+            out[col * 4 + row] = v;
+        }
+    }
+    return out;
+}
+} // namespace
+
+void CameraMotion::OnObjectConstants(const float* data) {
+    if (frame_has_camera) {
+        return;
+    }
+    Mat4 world, wvp, inv;
+    std::memcpy(world.data(), data, sizeof(world));
+    std::memcpy(wvp.data(), data + 16, sizeof(wvp));
+    // Object-to-world: affine, a sensible scale.
+    if (world[3] != 0.0f || world[7] != 0.0f || world[11] != 0.0f || std::abs(world[15] - 1.0f) > 1e-4f) {
+        return;
+    }
+    for (const float v : wvp) {
+        if (!std::isfinite(v)) {
+            return;
+        }
+    }
+    if (!InvertAffine(world, inv)) {
+        return;
+    }
+    const Mat4 vp = Mul(wvp, inv);
+    // Perspective with w = distance along the view axis: row 3 is that axis (unit length).
+    const float zx = At(vp, 3, 0), zy = At(vp, 3, 1), zz = At(vp, 3, 2), zw = At(vp, 3, 3);
+    const float zlen = std::sqrt(zx * zx + zy * zy + zz * zz);
+    if (zlen < 0.9f || zlen > 1.1f) {
+        return;
+    }
+    // Two draws must imply the same matrix (a draw whose first floats are other data, or a
+    // special camera, does not match the main one).
+    bool agreed = false;
+    for (u32 c = 0; c < candidate_count && !agreed; ++c) {
+        float diff = 0.0f, scale = 0.0f;
+        for (int i = 0; i < 16; ++i) {
+            diff = std::max(diff, std::abs(vp[i] - candidates[c][i]));
+            scale = std::max(scale, std::abs(candidates[c][i]));
+        }
+        agreed = diff <= 1e-4f * std::max(scale, 1.0f);
+    }
+    if (!agreed) {
+        candidates[candidate_next] = vp;
+        candidate_next = (candidate_next + 1) % candidates.size();
+        candidate_count = std::min<u32>(candidate_count + 1, u32(candidates.size()));
+        return;
+    }
+    // Rows of the view matrix from the view-projection: z = row 3 / |row 3|, then x and y with
+    // their projection centres removed; depth = a + b / z (D3D, 0 at the near plane).
+    const float inv_len = 1.0f / zlen;
+    std::array<float, 4> vz = {zx * inv_len, zy * inv_len, zz * inv_len, zw * inv_len};
+    std::array<float, 4> rows[3];
+    float scales[2];
+    for (int r = 0; r < 2; ++r) {
+        std::array<float, 4> row = {At(vp, r, 0), At(vp, r, 1), At(vp, r, 2), At(vp, r, 3)};
+        const float centre = row[0] * vz[0] + row[1] * vz[1] + row[2] * vz[2];
+        for (int k = 0; k < 4; ++k) {
+            row[k] -= centre * vz[k];
+        }
+        const float len = std::sqrt(row[0] * row[0] + row[1] * row[1] + row[2] * row[2]);
+        if (len < 1e-6f) {
+            return;
+        }
+        for (int k = 0; k < 4; ++k) {
+            row[k] /= len;
+        }
+        rows[r] = row;
+        scales[r] = len / zlen;
+    }
+    rows[2] = vz;
+    const float a = (At(vp, 2, 0) * vz[0] + At(vp, 2, 1) * vz[1] + At(vp, 2, 2) * vz[2]) / zlen;
+    const float b = (At(vp, 2, 3) - a * zw) / zlen;
+    previous = current;
+    for (int r = 0; r < 3; ++r) {
+        for (int k = 0; k < 4; ++k) {
+            current.view[r * 4 + k] = rows[r][k];
+        }
+    }
+    // View to world: transposed rotation, rotated negative translation.
+    for (int r = 0; r < 3; ++r) {
+        for (int k = 0; k < 3; ++k) {
+            current.inv_view[r * 4 + k] = rows[k][r];
+        }
+        current.inv_view[r * 4 + 3] =
+            -(rows[0][r] * rows[0][3] + rows[1][r] * rows[1][3] + rows[2][r] * rows[2][3]);
+    }
+    current.proj = {scales[0], scales[1], a, b};
+    current.valid = scales[0] > 0.0f && scales[1] > 0.0f && b < 0.0f;
+    frame_has_camera = true;
+    candidate_count = 0;
+}
+
+float CameraMotion::Far() const noexcept {
+    // depth = a + b / z reaches 1 at the far plane.
+    // D3D projection: a = f / (f - n) > 1, b = -f n / (f - n) < 0.
+    const float a = current.proj[2], b = current.proj[3];
+    if (current.valid && a > 1.0f && b < 0.0f) {
+        return std::min(b / (1.0f - a), 1.0e6f);
+    }
+    return 3000.0f;
+}
+
 void CameraMotion::OnGBufferPass(VideoCore::ImageId depth) {
     depth_id = depth;
 }
@@ -250,6 +395,7 @@ void CameraMotion::OnDisplayPass(VideoCore::ImageId frame) {
     }
     if (!frame_has_camera) InvalidateHistory();
     frame_has_camera = false;
+    candidate_count = 0;
     depth_id = {};
 }
 

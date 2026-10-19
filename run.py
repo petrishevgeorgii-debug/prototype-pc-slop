@@ -364,7 +364,14 @@ def main():
             pass
         # The temporal upscalers and motion vectors are not calibrated for this game yet: they stay
         # off unless the launcher's experimental switch is on; linear image readbacks fix textures.
-        if get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
+        if is_prototype:
+            # PROTOTYPE: FSR 3.1 / 4 / 4.1 on its scene (in-game menu, theorder.ini), as
+            # native-resolution anti-aliasing; off until chosen.
+            env['THEORDER_GAME'] = 'prototype'
+            env['THEORDER_UPSCALE_PRESET'] = '0'
+            if 'upscaler' not in graphics_options.read_ini(env['THEORDER_CONFIG']):
+                graphics_options.write_keys(env['THEORDER_CONFIG'], {'upscaler': 'off'})
+        elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
             env.setdefault('THEORDER_UPSCALER', 'none')
         env.setdefault('THEORDER_READBACK_LINEAR', '1')
         patches_val = get_env(env, 'PATCHES', '')

@@ -9,7 +9,11 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform readonly image2D upscaled;
+#ifdef SCENE_LDR
+layout(binding = 1, rgba8) uniform image2D scene; // PROTOTYPE: tonemapped RGBA8 scene colour
+#else
 layout(binding = 1, rgba16f) uniform image2D scene;
+#endif
 layout(binding = 2, r8) uniform readonly image2D reactive;
 layout(binding = 3) uniform texture2D motion;  // render size, pixels
 layout(binding = 4) uniform texture2D objects; // render size, b = object vector written
@@ -37,5 +41,8 @@ void main() {
         const float luma = dot(min(color, vec3(1.0)), vec3(0.3, 0.6, 0.1));
         color = vec3(luma * 0.3) + vec3(clamp(abs(mv) / 8.0, 0.0, 1.0), object ? 0.6 : 0.0);
     }
+#ifdef SCENE_LDR
+    color = clamp(color, vec3(0.0), vec3(1.0));
+#endif
     imageStore(scene, pixel, vec4(color, original.a));
 }

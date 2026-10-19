@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <unordered_set>
 #include <xxhash.h>
@@ -33,6 +35,16 @@
 #include "video_core/texture_cache/texture_cache.h"
 
 namespace Vulkan {
+
+// port: PROTOTYPE's frame (run.py sets THEORDER_GAME=prototype): no G-buffer, an RGBA8 scene
+// colour drawn with a full-size scene depth, the camera in each material draw's constants.
+static bool PrototypeGame() {
+    static const bool on = [] {
+        const char* game = std::getenv("THEORDER_GAME");
+        return game && std::strcmp(game, "prototype") == 0;
+    }();
+    return on;
+}
 
 static Shader::PushData MakeUserData(const AmdGpu::Regs& regs) {
     // TODO(roamic): Add support for multiple viewports and geometry shaders when ViewportIndex
@@ -289,6 +301,29 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     gbuffer_draw = camera_motion->Enabled() && std::popcount(key.mrt_mask) >= 5 && db_desc.first;
     if (gbuffer_draw) {
         camera_motion->OnGBufferPass(db_desc.first);
+    }
+    // port: PROTOTYPE: the scene depth is the full-size (not square: shadow atlases are)
+    // D32S8 target; the colour drawn with it into a single same-size target is the scene.
+    proto_scene_draw = false;
+    if (PrototypeGame() && camera_motion->Enabled() && db_desc.first) {
+        const auto& depth = texture_cache.GetImage(db_desc.first);
+        const u32 dw = depth.info.size.width, dh = depth.info.size.height;
+        if (depth.info.props.is_depth && dw != dh && dw >= 640 && dh >= 360) {
+            camera_motion->OnGBufferPass(db_desc.first);
+            proto_scene_seen = true;
+            if (cb_descs[0].first && std::popcount(key.mrt_mask) == 1) {
+                const auto& color = texture_cache.GetImage(cb_descs[0].first);
+                const auto format = color.info.pixel_format;
+                if (color.info.size.width == dw && color.info.size.height == dh &&
+                    (format == vk::Format::eR8G8B8A8Unorm ||
+                     format == vk::Format::eR16G16B16A16Sfloat)) {
+                    proto_scene_draw = true;
+                    if (upscaler->Enabled()) {
+                        upscaler->OnSceneColor(cb_descs[0].first);
+                    }
+                }
+            }
+        }
     }
     if (upscaler->Enabled() && cb_descs[0].first) {
         upscaler->OnColorTarget(cb_descs[0].first);
@@ -1048,8 +1083,12 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     const auto& regs = Regs();
     // port: the pass copying a finished frame to a display buffer; the previous draw's
     // target is that frame.
+    // PROTOTYPE draws its whole UI into the display buffer: only the first such draw after
+    // a scene starts the next frame.
     if (camera_motion->Enabled() && regs.color_buffers[0] &&
-        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address())) {
+        FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
+        (!PrototypeGame() || proto_scene_seen)) {
+        proto_scene_seen = false;
         scene_started = false;
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
@@ -1071,6 +1110,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     motion_geometry = 0;
 
     PrepareRenderState(pipeline);
+    // port: PROTOTYPE upscales the scene before its first post-processing draw.
+    if (PrototypeGame() && upscaler->Enabled()) {
+        upscaler->OnDrawTrigger(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash);
+    }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,
@@ -1295,6 +1338,10 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     motion_draw = false;
     motion_geometry = 0;
     PrepareRenderState(pipeline);
+    // port: PROTOTYPE upscales the scene before its first post-processing draw.
+    if (PrototypeGame() && upscaler->Enabled()) {
+        upscaler->OnDrawTrigger(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash);
+    }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,
@@ -2281,6 +2328,10 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     memory->IsValidGpuMapping(ring->address, 0)) {
                     camera_motion->OnConstants(reinterpret_cast<const float*>(ring->address));
                 }
+                if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex && ring->size >= 128) {
+                    camera_motion->OnObjectConstants(
+                        reinterpret_cast<const float*>(constant_ring->Data(ring->offset)));
+                }
                 push_data.AddOffset(binding.buffer, 0);
             }
             buffer_infos.emplace_back(constant_ring->Handle(), ring->offset, ring->size);
@@ -2349,6 +2400,10 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
             if (vsharp.GetSize() == 864 && gbuffer_draw &&
                 memory->IsValidGpuMapping(vsharp.base_address, 0)) {
                 camera_motion->OnConstants(reinterpret_cast<const float*>(vsharp.base_address));
+            }
+            if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex &&
+                vsharp.GetSize() >= 128 && memory->IsValidGpuMapping(vsharp.base_address, 128)) {
+                camera_motion->OnObjectConstants(reinterpret_cast<const float*>(vsharp.base_address));
             }
             // Object motion research: the vertex shader buffers of G-buffer draws.
             if (FrameCapture::Active() && gbuffer_draw && stage.sw_stage == Shader::SwStage::Vertex &&

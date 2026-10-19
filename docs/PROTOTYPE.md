@@ -51,5 +51,18 @@ pre-pass into a 1920×1080 D32S8 target (vertex shader `0x10e04a6a`, one 4×4 ma
 constant offset 0); linear depth R32F; SSAO/lighting RGBA8 targets; the main colour pass into an
 RGBA8 target sharing the scene depth (material shaders, e.g. `0xf1958b0b`, carry the object's
 world-view-projection and world matrices); bloom chain at 960×540 and 480×270; composite and
-Scaleform UI into the RGBA8 sRGB display buffer. The scene colour is LDR, so FSR 3.1/4 can run on
-it before post-processing once the camera matrices are tracked and jitter is applied.
+Scaleform UI into the RGBA8 sRGB display buffer. The scene colour is LDR, so FSR 3.1/4 run on it
+before post-processing.
+
+How the port hooks FSR in (`THEORDER_GAME=prototype`, set by `run.py`):
+
+- **Scene targets** (`vk_rasterizer.cpp`): a non-square depth target of at least 640×360 is the
+  scene depth; a single RGBA8/RGBA16F colour target of the same size is the scene colour. Draws
+  using the scene depth get the jitter.
+- **Camera** (`vk_camera_motion.cpp`, `OnObjectConstants`): material vertex constants hold
+  World (floats 0–15) and WVP (16–31). VP = WVP·World⁻¹ is accepted when two draws agree, then split
+  into the view matrix and the projection (scale x/y, depth = a + b/z; near ≈ 0.3, far ≈ 7500).
+- **When**: FSR runs right before the first post-processing draw (vertex shader `0x4bc9c66a`,
+  override with `THEORDER_UPSCALE_BEFORE_VS`), and the result is written back into the scene
+  colour (`upscale_merge.comp`, `SCENE_LDR` variant).
+- Quality is Native AA (render size = output size) for now.
