@@ -80,6 +80,7 @@ public:
     /// Why Ready() is false (diagnostics).
     [[nodiscard]] bool CurrentValid() const noexcept { return current.valid; }
     [[nodiscard]] bool PreviousValid() const noexcept { return previous.valid; }
+    [[nodiscard]] std::array<float, 4> CurrentProj() const noexcept { return current.proj; }
     /// Far plane of the current projection (3000 when it cannot be derived).
     [[nodiscard]] float Far() const noexcept;
 

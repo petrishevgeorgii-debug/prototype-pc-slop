@@ -349,6 +349,7 @@ private:
     /// PROTOTYPE (THEORDER_GAME=prototype): this draw is a scene material draw (scene color
     /// and scene depth); a scene draw happened since the last frame start.
     bool proto_scene_draw = false;
+    bool proto_camera_draw = false;   ///< a scene draw into the scene colour (main camera)
     bool proto_scene_seen = false;
     bool proto_post_trigger = false;
     bool proto_post_phase = false;    ///< post-processing/UI of a frame: no scene draws

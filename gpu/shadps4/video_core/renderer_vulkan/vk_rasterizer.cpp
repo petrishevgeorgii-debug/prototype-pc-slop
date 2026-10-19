@@ -309,6 +309,7 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     // draws into it, the first draw that targets neither it nor the scene depth starts
     // post-processing: FSR runs before it.
     proto_scene_draw = false;
+    proto_camera_draw = false;
     proto_post_trigger = false;
     if (PrototypeGame() && camera_motion->Enabled()) {
         // From the post-processing trigger until the next frame's scene (a draw into the
@@ -348,14 +349,15 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 } else if (proto_color_counts.size() < 8) {
                     proto_color_counts.push_back({color_id, 1u});
                 }
-                if (color_id == proto_main_color) {
+                // Only the scene colour's draws carry the main camera (an earlier pass into
+                // another target uses a wider one) and the scene size.
+                proto_camera_draw = color_id == proto_main_color;
+                if (proto_camera_draw) {
                     ++proto_main_draws;
                     if (upscaler->Enabled()) {
                         upscaler->OnSceneColor(color_id);
+                        upscaler->NoteNativeScene(dw, dh);
                     }
-                }
-                if (upscaler->Enabled()) {
-                    upscaler->NoteNativeScene(dw, dh);
                 }
             }
         }
@@ -2384,7 +2386,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                     memory->IsValidGpuMapping(ring->address, 0)) {
                     camera_motion->OnConstants(reinterpret_cast<const float*>(ring->address));
                 }
-                if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex && ring->size >= 128) {
+                if (proto_camera_draw && stage.sw_stage == Shader::SwStage::Vertex && ring->size >= 128) {
                     camera_motion->OnObjectConstants(
                         reinterpret_cast<const float*>(constant_ring->Data(ring->offset)),
                         stage.pgm_hash, ring->size, 0);
@@ -2458,7 +2460,7 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 memory->IsValidGpuMapping(vsharp.base_address, 0)) {
                 camera_motion->OnConstants(reinterpret_cast<const float*>(vsharp.base_address));
             }
-            if (proto_scene_draw && stage.sw_stage == Shader::SwStage::Vertex &&
+            if (proto_camera_draw && stage.sw_stage == Shader::SwStage::Vertex &&
                 vsharp.GetSize() >= 128 && memory->IsValidGpuMapping(vsharp.base_address, 128)) {
                 camera_motion->OnObjectConstants(reinterpret_cast<const float*>(vsharp.base_address),
                                                  stage.pgm_hash, u32(vsharp.GetSize()), 1);
