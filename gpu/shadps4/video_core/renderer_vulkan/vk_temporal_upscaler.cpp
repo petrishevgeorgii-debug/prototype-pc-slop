@@ -67,6 +67,7 @@ int DumpFrame() {
         std::filesystem::create_directories(env && env[0] ? env : "out/dump", ec);
         std::printf("Upscaler: saving FSR images of 3 frames\n");
         remaining = 3;
+        PortStats::display_dump_left = 4;
     }
     if (remaining > 0 && !trigger) {
         --remaining;
@@ -1113,6 +1114,7 @@ void TemporalUpscaler::Run() {
         return;
     }
     const bool info_reset_for_dump = reset;
+    int saved_dump = -1;
     const auto depth_format = depth.info.pixel_format;
     const auto depth_view =
         CachedView(depth, depth_format, vk::ImageAspectFlagBits::eDepth);
@@ -1268,6 +1270,7 @@ void TemporalUpscaler::Run() {
         dispatched_last_frame = true;
         // FSR's inputs and output (menu: FSR tests, save images; or THEORDER_DUMP_TRIGGER).
         if (const int dump = DumpFrame(); dump >= 0) {
+            saved_dump = dump;
             DumpImages(instance, scheduler, cmdbuf, dump,
                        {{input_color, w, h, hdr ? 8u : 4u, "input", hdr ? "rgba16f" : "rgba8"},
                         {vk::Image(motion_image), w, h, 4, "motion", "rg16f"},
@@ -1336,6 +1339,10 @@ void TemporalUpscaler::Run() {
         cmdbuf.pushConstants(*merge_pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0,
                              sizeof(mode), &mode);
         cmdbuf.dispatch((ow + 7) / 8, (oh + 7) / 8, 1);
+        if (saved_dump >= 0) {
+            DumpImages(instance, scheduler, cmdbuf, saved_dump,
+                       {{color.GetImage(), ow, oh, hdr ? 8u : 4u, "merged", hdr ? "rgba16f" : "rgba8"}});
+        }
     }
 }
 

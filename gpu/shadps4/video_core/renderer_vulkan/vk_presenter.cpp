@@ -412,7 +412,9 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
     static const char* frame_dump_interval_env = std::getenv("THEORDER_FRAME_DUMP_INTERVAL");
     const int frame_dump_interval = frame_dump_interval_env ? std::atoi(frame_dump_interval_env) : 0;
     const bool frame_dump = (frame_dump_trigger && std::remove(frame_dump_trigger) == 0) ||
-                            (frame_dump_interval > 0 && (frame_dump_counter % frame_dump_interval == 0));
+                            (frame_dump_interval > 0 && (frame_dump_counter % frame_dump_interval == 0)) ||
+                            PortStats::display_dump_left.fetch_sub(1) > 0;
+    if (PortStats::display_dump_left.load() < 0) PortStats::display_dump_left = 0;
     // port: scaled upscaler presets: the output-size display buffer drawn by the port.
     TemporalUpscaler::Display display{};
     const bool upscaled = rasterizer->GetUpscaler().DisplayOverride(cpu_address, display);
