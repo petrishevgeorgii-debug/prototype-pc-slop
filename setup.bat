@@ -17,6 +17,11 @@ if not "%BUILD_ERROR%"=="0" (
   echo BUILD FAILED: see build.log
   pause & exit /b 1
 )
+echo Downloading the FSR 4 model files (once) ...
+pushd "%PORT%"
+C:\msys64\usr\bin\env.exe MSYSTEM=CLANG64 CHERE_INVOKING=1 /usr/bin/bash -lc "bash tools/fetch_fsr4_assets.sh" >> build.log 2>&1
+if errorlevel 1 echo FSR 4 model files could not be downloaded: FSR 4 falls back to FSR 3.1.
+popd
 echo [2/2] Building the launcher ...
 call "%PORT%\packaging\windows\build_launcher.bat"
 if errorlevel 1 (

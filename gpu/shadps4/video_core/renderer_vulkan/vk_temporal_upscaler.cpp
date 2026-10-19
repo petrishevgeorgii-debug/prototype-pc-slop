@@ -331,10 +331,13 @@ bool TemporalUpscaler::OnFrameStart() {
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
     prototype_game = prototype;
-    fsr_ran_last_frame = dispatched_last_frame;
-    // PROTOTYPE: jitter only while FSR resolves it (a frame without FSR would shake).
+    // PROTOTYPE: jitter and reduced passes once FSR runs, kept through single frames
+    // without it (switching them per frame flickered and reset the camera history); off
+    // again after half a second without FSR.
+    frames_without_fsr = dispatched_last_frame ? 0 : std::min(frames_without_fsr + 1, 1000u);
+    fsr_ran_last_frame = active && frames_without_fsr < 30;
     const bool jitter_on = active && settings.jitter && !PortToggle::Disabled(1u << 25) &&
-                           (!prototype || dispatched_last_frame);
+                           (!prototype || fsr_ran_last_frame);
     const int upscaler = settings.upscaler.load();
     const int output = settings.output_res.load();
     const bool output_changed = !scaled_session && applied_output != output;

@@ -1112,7 +1112,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
             object_motion->InvalidateHistory();
-            camera_motion->InvalidateHistory();
+            // PROTOTYPE: the camera is found every frame; a settings change resets FSR only.
+            if (!PrototypeGame()) camera_motion->InvalidateHistory();
         }
         camera_motion->SetJitter(upscaler->Jitter());
         object_motion->OnFrameStart();
