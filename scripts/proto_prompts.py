@@ -31,7 +31,7 @@ HUD = Path('p1') / 'art' / 'hud'
 TEXT_FILES = ('fe_textbible.p3d.rz', 'textbible_english.p3d.rz', 'textbible_french.p3d.rz',
               'textbible_italian.p3d.rz', 'textbible_spanish.p3d.rz')
 HINT_FILE = 'fe_ingame.p3d.rz'
-VERSION = 2  # of this script's output (part of the cache key)
+VERSION = 3  # of this script's output (part of the cache key)
 
 # buttonhint.gfx: the textures of its PA..PDL frames (A = Cross, B = Circle, X = Square,
 # Y = Triangle, the PS3-era names) in its two sets, and the d-pad picture of the small set.
@@ -146,8 +146,8 @@ def patch_text_bible(data, full):
         russian = sum('Ѐ' <= ch <= 'ӿ' for s in strings[:400] for ch in s) > 200
         table = prompt_texts(full, russian)
         menu_table = prompt_texts(full, russian, menu=True)
-        pause_keys = proto_controls.keys_for(full, 'options')
-        pause_text = f'[{proto_controls.key_label(pause_keys[0], russian)}]' if pause_keys else None
+        woi_keys = proto_controls.keys_for(full, 'options')
+        woi_text = f'[{proto_controls.key_label(woi_keys[0], russian)}]' if woi_keys else None
         keys = []
         p = 12
         _, p = pstring(chunk, p)
@@ -161,10 +161,10 @@ def patch_text_bible(data, full):
             # Menu hints ("NEXT ENTRY ¾") show the menu keys.
             menu = key.startswith(('NEXT_', 'PREVIOUS_'))
             replacements = dict(menu_table if menu else table)
-            # · is the touchpad (the Web of Intrigue) only in its texts; the others mean the pause
-            # (Options), which has no symbol of its own.
-            if 'WOI' not in key and pause_text:
-                replacements['·'] = pause_text
+            # · is the touchpad (the pause) except in the Web of Intrigue's texts, where the
+            # button that opens it is Options.
+            if 'WOI' in key and woi_text:
+                replacements['·'] = woi_text
             for symbol, replacement in replacements.items():
                 if symbol in n:
                     n = n.replace(symbol, replacement)

@@ -37,10 +37,10 @@ ACTIONS = (
     ('disguise', 'left', 'Disguise', 'Маскировка', ['4', 'Z'], 'powers'),
     ('camera_reset', 'r3', 'Reset camera', 'Сброс камеры', ['Mouse Middle', 'V'], 'other'),
     ('l3', 'l3', 'L3 (left stick click)', 'L3 (нажатие левого стика)', ['C'], 'other'),
-    ('pause', 'options', 'Pause', 'Пауза', ['Escape'], 'other'),
-    # The touchpad (the 360's Back) opens the Web of Intrigue (WOI_TUT_EXP_9: "press · to enter
-    # or exit the Web of Intrigue"); the PC version had it on Tab.
-    ('web_of_intrigue', 'touchpad', 'Web of Intrigue', 'Цепь событий', ['J'], 'other'),
+    # Found by playing: the touchpad opens the pause menu, Options the Web of Intrigue (a few
+    # texts say "pause with ·", the Web of Intrigue's "press · to enter or exit").
+    ('pause', 'touchpad', 'Pause', 'Пауза', ['Escape'], 'other'),
+    ('web_of_intrigue', 'options', 'Web of Intrigue', 'Цепь событий', ['J'], 'other'),
     ('menu_confirm', 'cross', 'Menu: confirm', 'Меню: выбрать', ['Return'], 'menu'),
     ('menu_back', 'circle', 'Menu: back', 'Меню: назад', ['Backspace'], 'menu'),
     ('menu_up', 'up', 'Menu: up', 'Меню: вверх', ['Up'], 'menu'),
@@ -64,7 +64,7 @@ SYMBOLS = {
     '»': 'l2',         # BL2: target
     '¼': 'r2',         # BR2: sprint
     '§': 'r3',         # BR3: camera reset
-    '·': 'touchpad',   # BSE: the Web of Intrigue
+    '·': 'touchpad',   # BSE: the pause (and Options in the Web of Intrigue texts)
     '½': 'up', '¯': 'right', '¾': 'down', '¬': 'left',  # DPU, DPR, DPD, DPL
     '´': 'dpad',       # DPA: the four quick slots
     'µ': 'lstick',     # ALE: move

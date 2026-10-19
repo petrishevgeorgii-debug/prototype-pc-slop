@@ -742,21 +742,24 @@ class Launcher:
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
                     'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])
         groups = [(g, en) for g, en, _ in proto_controls.GROUPS]
-        self.stepper('Keys for', 'Click a key box, then press the key or mouse button for it. Delete '
-                     'clears the box, Esc cancels. A key is only on one action at a time.', 'controls_group', groups)
+        self.stepper('Keys for', 'Click a key box, then press the key or mouse button for it (click the box '
+                     'again for the left button). Delete clears the box; a click anywhere else cancels. A key is '
+                     'only on one action at a time.', 'controls_group', groups)
         full = self.layout()
         clashes = proto_controls.conflicts(full)
         group = self.values.get('controls_group', 'move')
         for action, _, label, _, _, action_group in proto_controls.ACTIONS:
             if action_group != group:
                 continue
-            y, tag = self.row(label, 'Click a box, then press a key or a mouse button (Delete clears it, '
-                              'Esc cancels).', height=34)
+            y, tag = self.row(label, 'Click a box, then press a key or a mouse button (click the box again '
+                              'for the left button). Delete clears it; a click anywhere else cancels.', height=34)
             keys = full.get(action, [])
             for slot in range(proto_controls.SLOTS):
                 bx1 = x1 - 32 - (proto_controls.SLOTS - 1 - slot) * 96
                 bx0 = bx1 - 88
                 capturing = getattr(self, 'capture', None) == (action, slot)
+                if capturing:
+                    self.capture_box = (bx0, y - 12, bx1, y + 12)
                 key = keys[slot] if slot < len(keys) else ''
                 text = 'Press a key…' if capturing else (self.key_text(key) if key else '—')
                 color = C['warn'] if key and key.casefold() in clashes else (C['text'] if key else C['dim'])
@@ -794,8 +797,7 @@ class Launcher:
         self.root.bind('<Button-4>', lambda e: self.capture_set('Wheel Up'))   # X11 wheel
         self.root.bind('<Button-5>', lambda e: self.capture_set('Wheel Down'))
         # The click that started the capture must not bind the left button: listen from the next one.
-        self.root.after(250, lambda: self.root.bind('<ButtonPress-1>', lambda e: self.capture_set('Mouse Left'))
-                        if self.capture else None)
+        self.root.after(250, lambda: self.root.bind('<ButtonPress-1>', self.capture_click) if self.capture else None)
         self.root.bind('<ButtonPress-2>', lambda e: self.capture_set('Mouse Middle'))
         self.root.bind('<ButtonPress-3>', lambda e: self.capture_set('Mouse Right'))
         self.draw()
@@ -806,14 +808,19 @@ class Launcher:
                          '<ButtonPress-2>', '<ButtonPress-3>'):
             self.root.unbind(sequence)
 
+    def capture_click(self, event):
+        """Left click: on the box being set it is the left mouse button, anywhere else a cancel."""
+        box = getattr(self, 'capture_box', None)
+        if box and event.widget is self.canvas and box[0] <= event.x <= box[2] and box[1] <= event.y <= box[3]:
+            self.capture_set('Mouse Left')
+        else:
+            self.capture_stop()
+            self.draw()
+
     def capture_wheel(self, event):
         self.capture_set('Wheel Up' if event.delta > 0 else 'Wheel Down')
 
     def capture_key(self, event):
-        if event.keysym == 'Escape':
-            self.capture_stop()
-            self.draw()
-            return 'break'
         if event.keysym == 'Delete':
             self.capture_set('')
             return 'break'

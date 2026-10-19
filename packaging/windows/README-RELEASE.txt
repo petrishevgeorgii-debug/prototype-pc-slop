@@ -39,7 +39,7 @@ SAVES AND LOGS
   Log:     last_run.log (send it with any problem report)
 
 KNOWN ISSUES
-  - The Web of Intrigue (touchpad, J) can hang on its loading screen: press F10 while it
+  - The pause menu (touchpad, Esc) can rarely hang on its loading screen: press F10 while it
     hangs and send last_run.log.
   - PROTOTYPE 2 (from the bundle menu) is not supported yet: choosing it ends the game.
   - Render resolution above 1080p is experimental.

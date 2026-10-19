@@ -97,7 +97,7 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 ## Known issues
 
-- Opening the Web of Intrigue (touchpad, J) can end in an endless loading screen. Under
+- Opening the pause menu (touchpad, Esc) can rarely end in an endless loading screen. Under
   investigation: press **F10** while it hangs and send `last_run.log`.
 - PROTOTYPE 2 does not start yet.
 - Render resolutions above 1080p are experimental.
