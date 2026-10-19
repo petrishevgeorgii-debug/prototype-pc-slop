@@ -180,9 +180,6 @@ TemporalUpscaler::TemporalUpscaler(const Instance& instance_, Scheduler& schedul
     if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_CS")) {
         trigger_hash = std::strtoull(hash, nullptr, 16);
     }
-    if (const char* hash = std::getenv("THEORDER_UPSCALE_BEFORE_FS")) {
-        draw_trigger_fs = std::strtoull(hash, nullptr, 16);
-    }
     if (const char* hash = std::getenv("THEORDER_UI_TRIGGER_VS")) {
         ui_trigger_vs = std::strtoull(hash, nullptr, 16);
     }
@@ -293,6 +290,17 @@ bool TemporalUpscaler::OnFrameStart() {
             std::fclose(f);
         }
     }
+    static const bool prototype = [] {
+        const char* game = std::getenv("THEORDER_GAME");
+        return game && std::strcmp(game, "prototype") == 0;
+    }();
+    // PROTOTYPE: scene targets at its patched render size become the "native" scene.
+    if (prototype && pending_native.width && !scaled_session &&
+        scene_targets.SetNative(pending_native)) {
+        failed = false;
+        reset = true;
+    }
+    pending_native = {};
     const auto& settings = PortSettings::Get();
     // The guest's startup resolution patch remains in effect until restart. Keep the FSR
     // model at the applied preset while the menu saves the requested one for run.sh.
@@ -301,10 +309,6 @@ bool TemporalUpscaler::OnFrameStart() {
     const bool active = Active();
     // PROTOTYPE: every ~5 s while FSR is on, how many frames reached the post pass, and why
     // FSR did not run (no scene colour found / no camera yet).
-    static const bool prototype = [] {
-        const char* game = std::getenv("THEORDER_GAME");
-        return game && std::strcmp(game, "prototype") == 0;
-    }();
     if (prototype && active && ++diag_frames >= 300) {
         if (diag_runs < diag_frames) {
             std::printf("Upscaler: %u frames, post pass seen %u, FSR ran %u, no scene colour %u, "
@@ -314,7 +318,9 @@ bool TemporalUpscaler::OnFrameStart() {
         }
         diag_frames = diag_triggers = diag_no_scene = diag_no_camera = diag_runs = 0;
     }
-    const bool jitter_on = active && settings.jitter && !PortToggle::Disabled(1u << 25);
+    // PROTOTYPE: jitter only while FSR resolves it (a frame without FSR would shake).
+    const bool jitter_on = active && settings.jitter && !PortToggle::Disabled(1u << 25) &&
+                           (!prototype || dispatched_last_frame);
     const int upscaler = settings.upscaler.load();
     const int output = settings.output_res.load();
     const bool output_changed = !scaled_session && applied_output != output;
@@ -337,8 +343,9 @@ bool TemporalUpscaler::OnFrameStart() {
     // Dynamic scene resolution scaling (live preset switching) works on all GPUs.
     // On GPUs without D32S8 blit support, UI depth is cleared instead of copied from scene.
     if (!scaled_session) {
-        scene_targets.SetSize(SceneResolution::ForPreset(active ? preset : 0,
-                                                        {target_width, target_height}));
+        scene_targets.SetSize(SceneResolution::ForPreset(
+            active ? preset : 0,
+            prototype ? scene_targets.Native() : SceneResolution::Size{target_width, target_height}));
         render_width = scene_targets.Size().width;
         render_height = scene_targets.Size().height;
     }
@@ -371,14 +378,14 @@ bool TemporalUpscaler::OnFrameStart() {
     // CameraMotion::OnDisplayPass has already cleared Depth(). Use the context's render
     // size, which survives the frame boundary (Performance 960 -> 1920 needs 32 phases).
     const u32 phases = Scaled() ? Motion::JitterPhases(render_width, target_width)
-        : Motion::JitterPhases(scene_targets.Size().width, 1920);
+        : Motion::JitterPhases(scene_targets.Size().width, scene_targets.Native().width);
     jitter_index = jitter_index % phases + 1;
     jitter = {Halton(jitter_index, 2) - 0.5f, Halton(jitter_index, 3) - 0.5f};
     return changed;
 }
 
-void TemporalUpscaler::OnDrawTrigger(u64 fs_hash) {
-    if (fs_hash != draw_trigger_fs || done_this_frame || failed || Scaled()) {
+void TemporalUpscaler::OnDrawTrigger() {
+    if (done_this_frame || failed || Scaled()) {
         return;
     }
     done_this_frame = true;
@@ -1331,7 +1338,7 @@ std::array<u32, 2> TemporalUpscaler::SceneSize(u32 w, u32 h) const {
 float TemporalUpscaler::SceneMipBias() const {
     if (!Active() || PortSettings::Get().upscaler == PortSettings::UpscalerTaa) return 0.0f;
     const float render = float(PortSettings::Get().active_render_width.load());
-    const float output = float(Scaled() ? target_width : 1920u);
+    const float output = float(Scaled() ? target_width : scene_targets.Native().width);
     return render > 0.0f && render < output ? std::log2(render / output) : 0.0f;
 }
 

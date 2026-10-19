@@ -348,6 +348,9 @@ private:
     /// and scene depth); a scene draw happened since the last frame start.
     bool proto_scene_draw = false;
     bool proto_scene_seen = false;
+    bool proto_post_trigger = false;      ///< this draw starts PROTOTYPE's post-processing
+    u32 proto_scene_draws = 0;            ///< scene draws into proto_scene_color this frame
+    VideoCore::ImageId proto_scene_color{};
     std::unique_ptr<TemporalUpscaler> upscaler; // port: FSR (docs/upscaler.md)
     std::array<float, 2> draw_jitter{};         ///< viewport offset of the current draw, pixels
     std::array<float, 2> target_scale{1.0f, 1.0f}; ///< pass drawn into the upscaler's output-size images

@@ -56,13 +56,18 @@ before post-processing.
 
 How the port hooks FSR in (`THEORDER_GAME=prototype`, set by `run.py`):
 
-- **Scene targets** (`vk_rasterizer.cpp`): a non-square depth target of at least 640×360 is the
-  scene depth; a single RGBA8/RGBA16F colour target of the same size is the scene colour. Draws
-  using the scene depth get the jitter.
+- **Scene targets** (`vk_rasterizer.cpp`): a draw into a single RGBA8/RGBA16F colour target with a
+  same-size, non-square D32S8 depth is a scene draw; that depth is the scene depth (the UI's
+  depth pairs with the sRGB display buffer and is ignored). Draws using the scene depth get
+  the jitter, and only while FSR runs.
 - **Camera** (`vk_camera_motion.cpp`, `OnObjectConstants`): material vertex constants hold
   World (floats 0–15) and WVP (16–31). VP = WVP·World⁻¹ is accepted when two draws agree, then split
   into the view matrix and the projection (scale x/y, depth = a + b/z; near ≈ 0.3, far ≈ 7500).
-- **When**: FSR runs right before the first post-processing draw (pixel shader `0xd9caa112`,
-  override with `THEORDER_UPSCALE_BEFORE_FS`; its vertex shader is shared with the shadow pass), and the result is written back into the scene
-  colour (`upscale_merge.comp`, `SCENE_LDR` variant).
-- Quality is Native AA (render size = output size) for now.
+- **When**: after 8+ scene draws into one colour target, the first draw that targets neither
+  it nor the scene depth (the depth-of-field or bloom pass) starts post-processing; FSR runs
+  right before it and writes into the scene colour (`upscale_merge.comp`, `SCENE_LDR`).
+- **Presets**: from the first scene draw until FSR, passes render into reduced proxies
+  (`vk_scene_resolution.cpp`), with the scene size taken from the game's targets (its patched
+  render resolution); FSR rebuilds the full size. Quality 1/1.5, Balanced 1/1.7, Performance
+  1/2, Ultra Performance 1/3.
+

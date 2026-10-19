@@ -302,27 +302,41 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
     if (gbuffer_draw) {
         camera_motion->OnGBufferPass(db_desc.first);
     }
-    // port: PROTOTYPE: the scene depth is the full-size (not square: shadow atlases are)
-    // D32S8 target; the colour drawn with it into a single same-size target is the scene.
+    // port: PROTOTYPE: a scene draw renders into a single RGBA8 (or RGBA16F) colour target
+    // with a same-size, non-square (shadow atlases are square) D32S8 depth: that depth is the
+    // scene depth, the colour the scene colour (the UI's depth pairs with the sRGB display
+    // buffer and is not one). After 8+ scene draws into one colour, the first draw that
+    // targets neither it nor the scene depth starts post-processing: FSR runs before it.
     proto_scene_draw = false;
-    if (PrototypeGame() && camera_motion->Enabled() && db_desc.first) {
-        const auto& depth = texture_cache.GetImage(db_desc.first);
-        const u32 dw = depth.info.size.width, dh = depth.info.size.height;
-        if (depth.info.props.is_depth && dw != dh && dw >= 640 && dh >= 360) {
-            camera_motion->OnGBufferPass(db_desc.first);
-            proto_scene_seen = true;
-            if (cb_descs[0].first && std::popcount(key.mrt_mask) == 1) {
-                const auto& color = texture_cache.GetImage(cb_descs[0].first);
-                const auto format = color.info.pixel_format;
-                if (color.info.size.width == dw && color.info.size.height == dh &&
-                    (format == vk::Format::eR8G8B8A8Unorm ||
-                     format == vk::Format::eR16G16B16A16Sfloat)) {
-                    proto_scene_draw = true;
-                    if (upscaler->Enabled()) {
-                        upscaler->OnSceneColor(cb_descs[0].first);
-                    }
+    proto_post_trigger = false;
+    if (PrototypeGame() && camera_motion->Enabled()) {
+        if (db_desc.first && cb_descs[0].first && std::popcount(key.mrt_mask) == 1) {
+            const auto& depth = texture_cache.GetImage(db_desc.first);
+            const auto& color = texture_cache.GetImage(cb_descs[0].first);
+            const u32 dw = depth.info.size.width, dh = depth.info.size.height;
+            const auto format = color.info.pixel_format;
+            if (depth.info.props.is_depth && dw != dh && dw >= 640 && dh >= 360 &&
+                color.info.size.width == dw && color.info.size.height == dh &&
+                (format == vk::Format::eR8G8B8A8Unorm || format == vk::Format::eR16G16B16A16Sfloat)) {
+                proto_scene_draw = true;
+                proto_scene_seen = true;
+                camera_motion->OnGBufferPass(db_desc.first);
+                if (cb_descs[0].first != proto_scene_color) {
+                    proto_scene_color = cb_descs[0].first;
+                    proto_scene_draws = 0;
+                }
+                ++proto_scene_draws;
+                if (upscaler->Enabled()) {
+                    upscaler->OnSceneColor(cb_descs[0].first);
+                    upscaler->NoteNativeScene(dw, dh);
                 }
             }
+        }
+        if (!proto_scene_draw && proto_scene_draws >= 8 &&
+            !(cb_descs[0].first && cb_descs[0].first == proto_scene_color) &&
+            !(db_desc.first && db_desc.first == camera_motion->Depth())) {
+            proto_post_trigger = true;
+            proto_scene_draws = 0;
         }
     }
     if (upscaler->Enabled() && cb_descs[0].first) {
@@ -1089,6 +1103,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         FrameCapture::IsDisplayBuffer(regs.color_buffers[0].Address()) &&
         (!PrototypeGame() || proto_scene_seen)) {
         proto_scene_seen = false;
+        proto_scene_draws = 0;
+        proto_scene_color = {};
         scene_started = false;
         camera_motion->OnDisplayPass(cb_descs[0].first);
         if (upscaler->OnFrameStart()) {
@@ -1111,9 +1127,8 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
 
     PrepareRenderState(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
-    if (PrototypeGame() && upscaler->Enabled()) {
-        const Shader::Info* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
-        upscaler->OnDrawTrigger(fs ? fs->pgm_hash : 0);
+    if (proto_post_trigger && upscaler->Enabled()) {
+        upscaler->OnDrawTrigger();
     }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
@@ -1340,9 +1355,8 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     motion_geometry = 0;
     PrepareRenderState(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
-    if (PrototypeGame() && upscaler->Enabled()) {
-        const Shader::Info* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
-        upscaler->OnDrawTrigger(fs ? fs->pgm_hash : 0);
+    if (proto_post_trigger && upscaler->Enabled()) {
+        upscaler->OnDrawTrigger();
     }
     if (upscaler->Enabled() && std::popcount(pipeline->GetGraphicsKey().mrt_mask) == 1) {
         const auto& viewport = Regs().viewports[0];
@@ -3256,6 +3270,8 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
     const auto& key = pipeline->GetGraphicsKey();
     if (std::popcount(key.mrt_mask & 0x7f) >= 5 && db_desc.first &&
         scene_targets->EligibleScene(texture_cache.GetImage(db_desc.first))) scene_started = true;
+    // PROTOTYPE: from its first scene draw (colour + scene depth) until FSR runs.
+    if (proto_scene_draw) scene_started = true;
     // A proxy attachment cannot represent MSAA or a feedback loop that reads the
     // same image through the guest's native descriptor during this draw.
     bool reduced = scene_started && upscaler->RasterScaling() && key.num_samples == 1;
@@ -3313,7 +3329,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         }
         std::printf("Scene pass: reduced %d %s\n", reduced, why.c_str());
     }
-    push_data.scene_size = reduced ? SceneResolution::Pack(scene_targets->Size()) : 0;
+    push_data.scene_size = reduced ? SceneResolution::Pack(scene_targets->ShaderSize()) : 0;
     if (PortStats::enabled) {
         PortStats::reduced_draws.fetch_add(reduced, std::memory_order_relaxed);
         PortStats::scene_draws.fetch_add(scene_started, std::memory_order_relaxed);
@@ -3552,7 +3568,9 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         const auto proxy = pass_size.value_or(size);
         state.width = proxy.width;
         state.height = proxy.height;
-        target_scale = {float(size.width) / 1920.0f, float(size.height) / 1080.0f};
+        const auto native = scene_targets->Native();
+        target_scale = {float(size.width) / float(native.width),
+                        float(size.height) / float(native.height)};
     }
     if (census_on) {
         std::array<const VideoCore::ImageInfo*, AmdGpu::NUM_COLOR_BUFFERS> colors{};

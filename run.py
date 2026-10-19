@@ -365,10 +365,9 @@ def main():
         # The temporal upscalers and motion vectors are not calibrated for this game yet: they stay
         # off unless the launcher's experimental switch is on; linear image readbacks fix textures.
         if is_prototype:
-            # PROTOTYPE: FSR 3.1 / 4 / 4.1 on its scene (in-game menu, theorder.ini), as
-            # native-resolution anti-aliasing; off until chosen.
+            # PROTOTYPE: FSR 3.1 / 4 / 4.1 on its scene (in-game menu, theorder.ini): Native AA
+            # or a quality preset; off until chosen.
             env['THEORDER_GAME'] = 'prototype'
-            env['THEORDER_UPSCALE_PRESET'] = '0'
             if 'upscaler' not in graphics_options.read_ini(env['THEORDER_CONFIG']):
                 graphics_options.write_keys(env['THEORDER_CONFIG'], {'upscaler': 'off'})
         elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':

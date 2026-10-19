@@ -25,7 +25,12 @@ public:
     ~SceneTargets();
     bool SetSize(SceneResolution::Size);
     SceneResolution::Size Size() const { return size; }
-    bool Reduced() const { return size != SceneResolution::Size{}; }
+    bool Reduced() const { return size != native; }
+    /// port: the game's full scene size (PROTOTYPE: its patched render resolution).
+    bool SetNative(SceneResolution::Size);
+    SceneResolution::Size Native() const { return native; }
+    /// The reduced size in the 1920x1080 basis the shaders' FragCoord conversion uses.
+    SceneResolution::Size ShaderSize() const;
     /// A reduced proxy can stand in for the image: a 1920x1080 scene target or, scaled by
     /// the same factor, a half-resolution (960x540) one (toggle SceneHalfRes).
     bool Eligible(const VideoCore::Image&) const;
@@ -97,6 +102,7 @@ private:
     Runtime& runtime;
     Lookup lookup;
     SceneResolution::Size size;
+    SceneResolution::Size native; ///< 1920x1080 unless SetNative
     std::unordered_map<u64, std::unique_ptr<Entry>> entries; ///< by Key(uid, level)
     std::unordered_set<u64> tracked; ///< uids with proxies
     bool copying = false;

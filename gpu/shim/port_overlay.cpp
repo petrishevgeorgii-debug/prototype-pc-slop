@@ -878,11 +878,16 @@ void PrototypeMenu() {
         options.push_back(up);
         const bool active = s.upscaler != PortSettings::UpscalerOff;
         options.push_back({T("QUALITY", "КАЧЕСТВО"),
-                           T("Native AA: FSR works at the render resolution chosen in the launcher (best "
-                             "image). Upscaling presets come in a later update.",
-                             "Native AA: FSR работает в разрешении, выбранном в лаунчере (лучшее качество). "
-                             "Режимы повышения разрешения появятся в следующем обновлении."),
-                           0, {"NATIVE AA"}, 0, active});
+                           T("Native AA renders the scene at the launcher's render resolution; Quality, "
+                             "Balanced, Performance and Ultra Performance render it at 1/1.5, 1/1.7, 1/2 "
+                             "and 1/3 of that and FSR rebuilds it (faster, softer). The HUD stays sharp.",
+                             "Native AA рисует сцену в разрешении из лаунчера; Качество, Баланс, "
+                             "Производительность и Ультра рисуют её в 1/1.5, 1/1.7, 1/2 и 1/3 от него, а FSR "
+                             "восстанавливает (быстрее, мягче). Интерфейс остаётся чётким."),
+                           0,
+                           {"NATIVE AA", T("QUALITY", "КАЧЕСТВО"), T("BALANCED", "БАЛАНС"),
+                            T("PERFORMANCE", "ПРОИЗВОДИТ."), T("ULTRA PERFORMANCE", "УЛЬТРА")},
+                           std::clamp(s.preset.load(), 0, 4), active});
         options.push_back({T("FSR SHARPENING", "РЕЗКОСТЬ FSR"),
                            T("FSR's own contrast-adaptive sharpening.", "Встроенное повышение резкости FSR."),
                            0, {off, on}, s.sharpen ? 1 : 0, active});
@@ -900,7 +905,7 @@ void PrototypeMenu() {
             std::snprintf(status, sizeof(status), "%s", problem);
         } else if (active) {
             std::snprintf(status, sizeof(status), "%s  %d × %d", provider_name(s.upscaler).c_str(),
-                          s.image_width.load(), s.image_height.load());
+                          s.active_render_width.load(), s.active_render_height.load());
         } else {
             std::snprintf(status, sizeof(status), "%s", T("OFF", "ВЫКЛ"));
         }
@@ -946,6 +951,7 @@ void PrototypeMenu() {
         dirty = true;
         switch (category * 16 + index) {
         case 0: s.upscaler = providers[value]; break;
+        case 1: s.preset = value; break;
         case 2: s.sharpen = value == 1; break;
         case 3: s.sharpness = float(value) / 5.0f; break;
         case 4: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
@@ -987,7 +993,7 @@ void PrototypeMenu() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
         // Defaults of this category.
-        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
+        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         dirty = true;
@@ -1138,7 +1144,7 @@ void PrototypeMenu() {
     };
     if (hint(X(0.09f), 1, T("BACK", "НАЗАД"), "ESC")) close = true;
     if (hint(X(0.338f), 2, T("DEFAULTS", "ПО УМОЛЧАНИЮ"), "BACKSPACE")) {
-        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
+        if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         dirty = true;
