@@ -154,20 +154,34 @@ void main() {
     const vec2 edge2 = min(hit_uv, vec2(1.0) - hit_uv);
     const float edge = smoothstep(0.0, 0.06, min(edge2.x, edge2.y));
     const float distance_fade = far_hit ? 1.0 : 1.0 - smoothstep(0.6 * max_distance, max_distance, t);
-    const float weight = clamp(fresnel * up.w, 0.0, 0.9) * edge * distance_fade;
-    // The game's waves are in its water colour: its brightness gradient (over a few pixels)
-    // shifts the reflected picture, so it ripples with them; and like a rippled reflection it
-    // is smeared vertically (5 taps).
+    // At most 60%: the game's water keeps its own sheen and colour under the reflection.
+    const float weight = clamp(fresnel * up.w, 0.0, 0.6) * edge * distance_fade;
+    // Rippled water breaks a reflection up: the game's waves (the brightness gradient of its
+    // water colour over a few pixels) shift the reflected picture, more for distant water
+    // (smaller waves on screen, but more of them per pixel), and the picture is smeared,
+    // mostly vertically (3 x 7 taps).
     const vec2 slope = vec2(Luma(pixel + ivec2(2, 0)) - Luma(pixel - ivec2(2, 0)),
                             Luma(pixel + ivec2(0, 2)) - Luma(pixel - ivec2(0, 2)));
-    const vec2 ripple = clamp(slope, vec2(-0.25), vec2(0.25)) * vec2(0.01, 0.02);
+    const float far_scale = 1.0 + clamp(position.z / 150.0, 0.0, 2.0);
+    const vec2 ripple = clamp(slope, vec2(-0.25), vec2(0.25)) * vec2(0.012, 0.03) * far_scale;
     const ivec2 hit_pixel = ivec2((hit_uv + ripple) * size);
-    const int spread = max(1, int(size.y / 540.0));
+    const float unit = size.y / 1080.0;
+    const int spread_y = max(1, int(unit * 2.0 * far_scale));
+    const int spread_x = max(1, int(unit));
     vec3 reflected = vec3(0.0);
-    for (int k = -2; k <= 2; ++k) {
-        const ivec2 tap = clamp(hit_pixel + ivec2(0, k * spread), ivec2(0), ivec2(size) - 1);
-        reflected += imageLoad(source_img, tap).rgb;
+    for (int ky = -3; ky <= 3; ++ky) {
+        for (int kx = -1; kx <= 1; ++kx) {
+            const ivec2 tap = clamp(hit_pixel + ivec2(kx * spread_x, ky * spread_y), ivec2(0),
+                                    ivec2(size) - 1);
+            reflected += imageLoad(source_img, tap).rgb;
+        }
     }
-    reflected *= 0.85 / 5.0;
+    reflected /= 21.0;
+    // Water tints what it reflects: half of the reflection takes the hue of the game's water
+    // colour at this pixel (the sunset gold), keeping the reflection's brightness.
+    const vec3 weights = vec3(0.299, 0.587, 0.114);
+    const float water_luma = max(dot(current.rgb, weights), 1e-3);
+    const vec3 water_hue = clamp(current.rgb / water_luma, vec3(0.0), vec3(2.0));
+    reflected = mix(reflected, dot(reflected, weights) * water_hue, 0.5) * 0.85;
     imageStore(color_img, pixel, vec4(mix(current.rgb, reflected, weight), current.a));
 }
