@@ -144,10 +144,16 @@ void ScreenReflections::OnFrameStart() {
     mask_ready = false;
     water_color = {};
     ++frames;
-    if (frames % 3600 == 0 && applied) {
-        std::printf("Water reflections: applied in %llu of the last 3600 frames\n",
-                    static_cast<unsigned long long>(applied));
-        applied = 0;
+    if (frames % 600 == 0 && reports < 6) {
+        ++reports;
+        std::printf("Water reflections (600 frames): water in %llu, applied %llu; post trigger %llu, "
+                    "skipped: no water %llu, other colour %llu, no camera %llu, size %llu\n",
+                    static_cast<unsigned long long>(masks), static_cast<unsigned long long>(applied),
+                    static_cast<unsigned long long>(calls), static_cast<unsigned long long>(no_mask),
+                    static_cast<unsigned long long>(other_color),
+                    static_cast<unsigned long long>(no_camera),
+                    static_cast<unsigned long long>(bad_size));
+        masks = applied = calls = no_mask = other_color = no_camera = bad_size = 0;
     }
 }
 
@@ -325,15 +331,26 @@ void ScreenReflections::BuildMask() {
                  vk::ImageLayout::eGeneral, vk::PipelineStageFlagBits2::eComputeShader,
                  vk::AccessFlagBits2::eShaderRead);
     mask_ready = true;
+    ++masks;
 }
 
 void ScreenReflections::Apply(VideoCore::ImageId color, VideoCore::ImageId depth,
                               const CameraMotion& camera) {
-    if (!Enabled() || !mask_ready || !color || !depth || color != water_color) {
+    if (!Enabled() || !color || !depth) {
+        return;
+    }
+    ++calls;
+    if (!mask_ready) {
+        ++no_mask;
+        return;
+    }
+    if (color != water_color) {
+        ++other_color;
         return;
     }
     mask_ready = false;
     if (!camera.CurrentValid()) {
+        ++no_camera;
         return;
     }
     auto& color_image = texture_cache.GetImage(color);
@@ -342,6 +359,7 @@ void ScreenReflections::Apply(VideoCore::ImageId color, VideoCore::ImageId depth
     if (color_image.info.size.width != width || color_image.info.size.height != height ||
         depth_image.info.size.width != width || depth_image.info.size.height != height ||
         (depth_format != vk::Format::eD32Sfloat && depth_format != vk::Format::eD32SfloatS8Uint)) {
+        ++bad_size;
         return;
     }
     // The world's up axis (y) in view space: column 1 of the view rotation.
@@ -351,7 +369,7 @@ void ScreenReflections::Apply(VideoCore::ImageId color, VideoCore::ImageId depth
         .proj = camera.CurrentProj(),
         .up = {view[1], view[5], view[9], strength},
         .size = {float(width), float(height)},
-        .max_distance = EnvFloat("THEORDER_SSR_DISTANCE", 400.0f),
+        .max_distance = EnvFloat("THEORDER_SSR_DISTANCE", 1500.0f),
         .mode = DebugMode(),
     };
 

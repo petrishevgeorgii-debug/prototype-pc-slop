@@ -94,6 +94,10 @@ private:
     std::array<ViewEntry, 6> views{};
     u64 view_uses = 0;
     u64 frames = 0, applied = 0;
+    /// Diagnostics (last_run.log, the first minutes): frames with a water mask, Apply calls,
+    /// and why Apply did nothing.
+    u64 masks = 0, calls = 0, no_mask = 0, other_color = 0, no_camera = 0, bad_size = 0;
+    u32 reports = 0;
 };
 
 } // namespace Vulkan

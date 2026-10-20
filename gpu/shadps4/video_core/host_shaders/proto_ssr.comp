@@ -2,7 +2,8 @@
 // port: PROTOTYPE screen-space reflections, step 2 (vk_screen_reflections.cpp). For each water
 // pixel (mask), a ray is reflected about the water plane (world up, in view space) and marched
 // through the scene depth; the colour it hits is blended over the game's own (sky cube map)
-// reflection by a Fresnel term. Rays that leave the screen or only see sky keep the game's.
+// reflection by a Fresnel term. Rays that reach nothing take what lies far away in their
+// direction on the screen (skyline, clouds); off screen they keep the game's reflection.
 // View space as in camera_motion.comp: depth = proj.z + proj.w / z (D3D, z = view distance),
 // ndc y up, uv y down.
 #version 450
@@ -131,8 +132,28 @@ void main() {
             break;
         }
     }
+    // No surface within reach: what lies far away in the ray's direction (the skyline, the
+    // clouds, distant bridges) is where the direction itself projects on the screen, if that
+    // pixel shows something far away (a quarter of the rays' reach or more: little parallax),
+    // not a nearer object and not water.
+    bool far_hit = false;
+    if (!hit && ray.z > 0.01) {
+        const vec2 far_uv = Project(ray);
+        if (all(greaterThanEqual(far_uv, vec2(0.0))) && all(lessThanEqual(far_uv, vec2(1.0)))) {
+            const ivec2 far_pixel = clamp(ivec2(far_uv * size), ivec2(0), ivec2(size) - 1);
+            const float far_z = SceneZ(far_uv);
+            // Not the sky itself: the game's own reflection already shows it, in its colours.
+            if (far_z > 0.25 * max_distance && far_z < 1e8 &&
+                imageLoad(mask_img, far_pixel).r < 0.5) {
+                hit_uv = far_uv;
+                hit = true;
+                far_hit = true;
+            }
+        }
+    }
     if (mode == 2u) {
-        imageStore(color_img, pixel, vec4(hit ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0), current.a));
+        const vec3 debug = far_hit ? vec3(1.0, 1.0, 0.0) : hit ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+        imageStore(color_img, pixel, vec4(debug, current.a));
         return;
     }
     if (!hit) {
@@ -142,7 +163,7 @@ void main() {
     const float fresnel = 0.02 + 0.98 * pow(1.0 - cosine, 5.0);
     const vec2 edge2 = min(hit_uv, vec2(1.0) - hit_uv);
     const float edge = smoothstep(0.0, 0.06, min(edge2.x, edge2.y));
-    const float distance_fade = 1.0 - smoothstep(0.6 * max_distance, max_distance, t);
+    const float distance_fade = far_hit ? 1.0 : 1.0 - smoothstep(0.6 * max_distance, max_distance, t);
     const float weight = clamp(fresnel * up.w, 0.0, 0.9) * edge * distance_fade;
     const ivec2 hit_pixel = clamp(ivec2(hit_uv * size), ivec2(0), ivec2(size) - 1);
     const vec3 reflected = imageLoad(source_img, hit_pixel).rgb * 0.85;
