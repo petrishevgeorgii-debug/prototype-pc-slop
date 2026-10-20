@@ -3,16 +3,27 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
-## Unreleased
+## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))
 
 ### Added
-- Graphics modding: shader mods (`mods/shaders`, GLSL, compiled at start) and an in-game shader browser (port menu, SHADERS) that lists the last frame's pixel shaders, with names for the known passes, hides one to show what it draws and exports it for editing. See [docs/SHADER_MODS.md](docs/SHADER_MODS.md).
-- PROTOTYPE: shadow resolution 4096 (launcher, GAME page; experimental). The sun's shadow map is 4096 × 4096 instead of 2048 × 2048, for sharper shadows, using 64 MB more video memory.
-- PROTOTYPE: shadow distance 2×, 3× or 4× (launcher, GAME page; experimental): shadows reach that many times as far; or Whole city: near shadows as sharp as before, far ones out to about 1.5 km.
-- Water reflections on the river (screen-space; off by default, in the launcher's Graphics page and the in-game menu).
+- Graphics modding: shader mods and an in-game shader browser. See [docs/SHADER_MODS.md](docs/SHADER_MODS.md).
+  - Shader mods are GLSL files in `mods/shaders`, compiled at start, that replace the game's shaders.
+  - The browser is the port menu's SHADERS page. It lists the last frame's pixel shaders, with names for the known passes.
+  - It can hide a shader to show what it draws, and export it for editing.
+  - The release ships glslangValidator and spirv-cross for this.
+- PROTOTYPE, **very experimental** (launcher, GAME page, off by default):
+  - **Shadow resolution 4096:** the sun's shadow map is 4096 × 4096 instead of 2048 × 2048, for sharper shadows. It uses 64 MB more video memory.
+  - **Shadow distance 2×, 3× or 4×:** shadows reach that many times as far, and are softer up close.
+  - **Shadow distance Whole city:** near shadows stay as sharp as before. Far ones are meant to reach about 1.5 km (PS4: about 120 m).
+- Water reflections on the river: screen-space reflections, experimental and off by default. They are on the launcher's Graphics page and in the port menu.
+- Patch files can grow a memory size on top of another patch (`add32` lines) and add to the direct memory pool ("Adds N MB to DMEM").
 
 ### Fixed
-- PROTOTYPE: black water. The river's reflection cube map was dropped (its image descriptor lacked the array bit the GPU layer expected), and its coordinates were converted twice.
+- PROTOTYPE: black water. The GPU layer dropped the river's reflection cube map, because its image descriptor lacked the array bit the GPU layer expected. The cube map's coordinates were also converted twice.
+
+### Known issues
+- The shadow options are very experimental. They have only been tried briefly on one PC. Shadows can break, float or flicker, and Whole city costs frame rate. Set them back to 2048 / PS4 if anything looks wrong.
+- Distant buildings may still cast no shadow with Whole city: their far-away models may not be shadow casters.
 
 ## 0.6.0 — October 20, 2026 ([notes](docs/releases/v0.6.0.md))
 

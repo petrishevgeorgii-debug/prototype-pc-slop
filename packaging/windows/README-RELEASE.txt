@@ -32,17 +32,19 @@ IN GAME
     IMAGE      FSR 1, sharpening
     DISPLAY    window mode, V-Sync, frame counter
     FSR TESTS  for problem reports (jitter switches, motion vectors view, saving FSR images)
+    SHADERS    the shader browser for graphics mods (docs\SHADER_MODS.md)
   Tab / Q / E (or Square, L1 / R1) switches sections; Backspace (Triangle) resets a section.
 
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 0.6.0 (all versions: CHANGELOG.md)
-  - PROTOTYPE 2 starts and plays (experimental), with its own render resolution (720p to 4K)
-    and 60 FPS patches.
-  - Redesigned launcher: a big tab for each game, each with its own settings page.
-  - PROTOTYPE: the mouse turns the on-foot camera directly, as in PC games.
-  - Fewer stalls (each semaphore has its own lock); automatic hang report.
+WHAT'S NEW IN 0.7.0 (all versions: CHANGELOG.md)
+  - Graphics modding: your own GLSL shaders in mods\shaders replace the game's; the port
+    menu's SHADERS page shows what each shader draws and exports it (docs\SHADER_MODS.md).
+  - PROTOTYPE shadows, VERY EXPERIMENTAL (launcher GAME page, off by default): 4096 shadow
+    map, shadow distance 2x to 4x, or Whole city. If shadows break, flicker or the game
+    crashes on load, set them back to 2048 / PS4.
+  - Fixed: black river water in PROTOTYPE.
 
 SAVES AND LOGS
   Saves:   user\savedata (backed up at every start to user\savedata_backups)
@@ -55,6 +57,8 @@ KNOWN ISSUES
     are shown), FSR upscaling does not work in it yet, its mouse camera goes through the right
     stick, and 4K is untested.
   - Render resolution above 1080p is experimental.
+  - The shadow options are very experimental: shadows can break, float or flicker, and
+    Whole city costs frame rate.
   - FSR 4.1 needs a driver feature AMD's Windows driver does not have yet; it stays hidden.
 
 PROTOTYPE is a trademark of its owners. This is an unofficial fan project, not affiliated with

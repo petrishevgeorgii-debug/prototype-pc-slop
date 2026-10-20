@@ -120,7 +120,7 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Shadow Resolution - 4096"
-              Note="Sharper shadows: the sun's shadow map (its cascades share one depth texture) is 4096x4096 instead of 2048x2048, so each cascade has twice the detail in both directions. The shadow map's own memory heap and the Render heap's video memory grow by 64 MB. Adds 64 MB to DMEM."
+              Note="Very experimental. Sharper shadows: the sun's shadow map (its cascades share one depth texture) is 4096x4096 instead of 2048x2048, so each cascade has twice the detail in both directions. The shadow map's own memory heap and the Render heap's video memory grow by 64 MB. Adds 64 MB to DMEM."
               Author="prototype-port"
               PatchVer="1.0"
               AppVer="01.00"
@@ -151,7 +151,7 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Shadow Distance - 2x"
-              Note="Shadows reach 2 times as far: the sun's shadow volume around the camera is 400 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 2 times as far. Each cascade's detail is spread over 2 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Note="Very experimental. Shadows reach 2 times as far: the sun's shadow volume around the camera is 400 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 2 times as far. Each cascade's detail is spread over 2 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
               Author="prototype-port"
               PatchVer="1.0"
               AppVer="01.00"
@@ -166,7 +166,7 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Shadow Distance - 3x"
-              Note="Shadows reach 3 times as far: the sun's shadow volume around the camera is 600 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 3 times as far. Each cascade's detail is spread over 3 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Note="Very experimental. Shadows reach 3 times as far: the sun's shadow volume around the camera is 600 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 3 times as far. Each cascade's detail is spread over 3 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
               Author="prototype-port"
               PatchVer="1.0"
               AppVer="01.00"
@@ -181,7 +181,7 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Shadow Distance - 4x"
-              Note="Shadows reach 4 times as far: the sun's shadow volume around the camera is 800 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 4 times as far. Each cascade's detail is spread over 4 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Note="Very experimental. Shadows reach 4 times as far: the sun's shadow volume around the camera is 800 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 4 times as far. Each cascade's detail is spread over 4 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
               Author="prototype-port"
               PatchVer="1.0"
               AppVer="01.00"
@@ -196,7 +196,7 @@
     </Metadata>
     <Metadata Title="Prototype"
               Name="Shadow Distance - City"
-              Note="Shadows over the whole city: the sun's shadow box is 2000 m around the camera instead of 200 m, and its four cascades end at about 8, 40, 200 and 1500 m instead of 5, 10, 20 and 120 m. Near shadows keep their detail (best with Shadow Resolution - 4096); far ones are coarse but cover whole buildings."
+              Note="Very experimental. Shadows over the whole city: the sun's shadow box is 2000 m around the camera instead of 200 m, and its four cascades end at about 8, 40, 200 and 1500 m instead of 5, 10, 20 and 120 m. Near shadows keep their detail (best with Shadow Resolution - 4096); far ones are coarse but cover whole buildings."
               Author="prototype-port"
               PatchVer="1.0"
               AppVer="01.00"

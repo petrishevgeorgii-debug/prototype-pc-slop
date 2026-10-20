@@ -50,7 +50,7 @@ pattern, so nothing is written to a different build.
   and the Garlic direct memory block (`0x419c` allocation, `0x41b8` mapping, `0x427b` "PS4 core"
   heap; 1724 MiB) grows by as much. Without it the held-object fade's blur target failed to
   allocate (texture address 0) and picked-up objects vanished instead of turning half-transparent.
-- **Shadow Resolution - 4096** (experimental; launcher GAME page) — the sun's cascaded shadow
+- **Shadow Resolution - 4096** (very experimental; launcher GAME page) — the sun's cascaded shadow
   map. Pure3D's shadow render manager (`shadowrendermanager.cpp`) keeps all cascades in one D32S8
   depth texture, two 1024-texel tiles wide and `ceil(cascades / 2)` tiles high (2048 × 2048 for the
   PS4's four), sized by quality level: 0 = 2048 wide (the PS4's), 1 = 1024, 2 = 512, 3 = 1024 square.
@@ -62,13 +62,13 @@ pattern, so nothing is written to a different build.
   Garlic direct memory block get 64 MiB more. Those are `add32` lines: patches.py adds them on
   top of a resolution patch's values, and the note's "Adds 64 MB to DMEM" adds to its pool.
   (`rm_SetShadowResolution` is registered but its handler is an empty function in this build.)
-- **Shadow Distance - 2x / 3x / 4x** (experimental; launcher GAME page) — the sun's shadow volume
+- **Shadow Distance - 2x / 3x / 4x** (very experimental; launcher GAME page) — the sun's shadow volume
   is a box of ± the global shadow range around the camera (`0x1218930`, 200.0; the variable
   `rm_SetGlobalShadowRangeHack` sets), and the cascade distances are `2 × range × scale / 40`
   (10 m) times each light's `shadowCascadeExtent` values. The patch sets the range to 400 / 600 /
   800 and the 200.0 the setup compares it with (`0xc9f818`, read only at `0x2c95db`; any other
   range selects a fixed debug box around (0, 0, -300)), so the box and every cascade grow alike.
-- **Shadow Distance - City** (experimental) — cascade `i` ends at `0.5 × unit × extent[i]` along the
+- **Shadow Distance - City** (very experimental) — cascade `i` ends at `0.5 × unit × extent[i]` along the
   horizontal view direction (clipped to the box), `unit = 2 × range / 40` (the `/ 40` is the shadow's
   default at `0x2c5ecd`). The sun light hands its shadow 4 cascades (`numShadowCascadesPS3`, at
   `0xb05ca`) with extents 1 / 2 / 4 / 24 (`0xb05d8` .. `0xb0614`; index 3 reads extent 5), i.e. 5,

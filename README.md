@@ -6,7 +6,12 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 0.6.0 — October 20, 2026** ([notes](docs/releases/v0.6.0.md), [changelog](CHANGELOG.md)): PROTOTYPE 2 starts and plays (experimental), with its own resolution and 60 FPS patches; a redesigned launcher with a tab per game; PC-style mouse look in PROTOTYPE. Keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
+**Version 0.7.0 — October 20, 2026** ([notes](docs/releases/v0.7.0.md), [changelog](CHANGELOG.md)):
+- Graphics modding: shader mods and an in-game shader browser.
+- Sharper and longer shadows in PROTOTYPE, **very experimental**.
+- The black river water is fixed.
+
+PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
@@ -43,19 +48,25 @@ fix is applied in memory, and the port checks the executables against the untouc
   language), with keyboard, controller and mouse.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
+- **Shadows** (PROTOTYPE, **very experimental**, off by default):
+  - a 4096 × 4096 sun shadow map (PS4: 2048);
+  - shadow distance 2× to 4×;
+  - *Whole city*: near shadows stay sharp and far ones reach about 1.5 km.
+- **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
+  with an in-game shader browser that shows what each shader draws and exports it for editing.
 - A **launcher** (`Prototype.exe`): a tab for each game with its own resolution and frame rate,
   game folder check, shared graphics, display and controls settings, saves and backups, the log.
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v0.6.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v0.7.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** at the top and press **PLAY**. The first start prepares the game (about a
    minute); later starts are quick.
 
 The launcher's **GAME** page holds each game's own render resolution and 30 / 60 FPS (and
-PROTOTYPE's tendril fix). FSR 1 and sharpening, anisotropic filtering, display mode, V-Sync, the
+PROTOTYPE's tendril fix and its very experimental shadow resolution and distance). FSR 1 and sharpening, anisotropic filtering, display mode, V-Sync, the
 frame counter and the keyboard and mouse controls are shared by both games.
 
 ### Keyboard and mouse
@@ -90,8 +101,9 @@ In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu:
 | Close | Esc | Circle |
 
 Sections: **Upscaling** (FSR 3.1 / FSR 4, quality preset, FSR sharpening), **Image** (FSR 1,
-sharpening), **Display** (window mode, V-Sync, frame counter) and **FSR tests** (switches and a
-motion-vector view for problem reports). Choices are saved to `theorder.ini`.
+sharpening, water reflections), **Display** (window mode, V-Sync, frame counter), **FSR tests**
+(switches and a motion-vector view for problem reports) and **Shaders** (the shader browser for
+graphics mods, [docs/SHADER_MODS.md](docs/SHADER_MODS.md)). Choices are saved to `theorder.ini`.
 
 Saves are kept in `user\savedata` in the port folder and backed up at every start to
 `user\savedata_backups` (the launcher has buttons for both). The log of the last run is
@@ -105,6 +117,10 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
   PlayStation buttons) and FSR upscaling does not work in it yet. Its mouse camera goes through
   the right stick, and 4K is untested.
 - Render resolutions above 1080p are experimental.
+- The shadow options (resolution 4096, distance 2× to 4× and Whole city) are **very experimental**:
+  - shadows can break, float or flicker, and Whole city costs frame rate;
+  - distant buildings may cast no shadow even with it;
+  - set them back to 2048 / PS4 if anything looks wrong.
 - FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows
   driver does not offer yet; the menu hides it.
 - Characters can ghost slightly with FSR (the port gives FSR the camera motion; animated objects
@@ -120,7 +136,8 @@ what you did, and `last_run.log` from the port folder. For FSR problems, the men
 
 - PROTOTYPE 2: keyboard button icons, FSR, the direct mouse camera
 - Object motion vectors for FSR (less ghosting on characters)
-- Higher shadow resolution and more draw distance
+- Shadows: tune and test the shadow options; more draw distance
+- Graphics mods: extra textures (PBR materials) and effect slots for shader mods
 - NVIDIA and Intel testing and fixes
 
 ## Building

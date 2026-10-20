@@ -50,7 +50,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.6.0'
+VERSION = '0.7.0'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -832,10 +832,10 @@ class Launcher:
                                 font=self.f(9), width=PANEL[2] - PANEL[0] - 64)
         self.row_y += height
 
-    def section(self, text, first=False):
+    def section(self, text, first=False, color=None):
         if not first:
             self.row_y += 14
-        self.canvas.create_text(PANEL[0] + 32, self.row_y - 8, text=text, anchor='w', fill=C['dim'],
+        self.canvas.create_text(PANEL[0] + 32, self.row_y - 8, text=text, anchor='w', fill=color or C['dim'],
                                 font=self.f(8, 'bold'))
         self.row_y += 24
 
@@ -858,15 +858,18 @@ class Launcher:
                          'game misbehaves, set it back to 1920 × 1080.', 'game.render_res', res)
             self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.',
                          'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
-            self.stepper('Shadow resolution', 'Experimental. The sun\'s shadow map: 4096 gives every shadow '
-                         'twice the detail (sharper edges, less shimmer) for 64 MB more video memory. 2048 is '
-                         'the PS4\'s.', 'game.shadows', [('2048', '2048 (PS4)'), ('4096', '4096')])
-            self.stepper('Shadow distance', 'Experimental. How far shadows reach. 2× to 4× stretch the PS4\'s '
-                         'shadows (softer up close); Whole city keeps near shadows sharp and casts the far ones '
-                         'out to about 1.5 km (best with 4096 shadows).', 'game.shadow_distance',
-                         [('1', 'PS4'), ('2', '2×'), ('3', '3×'), ('4', '4×'), ('city', 'Whole city')])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
                         'difference). Keep it on.', 'game.tendril_fix')
+            self.section('SHADOWS  ·  VERY EXPERIMENTAL', color=C['red_hot'])
+            self.stepper('Shadow resolution', 'Very experimental: may break shadows or crash on load; set it '
+                         'back to 2048 if so. 4096 gives every shadow twice the detail (sharper edges, less '
+                         'shimmer) for 64 MB more video memory. 2048 is the PS4\'s.', 'game.shadows',
+                         [('2048', '2048 (PS4)'), ('4096', '4096')])
+            self.stepper('Shadow distance', 'Very experimental: shadows can float, flicker or cost frame rate; '
+                         'set it back to PS4 if so. 2× to 4× stretch the PS4\'s shadows (softer up close); Whole '
+                         'city keeps near shadows sharp and casts far ones out to about 1.5 km (best with 4096).',
+                         'game.shadow_distance',
+                         [('1', 'PS4'), ('2', '2×'), ('3', '3×'), ('4', '4×'), ('city', 'Whole city')])
         self.row_y += 20
         self.note(f'These apply to {name} only: {other} keeps its own (switch with the tabs at the top). '
                   'Graphics, display and controls are shared by both games.', C['dim'], height=48)

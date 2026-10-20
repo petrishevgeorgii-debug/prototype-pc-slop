@@ -61,6 +61,8 @@ cp gpu/third_party/fonts/LICENSE-Tektur-OFL.txt gpu/third_party/fonts/LICENSE-De
 mkdir -p "$dest/fonts"
 cp gpu/third_party/fonts/Tektur-SemiCondensed.ttf gpu/third_party/fonts/LICENSE-Tektur-OFL.txt "$dest/fonts/"
 cp run.py LICENSE README.md CREDITS.md CHANGELOG.md "$dest/"
+mkdir -p "$dest/docs"
+cp docs/SHADER_MODS.md "$dest/docs/"
 cp packaging/windows/README-RELEASE.txt "$dest/READ ME FIRST.txt"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 
