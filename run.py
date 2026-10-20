@@ -214,7 +214,7 @@ def gamepad_connected(probe):
                for line in result.stdout.splitlines())
 
 
-def prototype_controls(env, probe, game, out, derived):
+def prototype_controls(env, probe, game, out, derived, prompts=True):
     """PROTOTYPE's keyboard and mouse layout (THEORDER_PROTO_CONTROLS: the launcher's changes,
     JSON) for the runtime, and the button prompts: THEORDER_PROMPTS=keyboard shows the keys in
     the game's texts and hints (files made from the game's own, scripts/proto_prompts.py),
@@ -237,7 +237,7 @@ def prototype_controls(env, probe, game, out, derived):
         if mode not in ('keyboard', 'gamepad'):
             mode = 'gamepad' if gamepad_connected(probe) else 'keyboard'
     print(f'Button prompts: {"keyboard and mouse" if mode == "keyboard" else "controller"}', flush=True)
-    if mode != 'keyboard':
+    if mode != 'keyboard' or not prompts:
         return
     import proto_prompts
     try:
@@ -375,24 +375,39 @@ def main():
                            '--config', get_env(env, 'MODS_CONFIG', str(data / 'mods.json')),
                            '--enabled', get_env(env, 'MODS_ENABLED', '1'), capture=True).strip())
     mod_view = game if game.resolve() != original_game else None
+    # THEORDER_EBOOT: the executable to run (PROTOTYPE 2 is prototype2_ps4f.elf beside eboot.bin).
+    # Each executable is prepared in its own folder, so switching games does not redo the other's.
+    exe = get_env(env, 'EBOOT', 'eboot.bin')
+    if not (game / exe).is_file():
+        fail(f'No {exe} in {game}.')
+    env['THEORDER_EBOOT'] = exe
+    image_out = out if exe == 'eboot.bin' else out / Path(exe).stem
+    image_out.mkdir(parents=True, exist_ok=True)
+    next_exe = None
     try:
-        run_script('prepare.py', game, '--out', out)
-        run_script('link_libc.py', game, '--out', out)
-        run_script('link_modules.py', game, '--out', out)
+        run_script('prepare.py', game, '--out', image_out)
+        run_script('link_libc.py', game, '--out', image_out)
+        run_script('link_modules.py', game, '--out', image_out)
         # A failed rewrite prints its reason and the game starts without the table.
         isa_args = []
         if isa_rewrite_wanted(missing, env):
-            code, output = run_script('isa_rewrite.py', out / 'boot-linked.bin', '--out', out,
+            code, output = run_script('isa_rewrite.py', image_out / 'boot-linked.bin', '--out', image_out,
                                       capture=True, check=False)
             print(output, end='', flush=True)
             if code == 0:
-                isa_args = ['--isa-rewrite', str(out / 'isa-rewrite.bin')]
-        run_script('content_profile.py', game, '--out', out, '--sku', get_env(env, 'CONTENT_SKU', 'full'))
+                isa_args = ['--isa-rewrite', str(image_out / 'isa-rewrite.bin')]
+        run_script('content_profile.py', game, '--out', image_out, '--sku', get_env(env, 'CONTENT_SKU', 'full'))
 
         import patches
         from patches import game_profile_for, patch_requirements, patch_status, selected_patches
         profile = game_profile_for(game)
         is_prototype = bool(profile) and profile[3].startswith('PROTOTYPE')
+        is_prototype2 = is_prototype and exe != 'eboot.bin'
+        if is_prototype2:
+            print('PROTOTYPE 2 (experimental): no patches; resolution, 60 FPS and keyboard prompts are '
+                  'PROTOTYPE 1 settings', flush=True)
+            # Addresses in PROTOTYPE 1's image (a start from its bundle menu still has them).
+            env.pop('THEORDER_FOV_SITES', None)
         engine_fps, fps_patched = 60, False
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries); on
         # Linux the launcher's own icon (the AppImage ships the one chosen when it was built) and
@@ -417,13 +432,13 @@ def main():
             env['THEORDER_GAME'] = 'prototype'
             if 'upscaler' not in graphics_options.read_ini(env['THEORDER_CONFIG']):
                 graphics_options.write_keys(env['THEORDER_CONFIG'], {'upscaler': 'off'})
-            prototype_controls(env, probe, game, out, derived)
+            prototype_controls(env, probe, game, out, derived, prompts=not is_prototype2)
         elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
             env.setdefault('THEORDER_UPSCALER', 'none')
         env.setdefault('THEORDER_READBACK_LINEAR', '1')
         patches_val = get_env(env, 'PATCHES', '')
         patches_only = get_env(env, 'PATCHES_ONLY') == '1'
-        if profile:
+        if profile and not is_prototype2:
             names = selected_patches(profile[1], profile[2], patches_val, patches_only)
             names = graphics_options.patch_names(names, graphics)
             if profile[3] == 'The Order 1886':
@@ -443,14 +458,14 @@ def main():
             names = graphics_options.restrict_to_available(names, patches.available_patches(profile[1], profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'
-        (out / 'patch_status.json').unlink(missing_ok=True)
-        run_script('patches.py', '--out', out, '--extra', get_env(env, 'PATCHES', ''), '--game-dir', game,
+        (image_out / 'patch_status.json').unlink(missing_ok=True)
+        run_script('patches.py', '--out', image_out, '--extra', get_env(env, 'PATCHES', ''), '--game-dir', game,
                    '--patches-dir', get_env(env, 'PATCHES_DIR', str(data / 'patches')),
                    '--patches-config', get_env(env, 'PATCHES_CONFIG', str(data / 'patches.json')))
-        if profile:
+        if profile and not is_prototype2:
             # Only the patches found in this eboot.bin count: a frame rate patch that was skipped
             # leaves the engine at 60 FPS, and the notes' memory and VBlank needs follow the same list.
-            status = patch_status(out) or {}
+            status = patch_status(image_out) or {}
             applied = status.get('applied', [])
             # The in-game menu's field of view writes these constants (probe.c set_fov_sites).
             env['THEORDER_FOV_SITES'] = ' '.join(hex(site) for site in status.get('fov_sites', []))
@@ -484,7 +499,9 @@ def main():
         env['THEORDER_ENGINE_FPS'] = str(engine_fps)
         derived.append('THEORDER_ENGINE_FPS')
         # The Order runs at half its engine setting: 30 FPS at 60, 60 with the frame rate patch.
-        if is_prototype:
+        if is_prototype2:
+            print('Game frame rate: the game\'s own (30 FPS)', flush=True)
+        elif is_prototype:
             print(f"Game frame rate: {60 if get_env(env, 'FPS60') == '1' else 30} FPS", flush=True)
         else:
             print(f'Game frame rate: {engine_fps // 2} FPS'
@@ -531,21 +548,35 @@ def main():
             guest_lang_args.extend(['--guest-arg', '-enablesubtitles'])
 
         timeout_val = get_env(env, 'TIMEOUT', '0')
-        command = [*launch_prefix(env), str(probe), str(out / 'boot-linked.bin'), '--content-profile', str(out / 'content.bin'),
-                   '--patches', str(out / 'patches.bin'), '--app0', str(game),
+        command = [*launch_prefix(env), str(probe), str(image_out / 'boot-linked.bin'), '--content-profile', str(image_out / 'content.bin'),
+                   '--patches', str(image_out / 'patches.bin'), '--app0', str(game),
                    '--user', str(user_dir),
                    '--timeout', timeout_val, *isa_args, *guest_lang_args, *args]
+        (PORT / 'out' / 'loadexec.txt').unlink(missing_ok=True)
         # No stdin: an inherited pipe (shells such as Git Bash) cost the game its console output.
         code = subprocess.run(command, stdin=subprocess.DEVNULL, creationflags=no_console()).returncode
         if code == 42 and is_prototype:
-            # sceSystemServiceLoadExec: the bundle menu asked for the other game (runtime_proto.c).
-            print('The bundle menu started Prototype 2: the native port runs Prototype 1 only for now.', flush=True)
-        return code
+            # sceSystemServiceLoadExec: one game started the other (the bundle menu PROTOTYPE 2, and
+            # PROTOTYPE 2 the menu again); the runtime wrote the requested path (runtime_proto.c).
+            try:
+                requested = (PORT / 'out' / 'loadexec.txt').read_text(encoding='utf-8', errors='replace').strip()
+            except OSError:
+                requested = ''
+            name = requested.replace('\\', '/').rsplit('/', 1)[-1]
+            if name and (game / name).is_file() and get_env(env, 'NO_LOADEXEC') != '1':
+                print(f'The game started {name}', flush=True)
+                next_exe = name
+            else:
+                print(f'The game asked to start "{requested}", which is not in the game folder', flush=True)
+        if not next_exe:
+            return code
     finally:
         if mod_view:
             shutil.rmtree(mod_view, ignore_errors=True)
         if update_view:
             game_update.remove_view(update_view)
+    env['THEORDER_EBOOT'] = next_exe
+    return main()
 
 
 if __name__ == '__main__':

@@ -143,6 +143,30 @@ static ABI int32_t rtc_rfc2822_local(char *out, const uint64_t *utc_tick) {
     memcpy(out,text,strlen(text)+1); /* 31 characters + NUL, the SDK's buffer size */
     return 0;
 }
+/* "2026-10-20T12:00:00.5Z" / "+03:00" (RFC 3339) to a UTC tick. ParseDateTime takes the same
+ * (the RFC 2822 form the SDK also reads only comes from servers, which are offline here). */
+static ABI int32_t rtc_parse_rfc3339(uint64_t *utc, const char *in) {
+    if (!utc || !in) return ERR_INVALID_POINTER;
+    unsigned y,mo,d,h,mi,sec; int n=0;
+    if (sscanf(in,"%4u-%2u-%2u%*1[Tt ]%2u:%2u:%2u%n",&y,&mo,&d,&h,&mi,&sec,&n)!=6) return (int32_t)0x80B50003;
+    const char *c=in+n;
+    uint32_t us=0;
+    if (*c=='.') {
+        uint32_t scale=100000;
+        for (++c;*c>='0' && *c<='9';++c) { us+=(uint32_t)(*c-'0')*scale; scale/=10; }
+    }
+    int64_t offset=0;
+    if (*c=='+' || *c=='-') {
+        unsigned oh=0, om=0;
+        if (sscanf(c+1,"%2u:%2u",&oh,&om)!=2) return (int32_t)0x80B50003;
+        offset=((int64_t)oh*60+om)*60000000*(*c=='-' ? -1 : 1);
+    } else if (*c!='Z' && *c!='z' && *c) return (int32_t)0x80B50003;
+    DateTime t={(uint16_t)y,(uint16_t)mo,(uint16_t)d,(uint16_t)h,(uint16_t)mi,(uint16_t)(sec>59 ? 59 : sec),us};
+    int32_t e=validate(&t);
+    if (e) return e;
+    *utc=(uint64_t)((int64_t)to_tick(&t)-offset);
+    return 0;
+}
 
 static const RuntimeExport exports[]={
     {"sceRtcGetCurrentClockLocalTime",rtc_current_local}, {"sceRtcGetCurrentClock",rtc_current_clock},
@@ -151,5 +175,6 @@ static const RuntimeExport exports[]={
     {"sceRtcGetDayOfWeek",rtc_day_of_week}, {"sceRtcGetTick",rtc_get_tick}, {"sceRtcSetTick",rtc_set_tick},
     {"sceRtcGetTickResolution",rtc_tick_resolution}, {"sceRtcSetTime_t",rtc_set_time_t},
     {"sceRtcGetTime_t",rtc_get_time_t}, {"sceRtcFormatRFC2822LocalTime",rtc_rfc2822_local},
+    {"sceRtcParseRFC3339",rtc_parse_rfc3339}, {"sceRtcParseDateTime",rtc_parse_rfc3339},
 };
 uintptr_t runtime_rtc_resolve(const char *name) { return RUNTIME_LOOKUP(exports,name); }

@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <pthread.h>
 #include <time.h>
 #ifdef _WIN32
@@ -167,6 +168,33 @@ static ABI void np_register_void(void *cb,void *arg) { (void)cb; (void)arg; }
 static ABI int32_t np_request(const void *param) { (void)param; return new_id(); }
 static ABI int32_t np_request_ctx(int32_t ctx,const void *param) { (void)ctx; (void)param; return new_id(); }
 static ABI int32_t np_poll(int32_t request,int32_t *result) { (void)request; if (result) *result=NP_SIGNED_OUT; return 0; }
+static ABI int32_t np_new_id(void) { return new_id(); }
+static ABI int32_t np_has_signed_up(int32_t user,unsigned char *signed_up) {
+    (void)user; if (!signed_up) return NP_INVALID_ARGUMENT; *signed_up=0; return 0;
+}
+static ABI int32_t np_bandwidth_status(int32_t ctx,int32_t *status) {
+    (void)ctx; if (status) *status=2; /* finished (failed: offline) */
+    return NP_SIGNED_OUT;
+}
+static ABI int32_t netctl_result(int32_t event,int32_t *error) { (void)event; if (error) *error=NET_CTL_NOT_CONNECTED; return 0; }
+/* sceHttpUriEscape(out, required, out_size, in): RFC 3986 percent-encoding. */
+static ABI int32_t http_uri_escape(char *out,uint64_t *required,uint64_t size,const char *in) {
+    if (!in) return (int32_t)0x80431002;
+    static const char hex[]="0123456789ABCDEF";
+    uint64_t n=1;
+    for (const unsigned char *c=(const unsigned char *)in;*c;++c)
+        n+=(isalnum(*c) || strchr("-._~",*c)) ? 1 : 3;
+    if (required) *required=n;
+    if (!out) return 0;
+    if (size<n) return (int32_t)0x80431020; /* out of memory (buffer too small) */
+    char *o=out;
+    for (const unsigned char *c=(const unsigned char *)in;*c;++c) {
+        if (isalnum(*c) || strchr("-._~",*c)) *o++=(char)*c;
+        else { *o++='%'; *o++=hex[*c>>4]; *o++=hex[*c&15]; }
+    }
+    *o=0;
+    return 0;
+}
 static ABI int32_t np_compare(const void *a,const void *b) {
     if (!a || !b) return NP_INVALID_ARGUMENT;
     return memcmp(a,b,16) ? (int32_t)0x80550609 : 0; /* NP_UTIL NOT_MATCH */
@@ -186,7 +214,9 @@ static ABI int32_t voice_info(uint32_t port,uint32_t *info) {
 /* ---- Common dialogs: nothing is displayed; an opened dialog finishes. ---- */
 typedef struct { const char *name; int initialized, status; uint32_t button; } Dialog;
 static Dialog dialogs[]={{"CommonDialog",0,0,0},{"MsgDialog",0,0,0},{"SaveDataDialog",0,0,0},
-                         {"NpProfileDialog",0,0,0},{"NpCommerceDialog",0,0,0},{"ImeDialog",0,0,0}};
+                         {"NpProfileDialog",0,0,0},{"NpCommerceDialog",0,0,0},{"ImeDialog",0,0,0},
+                         {"ErrorDialog",0,0,0},{"InvitationDialog",0,0,0},{"GameCustomDataDialog",0,0,0},
+                         {"NpSnsFacebookDialog",0,0,0}};
 #define DIALOG_RUNNING 2
 #define DIALOG_FINISHED 3
 #define DIALOG_NOT_FINISHED ((int32_t)0x80B80005)
@@ -237,6 +267,30 @@ static int32_t dialog_term(int i) {
     static ABI int32_t tag##_status(void) { return dialog_status(i); } \
     static ABI int32_t tag##_term(void) { return dialog_term(i); }
 DIALOG(profile,3) DIALOG(commerce,4)
+DIALOG(invitation,7) DIALOG(custom_data,8) DIALOG(facebook,9)
+/* The PSN dialogs PROTOTYPE 2 can open (invite, game data, Facebook, store): the player
+ * cancelled. Results start with int32 result (1 = USER_CANCELED). */
+static int32_t dialog_cancelled(int i, unsigned char *out) {
+    if (dialogs[i].status!=DIALOG_FINISHED) return DIALOG_NOT_FINISHED;
+    if (!out) return DIALOG_ARG_NULL;
+    const int32_t cancelled=1; memcpy(out,&cancelled,4);
+    return 0;
+}
+static ABI int32_t invitation_result(unsigned char *out) { return dialog_cancelled(7,out); }
+static ABI int32_t custom_data_result(unsigned char *out) { return dialog_cancelled(8,out); }
+static ABI int32_t facebook_result(unsigned char *out) { return dialog_cancelled(9,out); }
+static ABI int32_t commerce_result(unsigned char *out) { return dialog_cancelled(4,out); }
+/* ErrorDialog: the system's message for a PSN error code; logged, then closed.
+ * OrbisErrorDialogParam: size, errorCode, userId. */
+static ABI int32_t error_init(void) { return dialog_init(6); }
+static ABI int32_t error_open(const unsigned char *p) {
+    if (!p) return DIALOG_ARG_NULL;
+    int32_t code; memcpy(&code,p+4,4);
+    printf("Runtime: ErrorDialog for error 0x%08x (closed at once)\n",(unsigned)code);
+    return dialog_open(6);
+}
+static ABI int32_t error_status(void) { return dialog_status(6); }
+static ABI int32_t error_term(void) { return dialog_term(6); }
 /* OrbisMsgDialogParam: BaseParam (48 bytes), size, mode (2 = progress bar).
  * OrbisSaveDataDialogParam: BaseParam, int32 size, mode (5 = progress bar). */
 static int32_t dialog_open_mode(int i, const unsigned char *param, size_t mode_offset, uint32_t progress_mode) {
@@ -458,6 +512,13 @@ static ABI int32_t trophy_unlock_state(int32_t ctx,int32_t handle,uint32_t *flag
     if (ctx<=0 || handle<=0) return TROPHY_INVALID;
     memset(flags,0,16); *count=0;
     return 0;
+}
+static ABI int32_t trophy_group_info(int32_t ctx,int32_t handle,int32_t group,void *details,void *data) {
+    (void)group; return trophy_game_info(ctx,handle,details,data);
+}
+static ABI int32_t trophy_group_icon(int32_t ctx,int32_t handle,int32_t group,void *buffer,uint64_t *size) {
+    (void)ctx; (void)handle; (void)group; (void)buffer; if (size) *size=0;
+    return (int32_t)0x80551608;
 }
 static ABI int32_t trophy_release(int32_t id) { return id>0 ? 0 : TROPHY_INVALID; }
 
@@ -700,6 +761,61 @@ static const RuntimeExport exports[]={
     {"sceNpScoreGetRankingByNpIdPcId",np_signed_out}, {"sceNpScoreGetRankingByRange",np_signed_out},
     {"sceNpScoreRecordGameData",np_signed_out}, {"sceNpScoreRecordScore",np_signed_out},
     {"sceNpScoreSetPlayerCharacterId",ok_void},
+    /* PROTOTYPE 2: more of PSN, all offline */
+    {"sceNpHasSignedUp",np_has_signed_up}, {"sceNpCreateRequest",np_new_id},
+    {"sceNpAuthCreateRequest",np_new_id}, {"sceNpLookupCreateRequest",np_request_ctx},
+    {"sceNpInGameMessageInitialize",np_new_id}, {"sceNpInGameMessageTerminate",ok_void},
+    {"sceNpInGameMessageCreateHandle",np_new_id}, {"sceNpInGameMessageDeleteHandle",ok_void},
+    {"sceNpInGameMessagePrepare",np_signed_out}, {"sceNpInGameMessageSendData",np_signed_out},
+    {"sceNpTusCreateNpTitleCtx",np_request_ctx}, {"sceNpTssCreateNpTitleCtx",np_request_ctx},
+    {"sceNpTusDeleteNpTitleCtx",ok_void}, {"sceNpTusCreateRequest",np_request_ctx},
+    {"sceNpTusDeleteRequest",ok_void}, {"sceNpTusPollAsync",np_poll},
+    {"sceNpTusGetDataAsync",np_signed_out}, {"sceNpTusSetDataAsync",np_signed_out},
+    {"sceNpTssGetSmallStorageAsync",np_signed_out}, {"sceNpTssGetData",np_signed_out},
+    {"sceNpTusSetMultiSlotVariable",np_signed_out}, {"sceNpTusSetMultiSlotVariableVUser",np_signed_out},
+    {"sceNpTusGetMultiSlotVariable",np_signed_out}, {"sceNpTusGetMultiSlotVariableVUser",np_signed_out},
+    {"sceNpTusAddAndGetVariable",np_signed_out}, {"sceNpTusAddAndGetVariableVUser",np_signed_out},
+    {"sceNpTusSetData",np_signed_out}, {"sceNpTusSetDataVUser",np_signed_out},
+    {"sceNpTusGetData",np_signed_out}, {"sceNpTusGetDataVUser",np_signed_out},
+    {"sceNpTusDeleteMultiSlotData",np_signed_out}, {"sceNpTusDeleteMultiSlotDataVUser",np_signed_out},
+    {"sceNpScorePollAsync",np_poll}, {"sceNpScoreRecordScoreAsync",np_signed_out},
+    {"sceNpScoreGetRankingByNpId",np_signed_out}, {"sceNpScoreGetRankingByNpIdAsync",np_signed_out},
+    {"sceNpScoreGetRankingByRangeAsync",np_signed_out}, {"sceNpScoreGetFriendsRanking",np_signed_out},
+    {"sceNpScoreGetFriendsRankingAsync",np_signed_out}, {"sceNpScoreRecordGameDataAsync",np_signed_out},
+    {"sceNpScoreGetGameDataAsync",np_signed_out},
+    {"sceNpMatching2SetUserInfo",np_signed_out}, {"sceNpMatching2RegisterRoomMessageCallback",ok_void},
+    {"sceNpMatching2GetUserInfoList",np_signed_out}, {"sceNpMatching2SendRoomMessage",np_signed_out},
+    {"sceNpMatching2GetRoomDataExternalList",np_signed_out}, {"sceNpMatching2GetRoomDataInternal",np_signed_out},
+    {"sceNpMatching2GetRoomMemberDataInternal",np_signed_out}, {"sceNpMatching2SendRoomChatMessage",np_signed_out},
+    {"sceNpMatching2SignalingGetConnectionInfo",np_signed_out},
+    {"sceNpBandwidthTestInitStart",np_signed_out}, {"sceNpBandwidthTestGetStatus",np_bandwidth_status},
+    {"sceNpBandwidthTestShutdown",ok_void},
+    {"sceNpWordFilterCreateTitleCtx",np_request_ctx}, {"sceNpWordFilterDeleteTitleCtx",ok_void},
+    {"sceNpWordFilterCreateRequest",np_request_ctx}, {"sceNpWordFilterCreateAsyncRequest",np_request_ctx},
+    {"sceNpWordFilterDeleteRequest",ok_void}, {"sceNpWordFilterAbortRequest",ok_void},
+    {"sceNpWordFilterPollAsync",np_poll}, {"sceNpWordFilterCensorComment",np_signed_out},
+    {"sceNpWordFilterSanitizeComment",np_signed_out},
+    {"sceNpSnsFacebookCreateRequest",np_new_id}, {"sceNpSnsFacebookDeleteRequest",ok_void},
+    {"sceNpSnsFacebookGetAccessToken",np_signed_out},
+    {"sceNpWebApiCreateHandle",np_new_id}, {"sceNpWebApiDeleteHandle",ok_void},
+    {"sceNpWebApiSendRequest2",np_signed_out},
+    {"sceNpWebApiCreateServicePushEventFilter",np_signed_out}, {"sceNpWebApiDeleteServicePushEventFilter",ok_void},
+    {"sceNpWebApiRegisterServicePushEventCallback",np_signed_out},
+    {"sceNpWebApiUnregisterServicePushEventCallback",ok_void},
+    {"sceNetCtlInit",ok_void}, {"sceNetCtlTerm",ok_void}, {"sceNetCtlGetResult",netctl_result},
+    {"sceHttpUriEscape",http_uri_escape},
+    {"sceNpTrophyGetGroupInfo",trophy_group_info}, {"sceNpTrophyGetGroupIcon",trophy_group_icon},
+    {"sceErrorDialogInitialize",error_init}, {"sceErrorDialogOpen",error_open},
+    {"sceErrorDialogUpdateStatus",error_status}, {"sceErrorDialogTerminate",error_term},
+    {"sceInvitationDialogInitialize",invitation_init}, {"sceInvitationDialogOpen",invitation_open},
+    {"sceInvitationDialogUpdateStatus",invitation_status}, {"sceInvitationDialogTerminate",invitation_term},
+    {"sceInvitationDialogGetResult",invitation_result},
+    {"sceGameCustomDataDialogInitialize",custom_data_init}, {"sceGameCustomDataDialogOpen",custom_data_open},
+    {"sceGameCustomDataDialogUpdateStatus",custom_data_status}, {"sceGameCustomDataDialogTerminate",custom_data_term},
+    {"sceGameCustomDataDialogGetResult",custom_data_result},
+    {"sceNpSnsFacebookDialogInitialize",facebook_init}, {"sceNpSnsFacebookDialogOpen",facebook_open},
+    {"sceNpSnsFacebookDialogUpdateStatus",facebook_status}, {"sceNpSnsFacebookDialogTerminate",facebook_term},
+    {"sceNpSnsFacebookDialogGetResult",facebook_result}, {"sceNpCommerceDialogGetResult",commerce_result},
     {"sceVoiceCreatePort",voice_port}, {"sceVoiceDeletePort",ok_void},
     {"sceVoiceConnectIPortToOPort",ok_void}, {"sceVoiceDisconnectIPortFromOPort",ok_void},
     {"sceVoiceStart",ok_void}, {"sceVoiceStop",ok_void}, {"sceVoiceGetPortInfo",voice_info},

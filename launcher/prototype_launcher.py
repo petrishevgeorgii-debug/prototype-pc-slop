@@ -129,7 +129,10 @@ DEFAULTS = {
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
     'show_fps': False, 'language': 1, 'tendril_fix': True, 'tab': 0,
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
+    'game': 'p1',
 }
+# The two games of the bundle: the executable run.py starts (THEORDER_EBOOT).
+GAMES = {'p1': ('PROTOTYPE', 'eboot.bin'), 'p2': ('PROTOTYPE 2', 'prototype2_ps4f.elf')}
 PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
 
 
@@ -153,6 +156,8 @@ def load_settings():
         pass
     if not isinstance(values.get('controls'), dict):
         values['controls'] = {}
+    if values.get('game') not in GAMES:
+        values['game'] = 'p1'
     if values['render_res'] not in RESOLUTIONS:
         values['render_res'] = '1920x1080'
     # 0.2.1: the render resolution patch changed; every setup starts again from the PS4's size.
@@ -197,6 +202,7 @@ def game_environment(values):
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
         'THEORDER_PROTO_CONTROLS': json.dumps(values.get('controls') or {}),
         'THEORDER_PROMPTS': values.get('prompts', 'auto'),
+        'THEORDER_EBOOT': GAMES[values.get('game', 'p1')][1],
         'PYTHONIOENCODING': 'utf-8',
     })
     return env
@@ -487,15 +493,26 @@ class Launcher:
         kicker = cv.create_text(x, 42, text='PROTOTYPE BIOHAZARD BUNDLE', anchor='w', fill=C['muted'],
                                 font=self.f(9, 'bold'))
         cv.create_text(cv.bbox(kicker)[2] + 18, 42, text='NATIVE PC PORT', anchor='w', fill=C['dim'], font=self.f(9))
-        # Game selection.
+        # Game selection: PROTOTYPE 2 is experimental (it starts; how far it runs is being worked on).
         gy = 392
-        active = cv.create_text(x, gy, text='PROTOTYPE', anchor='w', fill=C['text'], font=self.f(10, 'bold'))
-        bbox = cv.bbox(active)
-        cv.create_rectangle(bbox[0], gy + 13, bbox[2], gy + 15, fill=C['red'], outline='')
-        other = cv.create_text(bbox[2] + 26, gy, text='PROTOTYPE 2', anchor='w', fill=C['dim'], font=self.f(10, 'bold'))
-        cv.create_text(cv.bbox(other)[2] + 8, gy, text='SOON', anchor='w', fill=C['dim'], font=self.f(7, 'bold'))
+        gx = x
+        selected = self.values.get('game', 'p1')
+        for key, (name, _exe) in GAMES.items():
+            item = cv.create_text(gx, gy, text=name, anchor='w', font=self.f(10, 'bold'),
+                                  fill=C['text'] if key == selected else C['dim'])
+            bbox = cv.bbox(item)
+            if key == selected:
+                cv.create_rectangle(bbox[0], gy + 13, bbox[2], gy + 15, fill=C['red'], outline='')
+            else:
+                self.hover(item, C['dim'], C['text'])
+                cv.tag_bind(item, '<Button-1>', lambda e, k=key: self.choose_game(k))
+            gx = bbox[2] + 8
+            if key == 'p2':
+                tag = cv.create_text(gx, gy, text='EXPERIMENTAL', anchor='w', fill=C['dim'], font=self.f(7, 'bold'))
+                gx = cv.bbox(tag)[2]
+            gx += 18
         # Title.
-        cv.create_text(x - 2, 452, text='PROTOTYPE', anchor='w', fill=C['text'], font=(self.title_font, 46, 'bold'))
+        cv.create_text(x - 2, 452, text=GAMES[selected][0], anchor='w', fill=C['text'], font=(self.title_font, 46, 'bold'))
         version = self.sfo.get('APP_VER')
         sub = 'Biohazard Bundle' + (f'   ·   {TITLE_ID}   ·   v{version}' if version else '')
         cv.create_text(x, 496, text=sub, anchor='w', fill=C['muted'], font=self.f(10))
@@ -1022,6 +1039,17 @@ class Launcher:
                         C['ok'] if not failed else C['warn'])
         self.refresh_game()
 
+    def choose_game(self, key):
+        if self.process is not None and self.process.poll() is None:
+            return
+        self.values['game'] = key
+        self.save()
+        if key == 'p2':
+            self.set_status('PROTOTYPE 2 is experimental: it may stop early. OPEN LOG shows how far it got.', C['warn'])
+        else:
+            self.set_status('', C['muted'])
+        self.draw()
+
     def play(self):
         if self.process is not None and self.process.poll() is None:
             return
@@ -1059,7 +1087,7 @@ class Launcher:
             if code == 0:
                 self.set_status('Game closed', C['muted'])
             elif code == 42:
-                self.set_status('PROTOTYPE 2 was chosen in the bundle menu: not supported yet', C['warn'])
+                self.set_status('The game asked for an executable that is not in the game folder', C['warn'])
             else:
                 self.set_status(f'The game stopped (code {code}). OPEN LOG shows why.', C['bad'])
             self.draw()
