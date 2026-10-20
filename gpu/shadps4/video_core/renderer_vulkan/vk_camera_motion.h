@@ -81,6 +81,8 @@ public:
     [[nodiscard]] bool CurrentValid() const noexcept { return current.valid; }
     [[nodiscard]] bool PreviousValid() const noexcept { return previous.valid; }
     [[nodiscard]] std::array<float, 4> CurrentProj() const noexcept { return current.proj; }
+    /// World to view of the current camera, 3x4 rows (x right, y up, z forward).
+    [[nodiscard]] std::array<float, 12> CurrentView() const noexcept { return current.view; }
     /// Far plane of the current projection (3000 when it cannot be derived).
     [[nodiscard]] float Far() const noexcept;
 

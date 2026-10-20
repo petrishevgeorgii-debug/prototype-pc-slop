@@ -75,6 +75,10 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     camera_motion->SetObjectMotion(object_motion.get());
     upscaler = std::make_unique<TemporalUpscaler>(instance, scheduler, texture_cache, runtime,
                                                   *camera_motion, *scene_targets);
+    if (PrototypeGame()) {
+        screen_reflections =
+            std::make_unique<ScreenReflections>(instance, scheduler, texture_cache, runtime);
+    }
     if (!EmulatorSettings.IsNullGPU()) {
         liverpool->BindRasterizer(this);
     }
@@ -513,6 +517,19 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
                 upscaler->OnSceneComposite();
             }
         }
+    }
+}
+
+void Rasterizer::ReflectionsBeforeDraw(const GraphicsPipeline* pipeline) {
+    if (!screen_reflections || !screen_reflections->Enabled() || scene_targets->Reduced()) {
+        return;
+    }
+    const auto* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+    screen_reflections->OnDraw(fs ? fs->pgm_hash : 0, cb_descs[0].first);
+    // Before post-processing (and FSR, which then resolves the reflections too).
+    if (proto_post_trigger && proto_main_color && proto_scene_depth) {
+        camera_motion->FinalizeFrame();
+        screen_reflections->Apply(proto_main_color, proto_scene_depth, *camera_motion);
     }
 }
 
@@ -1279,6 +1296,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
             camera_motion->OnGBufferPass(proto_scene_depth);
         }
         object_motion->OnFrameStart();
+        if (screen_reflections) {
+            screen_reflections->OnFrameStart();
+        }
         NoteFrameStart();
         static const char* scene_debug = std::getenv("THEORDER_SCENE_DEBUG");
         scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
@@ -1292,6 +1312,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
     motion_geometry = 0;
 
     PrepareRenderState(pipeline);
+    ReflectionsBeforeDraw(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
     if (proto_post_trigger && upscaler->Enabled()) {
         upscaler->OnDrawTrigger();
@@ -1520,6 +1541,7 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
     motion_draw = false;
     motion_geometry = 0;
     PrepareRenderState(pipeline);
+    ReflectionsBeforeDraw(pipeline);
     // port: PROTOTYPE upscales the scene before its first post-processing draw.
     if (proto_post_trigger && upscaler->Enabled()) {
         upscaler->OnDrawTrigger();

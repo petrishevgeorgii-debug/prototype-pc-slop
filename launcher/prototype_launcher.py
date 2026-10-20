@@ -127,7 +127,7 @@ LANGUAGES = [('English', 1), ('Français', 2), ('Español', 3), ('Deutsch', 4), 
 DEFAULTS = {
     'game_dir': '', 'anisotropy': 16, 'fsr1': True,
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
-    'show_fps': False, 'language': 1, 'panel': 'GAME',
+    'show_fps': False, 'language': 1, 'panel': 'GAME', 'ssr': True,
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'game': 'p1',
 }
@@ -157,7 +157,7 @@ def load_settings():
         ini = graphics_options.read_ini(PORT_DIR / 'theorder.ini')
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
-                          ('mouse_look', bool), ('mouse_sensitivity', int)):
+                          ('mouse_look', bool), ('mouse_sensitivity', int), ('ssr', bool)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -207,6 +207,7 @@ def write_ini(values):
             'fsr1': int(values['fsr1']), 'rcas': int(values['rcas']),
             'rcas_strength': int(values['rcas_strength']),
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
+            'ssr': int(values.get('ssr', True)),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -873,6 +874,9 @@ class Launcher:
         self.slider('Sharpness', 'Strength of the sharpening.', 'rcas_strength', 0, 100, locked=not self.values['rcas'])
         self.stepper('Texture filtering', 'Anisotropic filtering: sharper ground and walls at steep angles.',
                      'anisotropy', [(0, 'Game default'), (2, '2× AF'), (4, '4× AF'), (8, '8× AF'), (16, '16× AF')])
+        self.toggle('Water reflections', 'PROTOTYPE: the river reflects the city, the bridges and the '
+                    'people on the shore (screen-space reflections). Off: only the game\'s own sky '
+                    'reflection. Also in the in-game menu.', 'ssr')
         self.row_y += 20
         self.note('Render resolution and frame rate are on the GAME page: each game has its own.', C['dim'])
 

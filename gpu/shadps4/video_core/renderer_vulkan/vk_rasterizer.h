@@ -13,6 +13,7 @@
 #include "video_core/renderer_vulkan/vk_camera_motion.h"
 #include "video_core/renderer_vulkan/vk_constant_ring.h"
 #include "video_core/renderer_vulkan/vk_scene_resolution.h"
+#include "video_core/renderer_vulkan/vk_screen_reflections.h"
 #include "video_core/renderer_vulkan/vk_object_motion.h"
 #include "video_core/renderer_vulkan/vk_draw_pipe.h"
 #include "video_core/renderer_vulkan/vk_draw_prep.h"
@@ -343,6 +344,11 @@ private:
     std::unique_ptr<SceneTargets> scene_targets;
     bool scene_started = false;
     std::unique_ptr<ObjectMotion> object_motion;
+    /// port: PROTOTYPE's water reflections (vk_screen_reflections.h).
+    std::unique_ptr<ScreenReflections> screen_reflections;
+    /// Before a draw is recorded: the water's snapshot and mask, and at the first
+    /// post-processing draw the reflections.
+    void ReflectionsBeforeDraw(const GraphicsPipeline* pipeline);
     bool motion_draw = false;
     u64 motion_geometry{};    ///< vertex-stream identity of the current direct draw
     bool gbuffer_draw = false;

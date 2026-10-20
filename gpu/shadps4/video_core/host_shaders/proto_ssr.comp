@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// port: PROTOTYPE screen-space reflections, step 2 (vk_screen_reflections.cpp). For each water
+// pixel (mask), a ray is reflected about the water plane (world up, in view space) and marched
+// through the scene depth; the colour it hits is blended over the game's own (sky cube map)
+// reflection by a Fresnel term. Rays that leave the screen or only see sky keep the game's.
+// View space as in camera_motion.comp: depth = proj.z + proj.w / z (D3D, z = view distance),
+// ndc y up, uv y down.
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba8) uniform readonly image2D source_img; // scene colour before this pass
+layout(binding = 1) uniform texture2D depth_tex;                 // scene depth (depth aspect)
+layout(binding = 2, r8) uniform readonly image2D mask_img;       // 1 = water
+layout(binding = 3, rgba8) uniform image2D color_img;            // scene colour, written
+
+layout(push_constant) uniform Constants {
+    vec4 proj;     // x scale, y scale, z scale, z offset
+    vec4 up;       // xyz: world up in view space; w: strength
+    vec2 size;     // pixels
+    float max_distance;
+    uint mode;     // 0 reflections, 1 show the water mask, 2 show the hits
+};
+
+const int STEPS = 48;
+const int REFINE = 6;
+
+float ViewZ(float depth) {
+    return depth >= 1.0 ? 1e9 : proj.w / min(depth - proj.z, -1e-8);
+}
+
+vec3 ViewPos(vec2 uv, float depth) {
+    const float z = ViewZ(depth);
+    const vec2 ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    return vec3(ndc.x * z / proj.x, ndc.y * z / proj.y, z);
+}
+
+vec2 Project(vec3 v) {
+    const vec2 ndc = v.xy * proj.xy / v.z;
+    return vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+}
+
+float SceneZ(vec2 uv) {
+    const ivec2 p = clamp(ivec2(uv * size), ivec2(0), ivec2(size) - 1);
+    return ViewZ(texelFetch(depth_tex, p, 0).r);
+}
+
+float Luma(ivec2 p) {
+    p = clamp(p, ivec2(0), ivec2(size) - 1);
+    return dot(imageLoad(source_img, p).rgb, vec3(0.299, 0.587, 0.114));
+}
+
+// Interleaved gradient noise: a per-pixel start offset hides the step banding.
+float Noise(vec2 p) {
+    return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
+void main() {
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= int(size.x) || pixel.y >= int(size.y)) {
+        return;
+    }
+    if (imageLoad(mask_img, pixel).r < 0.5) {
+        return;
+    }
+    const vec4 current = imageLoad(color_img, pixel);
+    if (mode == 1u) {
+        imageStore(color_img, pixel, vec4(mix(current.rgb, vec3(1.0, 0.0, 0.0), 0.5), current.a));
+        return;
+    }
+    const float depth = texelFetch(depth_tex, pixel, 0).r;
+    if (depth >= 1.0) {
+        return;
+    }
+    const vec2 uv = (vec2(pixel) + 0.5) / size;
+    const vec3 position = ViewPos(uv, depth);
+    const vec3 view_dir = normalize(position);
+    const vec3 normal = normalize(up.xyz);
+
+    // The game's waves are in its water colour: its brightness gradient tilts the normal a
+    // little, so the reflections ripple with them.
+    const vec2 slope = vec2(Luma(pixel + ivec2(1, 0)) - Luma(pixel - ivec2(1, 0)),
+                            Luma(pixel + ivec2(0, 1)) - Luma(pixel - ivec2(0, 1)));
+    const vec3 tangent = normalize(vec3(1.0, 0.0, 0.0) - normal * normal.x);
+    const vec3 bitangent = cross(normal, tangent);
+    const vec3 wave_normal = normalize(normal + (tangent * slope.x + bitangent * slope.y) * 1.5);
+    const vec3 ray = reflect(view_dir, wave_normal);
+    if (dot(ray, normal) <= 0.0) {
+        return;
+    }
+
+    // Steps grow geometrically from 0.25 units to max_distance.
+    const float growth = pow(max_distance / 0.25, 1.0 / float(STEPS - 1));
+    const float offset = 0.5 + Noise(vec2(pixel));
+    float previous_t = 0.0;
+    float t = 0.25 * offset;
+    bool hit = false;
+    vec2 hit_uv = vec2(0.0);
+    for (int i = 0; i < STEPS; ++i) {
+        const vec3 q = position + ray * t;
+        if (q.z < 0.1) {
+            break;
+        }
+        const vec2 q_uv = Project(q);
+        if (any(lessThan(q_uv, vec2(0.0))) || any(greaterThan(q_uv, vec2(1.0)))) {
+            break;
+        }
+        const float scene_z = SceneZ(q_uv);
+        const float behind = q.z - scene_z;
+        // Behind the surface by no more than the step just taken: the ray crossed it.
+        if (behind > 0.0 && behind < (t - previous_t) * 1.5 + q.z * 0.01 + 0.2) {
+            float lo = previous_t, hi = t;
+            for (int k = 0; k < REFINE; ++k) {
+                const float mid = 0.5 * (lo + hi);
+                const vec3 m = position + ray * mid;
+                if (m.z - SceneZ(Project(m)) > 0.0) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            hit_uv = Project(position + ray * hi);
+            t = hi;
+            hit = imageLoad(mask_img, clamp(ivec2(hit_uv * size), ivec2(0), ivec2(size) - 1)).r < 0.5;
+            break;
+        }
+        previous_t = t;
+        t *= growth;
+        if (t > max_distance) {
+            break;
+        }
+    }
+    if (mode == 2u) {
+        imageStore(color_img, pixel, vec4(hit ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0), current.a));
+        return;
+    }
+    if (!hit) {
+        return;
+    }
+    const float cosine = clamp(dot(-view_dir, normal), 0.0, 1.0);
+    const float fresnel = 0.02 + 0.98 * pow(1.0 - cosine, 5.0);
+    const vec2 edge2 = min(hit_uv, vec2(1.0) - hit_uv);
+    const float edge = smoothstep(0.0, 0.06, min(edge2.x, edge2.y));
+    const float distance_fade = 1.0 - smoothstep(0.6 * max_distance, max_distance, t);
+    const float weight = clamp(fresnel * up.w, 0.0, 0.9) * edge * distance_fade;
+    const ivec2 hit_pixel = clamp(ivec2(hit_uv * size), ivec2(0), ivec2(size) - 1);
+    const vec3 reflected = imageLoad(source_img, hit_pixel).rgb * 0.85;
+    imageStore(color_img, pixel, vec4(mix(current.rgb, reflected, weight), current.a));
+}

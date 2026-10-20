@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// port: PROTOTYPE screen-space reflections, step 1 (vk_screen_reflections.cpp): the water's
+// pixels. The scene colour pass tests depth-equal against the depth pre-pass, so a pixel is
+// written only by its front-most surface: the pixels the water's draws changed are the
+// visible water. `before` is the scene colour copied before the first water draw.
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, rgba8) uniform readonly image2D before_img;
+layout(binding = 1, rgba8) uniform readonly image2D color_img;
+layout(binding = 2, r8) uniform writeonly image2D mask_img;
+
+layout(push_constant) uniform Constants {
+    ivec2 size;
+};
+
+void main() {
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= size.x || pixel.y >= size.y) {
+        return;
+    }
+    const vec4 a = imageLoad(before_img, pixel);
+    const vec4 b = imageLoad(color_img, pixel);
+    const bool water = any(greaterThan(abs(a - b), vec4(0.5 / 255.0)));
+    imageStore(mask_img, pixel, vec4(water ? 1.0 : 0.0));
+}

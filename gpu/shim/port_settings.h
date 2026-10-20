@@ -54,6 +54,8 @@ struct Values {
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
     std::atomic<int> rcas_strength{75};
+    /// PROTOTYPE: screen-space reflections on the river (vk_screen_reflections.h). Live.
+    std::atomic<bool> ssr{true};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
     /// image is smaller than the window).
     std::atomic<bool> rcas_applied{false};
