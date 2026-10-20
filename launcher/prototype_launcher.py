@@ -125,14 +125,23 @@ def script_command(name, *args):
 RESOLUTIONS = ['1280x720', '1600x900', '1920x1080', '2560x1440', '3200x1800', '3840x2160']
 LANGUAGES = [('English', 1), ('Français', 2), ('Español', 3), ('Deutsch', 4), ('Italiano', 5)]
 DEFAULTS = {
-    'game_dir': '', 'render_res': '1920x1080', 'fps60': True, 'anisotropy': 16, 'fsr1': True,
+    'game_dir': '', 'anisotropy': 16, 'fsr1': True,
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
-    'show_fps': False, 'language': 1, 'tendril_fix': True, 'tab': 0,
+    'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'game': 'p1',
 }
-# The two games of the bundle: the executable run.py starts (THEORDER_EBOOT).
-GAMES = {'p1': ('PROTOTYPE', 'eboot.bin'), 'p2': ('PROTOTYPE 2', 'prototype2_ps4f.elf')}
+# The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
+# folder, the line under the name on its tab, and the part of the bundle's key art (pic0) it shows.
+GAMES = {
+    'p1': ('PROTOTYPE', 'eboot.bin', 'p1', '2009  ·  Alex Mercer', 'left'),
+    'p2': ('PROTOTYPE 2', 'prototype2_ps4f.elf', 'p2', '2012  ·  James Heller  ·  experimental', 'right'),
+}
+# Settings each game keeps for itself (its patches); everything else is shared.
+GAME_DEFAULTS = {
+    'p1': {'render_res': '1920x1080', 'fps60': True, 'tendril_fix': True},
+    'p2': {'render_res': '1920x1080', 'fps60': False},
+}
 PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
 
 
@@ -158,11 +167,22 @@ def load_settings():
         values['controls'] = {}
     if values.get('game') not in GAMES:
         values['game'] = 'p1'
-    if values['render_res'] not in RESOLUTIONS:
-        values['render_res'] = '1920x1080'
+    # 0.6: the patch settings are per game; PROTOTYPE's come from the earlier single values.
+    per_game = values.get('per_game') if isinstance(values.get('per_game'), dict) else {}
+    if 'p1' not in per_game:
+        per_game['p1'] = {k: values.get(k, v) for k, v in GAME_DEFAULTS['p1'].items()}
+    for key, defaults in GAME_DEFAULTS.items():
+        settings = per_game.setdefault(key, {})
+        for name, value in defaults.items():
+            settings.setdefault(name, value)
+        if settings['render_res'] not in RESOLUTIONS:
+            settings['render_res'] = '1920x1080'
+    values['per_game'] = per_game
+    for key in ('render_res', 'fps60', 'tendril_fix', 'tab'):  # the 0.5 single values
+        values.pop(key, None)
     # 0.2.1: the render resolution patch changed; every setup starts again from the PS4's size.
     if values.get('settings_version', 0) < 2:
-        values['render_res'] = '1920x1080'
+        per_game['p1']['render_res'] = '1920x1080'
         values['settings_version'] = 2
     return values
 
@@ -194,11 +214,15 @@ def write_ini(values):
 
 def game_environment(values):
     env = dict(os.environ)
+    p1, p2 = values['per_game']['p1'], values['per_game']['p2']
     env.update({
         'THEORDER_GAME_DIR': values['game_dir'],
-        'THEORDER_FPS60': '1' if values['fps60'] else '0',
-        'THEORDER_PROTO_RES': values['render_res'],
-        'THEORDER_PROTO_TENDRIL_FIX': '1' if values['tendril_fix'] else '0',
+        # Both games' patch settings: a start from the bundle menu runs the other game (run.py).
+        'THEORDER_FPS60': '1' if p1['fps60'] else '0',
+        'THEORDER_PROTO_RES': p1['render_res'],
+        'THEORDER_PROTO_TENDRIL_FIX': '1' if p1['tendril_fix'] else '0',
+        'THEORDER_PROTO2_FPS60': '1' if p2['fps60'] else '0',
+        'THEORDER_PROTO2_RES': p2['render_res'],
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
         'THEORDER_PROTO_CONTROLS': json.dumps(values.get('controls') or {}),
         'THEORDER_PROMPTS': values.get('prompts', 'auto'),
@@ -211,7 +235,19 @@ def game_environment(values):
 # --------------------------------------------------------------------------------------------
 # The game folder.
 
+_SHA_CACHE = {}
+
+
 def file_sha256(path):
+    """The file's SHA-256; remembered while its size and time stay (switching games re-checks)."""
+    st = os.stat(path)
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    if key not in _SHA_CACHE:
+        _SHA_CACHE[key] = _sha256(path)
+    return _SHA_CACHE[key]
+
+
+def _sha256(path):
     h = hashlib.sha256()
     with open(path, 'rb') as f:
         for block in iter(lambda: f.read(1 << 20), b''):
@@ -227,8 +263,9 @@ def read_sfo(folder):
         return {}
 
 
-def check_game(folder):
-    """[(label, state, detail)] with state 'ok', 'warn' or 'bad'; and the parsed param.sfo."""
+def check_game(folder, game='p1'):
+    """[(label, state, detail)] with state 'ok', 'warn' or 'bad' (bad: `game` cannot start); and the
+    parsed param.sfo."""
     folder = Path(folder) if folder else None
     if not folder or not folder.is_dir():
         return [('Game folder', 'bad', 'not selected')], {}
@@ -244,7 +281,8 @@ def check_game(folder):
     for name, label in (('eboot.bin', 'PROTOTYPE executable'), ('prototype2_ps4f.elf', 'PROTOTYPE 2 executable')):
         path = folder / name
         if not path.is_file():
-            checks.append((label, 'bad' if name == 'eboot.bin' else 'warn', 'missing'))
+            # eboot.bin is the bundle menu, which starts either game.
+            checks.append((label, 'bad' if name in ('eboot.bin', GAMES[game][1]) else 'warn', 'missing'))
             continue
         try:
             same = file_sha256(path) == ORIGINAL_SHA256[name]
@@ -253,8 +291,11 @@ def check_game(folder):
         checks.append((label, 'ok' if same else 'warn', 'original' if same else 'modified (Restore fixes it)'))
     modules = all((folder / 'sce_module' / m).is_file() for m in ('libc.prx', 'libSceFios2.prx'))
     checks.append(('System modules', 'ok' if modules else 'bad', 'libc, Fios2' if modules else 'sce_module missing'))
-    data = (folder / 'p1').is_dir()
-    checks.append(('Game data', 'ok' if data else 'bad', 'p1 found' if data else 'p1 folder missing'))
+    for key in ('p1', 'p2'):
+        data_dir = GAMES[key][2]
+        data = (folder / data_dir).is_dir()
+        checks.append((f'{GAMES[key][0]} data', 'ok' if data else ('bad' if key == game else 'warn'),
+                       f'{data_dir} found' if data else f'{data_dir} folder missing'))
     return checks, sfo
 
 
@@ -289,9 +330,19 @@ C = {
     'muted': '#8e8c89', 'dim': '#55555a', 'red': '#b0161d', 'red_hot': '#c91f27', 'red_dark': '#3b0d10',
     'track': '#2a2b30', 'ok': '#7db37c', 'warn': '#d2a04c', 'bad': '#d6564c',
 }
+# Each game's colours: PROTOTYPE black and blood red, PROTOTYPE 2 cold steel and blue (its menus).
+THEMES = {
+    'p1': {'bg': '#0c0d0f', 'panel': '#111215', 'top': '#08090a', 'line': '#232529', 'hair': '#1b1c20',
+           'red': '#b0161d', 'red_hot': '#c91f27', 'red_dark': '#3b0d10', 'track': '#2a2b30',
+           'card': '#16171a'},
+    'p2': {'bg': '#0a0e12', 'panel': '#0e1318', 'top': '#070a0d', 'line': '#1f2830', 'hair': '#18212a',
+           'red': '#1786b8', 'red_hot': '#22a0d6', 'red_dark': '#0d2a3a', 'track': '#24303a',
+           'card': '#121a21'},
+}
 W, H = 1200, 700
+TOP = 92                        # the game tabs across the window
 SIDE = 772                      # the art and the play area; the settings panel fills the rest
-PANEL = (SIDE, 0, W, H)
+PANEL = (SIDE, TOP, W, H)
 
 
 def pick_fonts(root):
@@ -304,7 +355,7 @@ def pick_fonts(root):
     return title, ui
 
 
-def find_art(game_dir):
+def find_art(game_dir):  # noqa: E302
     for name in ('pic0.png', 'pic1.png'):
         path = Path(game_dir) / 'sce_sys' / name if game_dir else None
         if path and path.is_file():
@@ -312,51 +363,62 @@ def find_art(game_dir):
     return None
 
 
-def render_background(game_dir):
-    """The window background (PIL image), or None without Pillow: the game's own key art from
-    the player's dump, muted to greys with its reds kept, darkened under the text."""
+def render_background(game_dir, game='p1'):
+    """The window background (PIL image), or None without Pillow: the game's half of the bundle's
+    key art from the player's dump (Alex Mercer left, James Heller right) under the game tabs.
+    PROTOTYPE: greys with the reds kept; PROTOTYPE 2: cold steel blue with the reds kept.
+    Darkened under the text."""
     try:
-        from PIL import Image, ImageDraw, ImageEnhance
+        from PIL import Image, ImageDraw, ImageEnhance, ImageOps, ImageChops
     except ImportError:
         return None
-    canvas = Image.new('RGB', (W, H), C['bg'])
+    theme = THEMES[game]
+    canvas = Image.new('RGB', (W, H), theme['bg'])
+    area = H - TOP
     art_path = find_art(game_dir)
     if art_path:
         try:
             art = Image.open(art_path).convert('RGB')
-            # The key art's left half (Alex Mercer), filling the play area.
-            art = art.crop((0, 0, art.width // 2, art.height))
+            half = art.width // 2
+            seam = art.width // 80  # the two halves meet in a soft dark band: left out
+            art = art.crop((0, 0, half - seam, art.height) if GAMES[game][4] == 'left' else
+                           (half + seam, 0, art.width, art.height))
             scale = SIDE / art.width
             art = art.resize((SIDE, int(art.height * scale)), Image.LANCZOS)
-            top = max(0, min(art.height - H, int(art.height * 0.04)))
-            art = art.crop((0, top, SIDE, top + H))
-            # Greys everywhere but the reds (the virus), then darker overall.
-            gray = Image.merge('RGB', [art.convert('L')] * 3)
+            top = max(0, min(art.height - area, int(art.height * 0.02)))
+            art = art.crop((0, top, SIDE, top + area))
+            luma = art.convert('L')
+            if game == 'p2':
+                base = ImageOps.colorize(luma, black='#03070b', white='#b9d6e6', mid='#2c5a73')
+            else:
+                base = Image.merge('RGB', [luma] * 3)
+            # The reds (the virus) stay in both.
             hsv = art.convert('HSV').split()
             red_mask = Image.eval(hsv[1], lambda v: 0 if v < 90 else min(255, (v - 90) * 3))
             hue_mask = Image.eval(hsv[0], lambda h: 255 if h < 14 or h > 238 else 0)
-            from PIL import ImageChops
             mask = ImageChops.multiply(red_mask, hue_mask)
-            art = Image.composite(ImageEnhance.Color(art).enhance(0.85), gray, mask)
-            art = ImageEnhance.Brightness(art).enhance(0.42)
+            art = Image.composite(ImageEnhance.Color(art).enhance(0.85), base, mask)
+            art = ImageEnhance.Brightness(art).enhance(0.46 if game == 'p2' else 0.42)
             art = ImageEnhance.Contrast(art).enhance(1.12)
-            canvas.paste(art, (0, 0))
+            canvas.paste(art, (0, TOP))
         except Exception as error:
             print(f'launcher: art not used: {error}')
     # Shade: the lower part (title, play) and the edge toward the panel go to the background.
-    shade = Image.new('L', (SIDE, H), 0)
+    shade = Image.new('L', (SIDE, area), 0)
     px = shade.load()
-    for y in range(H):
-        bottom = max(0.0, (y - H * 0.38) / (H * 0.62)) ** 1.3
+    for y in range(area):
+        bottom = max(0.0, (y - area * 0.30) / (area * 0.70)) ** 1.3
         for x in range(SIDE):
             right = max(0.0, (x - SIDE * 0.72) / (SIDE * 0.28)) ** 1.6
             px[x, y] = int(255 * min(1.0, bottom * 0.92 + right * 0.85))
-    left = canvas.crop((0, 0, SIDE, H))
-    left = Image.composite(Image.new('RGB', (SIDE, H), C['bg']), left, shade)
-    canvas.paste(left, (0, 0))
+    left = canvas.crop((0, TOP, SIDE, H))
+    left = Image.composite(Image.new('RGB', (SIDE, area), theme['bg']), left, shade)
+    canvas.paste(left, (0, TOP))
     draw = ImageDraw.Draw(canvas)
-    draw.rectangle((SIDE, 0, W, H), fill=C['panel'])
-    draw.line((SIDE, 0, SIDE, H), fill=C['line'])
+    draw.rectangle((0, 0, W, TOP), fill=theme['top'])
+    draw.line((0, TOP, W, TOP), fill=theme['line'])
+    draw.rectangle((SIDE, TOP + 1, W, H), fill=theme['panel'])
+    draw.line((SIDE, TOP, SIDE, H), fill=theme['line'])
     return canvas
 
 
@@ -414,7 +476,7 @@ class Launcher:
         self.title_font, self.ui_font = pick_fonts(root)
         self.canvas = tk.Canvas(root, width=W, height=H, highlightthickness=0, bd=0, bg=C['bg'])
         self.canvas.pack()
-        self.bg_image = None
+        self.bg_images = {}
         self.window_icon()
         self.refresh_game(redraw=False)
         self.draw()
@@ -448,7 +510,7 @@ class Launcher:
             self.canvas.itemconfigure(self.status_item, text=text, fill=self.status_color)
 
     def refresh_game(self, redraw=True):
-        self.checks, self.sfo = check_game(self.values['game_dir'])
+        self.checks, self.sfo = check_game(self.values['game_dir'], self.game)
         bad = [c for c in self.checks if c[1] == 'bad']
         if not self.values['game_dir']:
             self.set_status('Select your game folder to begin', C['warn'])
@@ -457,7 +519,7 @@ class Launcher:
         else:
             self.set_status('Ready to play', C['muted'])
         if redraw:
-            self.bg_image = None
+            self.bg_images = {}
             self.window_icon()
             self.draw()
 
@@ -471,53 +533,102 @@ class Launcher:
         cv.tag_bind(item, '<Leave>', lambda e: (cv.itemconfigure(item, fill=normal), cv.configure(cursor='')))
 
     # ---- drawing
+    @property
+    def game(self):
+        return self.values.get('game', 'p1')
+
+    def getv(self, key, default=None):
+        """A setting; 'game.<name>' is one of the selected game's own (its patches)."""
+        if key.startswith('game.'):
+            return self.values['per_game'][self.game].get(key[5:], default)
+        return self.values.get(key, default)
+
+    def setv(self, key, value):
+        if key.startswith('game.'):
+            self.values['per_game'][self.game][key[5:]] = value
+        else:
+            self.values[key] = value
+
     def draw(self):
         cv = self.canvas
         cv.delete('all')
-        if self.bg_image is None:
-            image = render_background(self.values['game_dir'])
-            if image is not None:
+        C.update(THEMES[self.game])
+        self.root.configure(bg=C['bg'])
+        cv.configure(bg=C['bg'])
+        image = self.bg_images.get(self.game)
+        if image is None:
+            rendered = render_background(self.values['game_dir'], self.game)
+            if rendered is not None:
                 from PIL import ImageTk
-                self.bg_image = ImageTk.PhotoImage(image)
-        if self.bg_image is not None:
-            cv.create_image(0, 0, image=self.bg_image, anchor='nw')
+                image = self.bg_images[self.game] = ImageTk.PhotoImage(rendered)
+        if image is not None:
+            cv.create_image(0, 0, image=image, anchor='nw')
         else:
-            cv.create_rectangle(SIDE, 0, W, H, fill=C['panel'], outline='')
-            cv.create_line(SIDE, 0, SIDE, H, fill=C['line'])
+            cv.create_rectangle(0, 0, W, TOP, fill=C['top'], outline='')
+            cv.create_line(0, TOP, W, TOP, fill=C['line'])
+            cv.create_rectangle(SIDE, TOP, W, H, fill=C['panel'], outline='')
+            cv.create_line(SIDE, TOP, SIDE, H, fill=C['line'])
+        self.draw_tabs()
         self.draw_left()
         self.draw_panel()
+
+    def draw_tabs(self):
+        """The two games as big tabs across the top, each in its own colour."""
+        cv = self.canvas
+        running = self.process is not None and self.process.poll() is None
+        x, y0, y1, w = 24, 14, TOP - 12, 292
+        for key, (name, _exe, _data, line, _side) in GAMES.items():
+            theme = THEMES[key]
+            active = key == self.game
+            tag = f'game_{key}'
+            card = cv.create_rectangle(x, y0, x + w, y1, fill=theme['card'] if active else C['top'],
+                                       outline=theme['line'] if active else '', tags=(tag,))
+            cv.create_rectangle(x, y0, x + 4, y1, fill=theme['red'] if active else theme['red_dark'],
+                                outline='', tags=(tag,))
+            title = cv.create_text(x + 22, y0 + 23, text=name, anchor='w', font=(self.title_font, 19, 'bold'),
+                                   fill=C['text'] if active else C['muted'], tags=(tag,))
+            sub = cv.create_text(x + 23, y0 + 47, text=line, anchor='w', font=self.f(8),
+                                 fill=C['muted'] if active else C['dim'], tags=(tag,))
+            if active:
+                cv.create_rectangle(x + 4, y1 - 3, x + w, y1, fill=theme['red'], outline='')
+            elif not running:
+                def enter(e, c=card, t=title, s=sub, th=theme):
+                    cv.itemconfigure(c, fill=th['card'])
+                    cv.itemconfigure(t, fill=C['text'])
+                    cv.itemconfigure(s, fill=C['muted'])
+                    cv.configure(cursor='hand2')
+
+                def leave(e, c=card, t=title, s=sub):
+                    cv.itemconfigure(c, fill=C['top'])
+                    cv.itemconfigure(t, fill=C['muted'])
+                    cv.itemconfigure(s, fill=C['dim'])
+                    cv.configure(cursor='')
+                cv.tag_bind(tag, '<Enter>', enter)
+                cv.tag_bind(tag, '<Leave>', leave)
+                cv.tag_bind(tag, '<Button-1>', lambda e, k=key: self.choose_game(k))
+            x += w + 12
+        cv.create_text(W - 32, 36, text='PROTOTYPE BIOHAZARD BUNDLE', anchor='e', fill=C['muted'],
+                       font=self.f(9, 'bold'))
+        cv.create_text(W - 32, 56, text=f'NATIVE PC PORT   ·   v{VERSION}', anchor='e', fill=C['dim'],
+                       font=self.f(8))
 
     def draw_left(self):
         cv = self.canvas
         x = 56
-        kicker = cv.create_text(x, 42, text='PROTOTYPE BIOHAZARD BUNDLE', anchor='w', fill=C['muted'],
-                                font=self.f(9, 'bold'))
-        cv.create_text(cv.bbox(kicker)[2] + 18, 42, text='NATIVE PC PORT', anchor='w', fill=C['dim'], font=self.f(9))
-        # Game selection: PROTOTYPE 2 is experimental (it starts; how far it runs is being worked on).
-        gy = 392
-        gx = x
-        selected = self.values.get('game', 'p1')
-        for key, (name, _exe) in GAMES.items():
-            item = cv.create_text(gx, gy, text=name, anchor='w', font=self.f(10, 'bold'),
-                                  fill=C['text'] if key == selected else C['dim'])
-            bbox = cv.bbox(item)
-            if key == selected:
-                cv.create_rectangle(bbox[0], gy + 13, bbox[2], gy + 15, fill=C['red'], outline='')
-            else:
-                self.hover(item, C['dim'], C['text'])
-                cv.tag_bind(item, '<Button-1>', lambda e, k=key: self.choose_game(k))
-            gx = bbox[2] + 8
-            if key == 'p2':
-                tag = cv.create_text(gx, gy, text='EXPERIMENTAL', anchor='w', fill=C['dim'], font=self.f(7, 'bold'))
-                gx = cv.bbox(tag)[2]
-            gx += 18
+        name = GAMES[self.game][0]
+        settings = self.values['per_game'][self.game]
+        if self.game == 'p2':
+            chip = cv.create_text(x + 10, 408, text='EXPERIMENTAL', anchor='w', fill=C['text'], font=self.f(8, 'bold'))
+            b = cv.bbox(chip)
+            back = cv.create_rectangle(x, b[1] - 4, b[2] + 10, b[3] + 4, fill=C['red_dark'], outline=C['red'])
+            cv.tag_lower(back, chip)
         # Title.
-        cv.create_text(x - 2, 452, text=GAMES[selected][0], anchor='w', fill=C['text'], font=(self.title_font, 46, 'bold'))
+        cv.create_text(x - 2, 452, text=name, anchor='w', fill=C['text'], font=(self.title_font, 46, 'bold'))
         version = self.sfo.get('APP_VER')
         sub = 'Biohazard Bundle' + (f'   ·   {TITLE_ID}   ·   v{version}' if version else '')
         cv.create_text(x, 496, text=sub, anchor='w', fill=C['muted'], font=self.f(10))
         # Play.
-        by = 534
+        by = 530
         running = self.process is not None and self.process.poll() is None
         if running:
             self.button(x, by, 220, 50, 'RUNNING', None, fill=C['track'], hot=C['track'])
@@ -536,9 +647,15 @@ class Launcher:
         self.status_item = cv.create_text(sx, by + 25, text=getattr(self, 'status_text', ''), anchor='w',
                                           fill=getattr(self, 'status_color', C['muted']), font=self.f(10),
                                           width=SIDE - sx - 40)
+        # What this game starts with (its own patches), a click away from changing.
+        summary = '   ·   '.join((settings['render_res'].replace('x', ' × '),
+                                  '60 FPS' if settings['fps60'] else '30 FPS'))
+        item = cv.create_text(x, by + 72, text=f'{summary}      Change', anchor='w', fill=C['dim'], font=self.f(9))
+        self.hover(item, C['dim'], C['text'])
+        cv.tag_bind(item, '<Button-1>', lambda e: self.switch_tab('GAME'))
         # Footer links.
-        fy = H - 40
-        cv.create_line(x, fy - 22, SIDE - 56, fy - 22, fill=C['hair'])
+        fy = H - 28
+        cv.create_line(x, fy - 20, SIDE - 56, fy - 20, fill=C['hair'])
         lx = x
         for text, command in (('Game folder', self.choose_folder), ('Saves', self.open_saves),
                               ('Save backups', self.open_backups), ('Log', self.open_log),
@@ -547,7 +664,6 @@ class Launcher:
             self.hover(item, C['muted'], C['text'])
             cv.tag_bind(item, '<Button-1>', lambda e, c=command: c())
             lx = cv.bbox(item)[2] + 24
-        cv.create_text(SIDE - 56, fy, text=f'v{VERSION}', anchor='e', fill=C['dim'], font=self.f(8))
 
     def button(self, x, y, w, h, text, command, fill, hot):
         cv = self.canvas
@@ -576,35 +692,37 @@ class Launcher:
         return b[2] + 12
 
     # ---- settings panel
-    TABS = ('GRAPHICS', 'DISPLAY', 'CONTROLS', 'GAME')
+    TABS = ('GAME', 'GRAPHICS', 'DISPLAY', 'CONTROLS', 'FOLDER')
 
     def draw_panel(self):
         cv = self.canvas
         x0, y0, x1, y1 = PANEL
+        current = self.values.get('panel') if self.values.get('panel') in self.TABS else 'GAME'
         tx = x0 + 32
-        for i, name in enumerate(self.TABS):
-            active = self.values['tab'] == i
-            item = cv.create_text(tx, 40, text=name, anchor='w', fill=C['text'] if active else C['muted'],
-                                  font=self.f(10, 'bold'))
+        ty = y0 + 32
+        for name in self.TABS:
+            active = name == current
+            item = cv.create_text(tx, ty, text=name, anchor='w', fill=C['text'] if active else C['muted'],
+                                  font=self.f(9, 'bold'))
             bbox = cv.bbox(item)
             if active:
-                cv.create_rectangle(bbox[0], 63, bbox[2], 65, fill=C['red'], outline='')
+                cv.create_rectangle(bbox[0], ty + 21, bbox[2], ty + 24, fill=C['red'], outline='')
             else:
                 self.hover(item, C['muted'], C['text'])
-                cv.tag_bind(item, '<Button-1>', lambda e, i=i: self.switch_tab(i))
-            tx += 96
-        cv.create_line(x0, 65, x1, 65, fill=C['line'])
-        self.row_y = 108
+                cv.tag_bind(item, '<Button-1>', lambda e, n=name: self.switch_tab(n))
+            tx = bbox[2] + 20
+        cv.create_line(x0, ty + 24, x1, ty + 24, fill=C['line'])
+        self.row_y = ty + 62
         # Description of the row under the pointer.
-        cv.create_line(x0 + 32, y1 - 92, x1 - 32, y1 - 92, fill=C['hair'])
-        self.desc_item = cv.create_text(x0 + 32, y1 - 76, text='', anchor='nw', fill=C['muted'],
+        cv.create_line(x0 + 32, y1 - 84, x1 - 32, y1 - 84, fill=C['hair'])
+        self.desc_item = cv.create_text(x0 + 32, y1 - 70, text='', anchor='nw', fill=C['muted'],
                                         font=self.f(9), width=x1 - x0 - 64)
-        tabs = [self.tab_graphics, self.tab_display, self.tab_controls, self.tab_game]
-        tabs[min(self.values['tab'], len(tabs) - 1)]()
+        {'GAME': self.tab_game, 'GRAPHICS': self.tab_graphics, 'DISPLAY': self.tab_display,
+         'CONTROLS': self.tab_controls, 'FOLDER': self.tab_folder}[current]()
 
-    def switch_tab(self, i):
+    def switch_tab(self, name):
         self.capture_stop()
-        self.values['tab'] = i
+        self.values['panel'] = name
         self.save()
         self.draw()
 
@@ -631,7 +749,7 @@ class Launcher:
         y, tag = self.row(label, desc, locked=locked)
         x1 = PANEL[2] - 32
         width = 176
-        current = self.values.get(key)
+        current = self.getv(key)
         index = next((i for i, (v, _) in enumerate(options) if v == current), 0)
         cv.create_text(x1 - width / 2, y, text=options[index][1], fill=C['dim'] if locked else C['text'],
                        font=self.f(10, 'bold'), tags=(tag,))
@@ -642,7 +760,7 @@ class Launcher:
                 continue
 
             def step(e, d=direction):
-                self.values[key] = options[(index + d) % len(options)][0]
+                self.setv(key, options[(index + d) % len(options)][0])
                 self.save()
                 self.draw()
                 self.describe(desc)
@@ -653,7 +771,7 @@ class Launcher:
         cv = self.canvas
         y, tag = self.row(label, desc, locked=locked)
         x1 = PANEL[2] - 32
-        on = bool(self.values.get(key)) and not locked
+        on = bool(self.getv(key)) and not locked
         w, h = 34, 16
         x = x1 - w
         sw = f'sw{y}'
@@ -665,7 +783,7 @@ class Launcher:
         cv.create_text(x - 12, y, text='On' if on else 'Off', anchor='e', fill=C['muted'], font=self.f(9), tags=(tag,))
         if not locked:
             def flip(e):
-                self.values[key] = not self.values.get(key)
+                self.setv(key, not self.getv(key))
                 self.save()
                 self.draw()
                 self.describe(desc)
@@ -680,7 +798,7 @@ class Launcher:
         width = 176
         x = x1 - width
         span = width - 44
-        value = int(self.values.get(key, low))
+        value = int(self.getv(key, low))
         cv.create_line(x, y, x + span, y, fill=C['track'], width=2, tags=(tag,))
         kx = x + (value - low) / (high - low) * span
         bar = cv.create_line(x, y, kx, y, fill=C['dim'] if locked else C['red'], width=2, tags=(tag,))
@@ -694,7 +812,7 @@ class Launcher:
         def move(e):
             frac = min(1.0, max(0.0, (e.x - x) / span))
             v = int(round(low + frac * (high - low)))
-            self.values[key] = v
+            self.setv(key, v)
             nx = x + frac * span
             cv.coords(bar, x, y, nx, y)
             cv.coords(knob, nx - 4, y - 7, nx + 4, y + 7)
@@ -717,20 +835,46 @@ class Launcher:
                                 font=self.f(8, 'bold'))
         self.row_y += 24
 
-    def tab_graphics(self):
+    def tab_game(self):
+        """The selected game's own settings: the patches made for it."""
+        name = GAMES[self.game][0]
+        other = GAMES['p2' if self.game == 'p1' else 'p1'][0]
         res = [(r, r.replace('x', ' × ')) for r in RESOLUTIONS]
-        self.section('IMAGE', first=True)
-        self.stepper('Render resolution', 'Experimental. The resolution the game renders at; 1920 × 1080 is '
-                     'the PS4\'s. Higher supersamples (sharper, heavier); lower is scaled up by FSR 1. If the '
-                     'game misbehaves, set it back to 1920 × 1080.', 'render_res', res)
+        self.section(f'{name} PATCHES', first=True)
+        if self.game == 'p2':
+            self.stepper('Render resolution', 'Experimental. The resolution PROTOTYPE 2 renders at; 1920 × 1080 '
+                         'is the PS4\'s. Above it the game is given more video memory. Lower is scaled up by '
+                         'FSR 1. If the game misbehaves, set it back to 1920 × 1080.', 'game.render_res', res)
+            self.stepper('Frame rate', 'Experimental. 60 FPS lifts the game\'s 30 FPS cap. If the game runs too '
+                         'fast or a menu misbehaves, go back to 30 FPS.', 'game.fps60',
+                         [(False, '30 FPS'), (True, '60 FPS')])
+        else:
+            self.stepper('Render resolution', 'Experimental. The resolution the game renders at; 1920 × 1080 is '
+                         'the PS4\'s. Higher supersamples (sharper, heavier); lower is scaled up by FSR 1. If the '
+                         'game misbehaves, set it back to 1920 × 1080.', 'game.render_res', res)
+            self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.',
+                         'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
+            self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
+                        'difference). Keep it on.', 'game.tendril_fix')
+        self.row_y += 20
+        self.note(f'These apply to {name} only: {other} keeps its own (switch with the tabs at the top). '
+                  'Graphics, display and controls are shared by both games.', C['dim'], height=48)
+        if self.game == 'p2':
+            self.section('EXPERIMENTAL')
+            self.note('PROTOTYPE 2 runs, but is newer in the port than PROTOTYPE: expect rough edges. '
+                      'Keyboard button icons are not in yet; the game shows PlayStation buttons. '
+                      'Log (below the play button) shows what happened if it stops.', C['muted'], height=70)
+
+    def tab_graphics(self):
+        self.section('IMAGE  ·  BOTH GAMES', first=True)
         self.toggle('FSR 1 upscaling', 'AMD FidelityFX Super Resolution 1: scales the game image to the window '
                     'with edge-aware filtering. Only active when the window is larger than the image.', 'fsr1')
         self.toggle('Sharpening', 'Contrast-adaptive sharpening (RCAS) of the final image.', 'rcas')
         self.slider('Sharpness', 'Strength of the sharpening.', 'rcas_strength', 0, 100, locked=not self.values['rcas'])
         self.stepper('Texture filtering', 'Anisotropic filtering: sharper ground and walls at steep angles.',
                      'anisotropy', [(0, 'Game default'), (2, '2× AF'), (4, '4× AF'), (8, '8× AF'), (16, '16× AF')])
-        self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.', 'fps60',
-                     [(False, '30 FPS'), (True, '60 FPS')])
+        self.row_y += 20
+        self.note('Render resolution and frame rate are on the GAME page: each game has its own.', C['dim'])
 
     def tab_display(self):
         self.section('WINDOW', first=True)
@@ -872,7 +1016,7 @@ class Launcher:
         self.save()
         self.draw()
 
-    def tab_game(self):
+    def tab_folder(self):
         cv = self.canvas
         x0, _, x1, _ = PANEL
         self.section('GAME FOLDER', first=True)
@@ -905,9 +1049,6 @@ class Launcher:
         self.small_button(bx, self.row_y, 'OPEN BACKUPS', self.open_backups,
                           'A copy of your saves is made at every start (the latest ones are kept).')
         self.row_y += 30
-        self.section('FIXES')
-        self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation difference). '
-                    'Keep it on.', 'tendril_fix')
 
     # ---- actions
     def choose_folder(self):
@@ -980,10 +1121,11 @@ class Launcher:
             self.set_status('Fix the game folder first', C['bad'])
             return
         game = self.values['game_dir']
-        out = PORT_DIR / 'out'
+        exe = GAMES[self.game][1]
+        out = PORT_DIR / 'out' if exe == 'eboot.bin' else PORT_DIR / 'out' / Path(exe).stem  # as run.py
 
         def work():
-            out.mkdir(exist_ok=True)
+            out.mkdir(parents=True, exist_ok=True)
             env = game_environment(self.values)
             for name in ('prepare.py', 'link_libc.py', 'link_modules.py'):
                 r = subprocess.run(script_command(name, game, '--out', out), cwd=PORT_DIR, env=env,
@@ -1040,21 +1182,19 @@ class Launcher:
         self.refresh_game()
 
     def choose_game(self, key):
-        if self.process is not None and self.process.poll() is None:
+        if self.process is not None and self.process.poll() is None or self.busy or key == self.game:
             return
+        self.capture_stop()
         self.values['game'] = key
         self.save()
-        if key == 'p2':
-            self.set_status('PROTOTYPE 2 is experimental: it may stop early. OPEN LOG shows how far it got.', C['warn'])
-        else:
-            self.set_status('', C['muted'])
+        self.refresh_game(redraw=False)
         self.draw()
 
     def play(self):
         if self.process is not None and self.process.poll() is None:
             return
         if not self.ready:
-            self.set_status('Fix the game folder first (GAME tab)', C['bad'])
+            self.set_status('Fix the game folder first (FOLDER page)', C['bad'])
             return
         write_ini(self.values)
         env = game_environment(self.values)
@@ -1089,7 +1229,7 @@ class Launcher:
             elif code == 42:
                 self.set_status('The game asked for an executable that is not in the game folder', C['warn'])
             else:
-                self.set_status(f'The game stopped (code {code}). OPEN LOG shows why.', C['bad'])
+                self.set_status(f'The game stopped (code {code}). Log (below) shows why.', C['bad'])
             self.draw()
         self.root.after(500, self.poll)
 

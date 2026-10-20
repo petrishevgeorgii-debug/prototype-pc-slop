@@ -419,9 +419,13 @@ def main():
         profile = game_profile_for(game)
         is_prototype = bool(profile) and profile[3].startswith('PROTOTYPE')
         is_prototype2 = is_prototype and exe != 'eboot.bin'
+        # The built-in patches of this executable (PROTOTYPE 2 has a file of its own).
+        patch_xml = patches.patch_file(profile, exe)
+        # PROTOTYPE 2's launcher settings: THEORDER_PROTO2_RES and THEORDER_PROTO2_FPS60 (PROTOTYPE:
+        # THEORDER_PROTO_RES and THEORDER_FPS60), so a start from the bundle menu gets its own.
+        res_key, fps_key = ('PROTO2_RES', 'PROTO2_FPS60') if is_prototype2 else ('PROTO_RES', 'FPS60')
         if is_prototype2:
-            print('PROTOTYPE 2 (experimental): no patches; resolution, 60 FPS and keyboard prompts are '
-                  'PROTOTYPE 1 settings', flush=True)
+            print('PROTOTYPE 2 (experimental): keyboard button icons are PROTOTYPE 1 only', flush=True)
             # Addresses in PROTOTYPE 1's image (a start from its bundle menu still has them).
             env.pop('THEORDER_FOV_SITES', None)
             # The GPU layer's draw preparation on worker threads reads each draw's resource tables
@@ -462,31 +466,32 @@ def main():
         env.setdefault('THEORDER_READBACK_LINEAR', '1')
         patches_val = get_env(env, 'PATCHES', '')
         patches_only = get_env(env, 'PATCHES_ONLY') == '1'
-        if profile and not is_prototype2:
-            names = selected_patches(profile[1], profile[2], patches_val, patches_only)
+        if profile and patch_xml:
+            names = selected_patches(patch_xml, profile[2], patches_val, patches_only)
             names = graphics_options.patch_names(names, graphics)
             if profile[3] == 'The Order 1886':
                 for auto_patch in ('Unlock All Languages', 'Unlock The Armoury Menu'):
                     if auto_patch not in names:
                         names.append(auto_patch)
-            # PROTOTYPE: THEORDER_FPS60=1 (run-60fps.bat) turns on the 60 FPS patch.
-            if is_prototype and get_env(env, 'FPS60') == '1' and 'Prototype 60 FPS' not in names:
-                names.append('Prototype 60 FPS')
+            # PROTOTYPE: THEORDER_FPS60=1 (launcher, run-60fps.bat) turns on the 60 FPS patch.
+            fps_patch = 'Prototype 2 60 FPS' if is_prototype2 else 'Prototype 60 FPS'
+            if is_prototype and get_env(env, fps_key) == '1' and fps_patch not in names:
+                names.append(fps_patch)
             # THEORDER_PROTO_RES=<w>x<h>: the game's render resolution (launcher setting).
-            proto_res = get_env(env, 'PROTO_RES', '') if is_prototype else ''
+            proto_res = get_env(env, res_key, '') if is_prototype else ''
             if proto_res and proto_res != '1920x1080':
                 names.append(f'Render Resolution - {proto_res}')
-            if is_prototype and get_env(env, 'PROTO_TENDRIL_FIX', '1') == '1' and \
+            if is_prototype and not is_prototype2 and get_env(env, 'PROTO_TENDRIL_FIX', '1') == '1' and \
                     'Fix White Consume Tendrils' not in names:
                 names.append('Fix White Consume Tendrils')
-            names = graphics_options.restrict_to_available(names, patches.available_patches(profile[1], profile[2]))
+            names = graphics_options.restrict_to_available(names, patches.available_patches(patch_xml, profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'
         (image_out / 'patch_status.json').unlink(missing_ok=True)
         run_script('patches.py', '--out', image_out, '--extra', get_env(env, 'PATCHES', ''), '--game-dir', game,
                    '--patches-dir', get_env(env, 'PATCHES_DIR', str(data / 'patches')),
                    '--patches-config', get_env(env, 'PATCHES_CONFIG', str(data / 'patches.json')))
-        if profile and not is_prototype2:
+        if profile and patch_xml:
             # Only the patches found in this eboot.bin count: a frame rate patch that was skipped
             # leaves the engine at 60 FPS, and the notes' memory and VBlank needs follow the same list.
             status = patch_status(image_out) or {}
@@ -495,7 +500,7 @@ def main():
             env['THEORDER_FOV_SITES'] = ' '.join(hex(site) for site in status.get('fov_sites', []))
             engine_fps = graphics_options.applied_engine_fps(applied)
             fps_patched = any(n.startswith(f'{graphics_options.FPS_PREFIX} - ') for n in applied)
-            dmem, vblank = patch_requirements(profile[1], applied, profile[2])
+            dmem, vblank = patch_requirements(patch_xml, applied, profile[2])
             # The Order presents at 30 Hz (flip rate 1) and steps 33.3 ms per frame. Its 60 FPS patch
             # halves the step, so the presentation has to follow (every vblank, at most 60 FPS) or
             # the game runs in slow motion. Derived like the values below, so a restart back to 30 FPS
@@ -523,10 +528,8 @@ def main():
         env['THEORDER_ENGINE_FPS'] = str(engine_fps)
         derived.append('THEORDER_ENGINE_FPS')
         # The Order runs at half its engine setting: 30 FPS at 60, 60 with the frame rate patch.
-        if is_prototype2:
-            print('Game frame rate: the game\'s own (30 FPS)', flush=True)
-        elif is_prototype:
-            print(f"Game frame rate: {60 if get_env(env, 'FPS60') == '1' else 30} FPS", flush=True)
+        if is_prototype:
+            print(f"Game frame rate: {60 if get_env(env, fps_key) == '1' else 30} FPS", flush=True)
         else:
             print(f'Game frame rate: {engine_fps // 2} FPS'
                   + ('' if fps_patched or graphics['engine_fps'] == '60' else

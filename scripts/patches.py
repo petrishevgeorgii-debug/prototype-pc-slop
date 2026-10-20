@@ -130,7 +130,8 @@ def encode(line):
     raise ValueError(f'unsupported patch type {kind!r}')
 
 
-def compile_patches(xml, names, app_version, segments, image=None, skipped=None, reference=True):
+def compile_patches(xml, names, app_version, segments, image=None, skipped=None, reference=True,
+                    app_elf='eboot.bin'):
     """Writes of the named patches. With the game's image, each site is found by its signature
     (any build); without it, at the reference build's Address. A Line with a Target writes at that
     Target instead: data the code points to, such as a .bss variable (no bytes of its own to find).
@@ -139,7 +140,7 @@ def compile_patches(xml, names, app_version, segments, image=None, skipped=None,
     app_version None: any version."""
     found={}
     for meta in ET.parse(xml).getroot().iter('Metadata'):
-        if meta.get('Name') in names and app_version in (None,meta.get('AppVer')) and meta.get('AppElf','eboot.bin')=='eboot.bin':
+        if meta.get('Name') in names and app_version in (None,meta.get('AppVer')) and meta.get('AppElf','eboot.bin')==app_elf:
             found[meta.get('Name')]=meta
     missing=[n for n in names if n not in found]
     if missing: raise ValueError(f'patches not found for app version {app_version}: {missing}')
@@ -189,6 +190,15 @@ GAMES=[
      PATCHES_DIR/'TheOrder1886-Orbis.xml','01.02','The Order 1886'),
     ({'CUSA06545'},PATCHES_DIR/'Prototype-Orbis.xml','01.00','PROTOTYPE BIOHAZARD BUNDLE'),
 ]
+# Built-in patch files of a game's other executables (THEORDER_EBOOT): PROTOTYPE 2 in the bundle.
+EXECUTABLE_FILES={'prototype2_ps4f.elf':PATCHES_DIR/'Prototype2-Orbis.xml'}
+
+
+def patch_file(profile, executable='eboot.bin'):
+    """The built-in patch XML for a game profile's executable, None when it has none."""
+    if executable=='eboot.bin':
+        return profile[1] if profile else None
+    return EXECUTABLE_FILES.get(executable)
 # The build the built-in Address values and third-party patch files are written for.
 REFERENCE_SHA256='f742eb1793f92772a5c4bdd174e29b08e0b53f68d373a37f4cda730703e558d8'  # CUSA00035 01.02
 DMEM_RETAIL_MB=5056  # runtime_memory.c POOL_SIZE default
@@ -364,14 +374,15 @@ def main():
     a=p.parse_args()
     title=game_title_id(a.game_dir)
     profile=game_profile_for(a.game_dir)
-    if os.environ.get('THEORDER_EBOOT','eboot.bin')!='eboot.bin':
-        profile=None  # the built-in patches are for the main eboot.bin only
+    executable=os.environ.get('THEORDER_EBOOT','eboot.bin')
+    xml=patch_file(profile,executable)
+    if not xml:
         write_patches(a.out,[])
-        print(f'Patches: no patch profile for {title}: none applied')
+        print(f'Patches: no patch profile for {title} {executable}: none applied')
         return
-    ids,xml,tag,_name=profile
+    ids,_xml,tag,_name=profile
     sha=eboot_sha256(a.game_dir)
-    print(f'Patches: {title} {game_app_version(a.game_dir)}, eboot.bin sha256 {sha}')
+    print(f'Patches: {title} {game_app_version(a.game_dir)}, {executable} sha256 {sha}')
     names=selected_patches(xml,tag,a.extra,os.environ.get('THEORDER_PATCHES_ONLY')=='1')
     elf=(a.out/'eboot.elf').read_bytes()
     segments=eboot_segments(elf)
@@ -379,13 +390,14 @@ def main():
     if segments:
         EBOOT_BASE = min(start for start, _ in segments)
     skipped={}
-    writes=compile_patches(xml,names,None,segments,eboot_image(elf),skipped,sha==REFERENCE_SHA256)
+    writes=compile_patches(xml,names,None,segments,eboot_image(elf),skipped,sha==REFERENCE_SHA256,
+                           executable)
     for name,reason in skipped.items():
         print(f'Patches: {name} skipped ({reason} in this eboot.bin)')
         if name.startswith('Frame Rate Patch'):
             for line in frame_time_sites(eboot_image(elf)):
                 print(f'Patches: 33333 us at {line}')
-    if a.patches_dir and sha==REFERENCE_SHA256:
+    if a.patches_dir and sha==REFERENCE_SHA256 and executable=='eboot.bin':
         # Third-party files use the absolute addresses of the reference build, so they are only
         # applied there. After the built-in ones: an external patch of the same bytes wins.
         writes+=compile_external(external_selection(external_patches(a.patches_dir,tag,xml,ids),

@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PROTOTYPE 2 (PROTOTYPE BIOHAZARD BUNDLE, prototype2_ps4f.elf). Addresses are the executable's
+     virtual addresses; each line also carries the original bytes as its Pattern, so a site is
+     only written where the code is exactly the one these patches were made for. -->
+<Patch>
+    <TitleID>
+        <ID>CUSA06545</ID>
+    </TitleID>
+    <Metadata Title="Prototype 2"
+              Name="Prototype 2 60 FPS"
+              Note="Experimental: the game presents every vblank (flip rate 60 Hz instead of 30 Hz). The game steps by measured time; videos and menus may need checking."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- sceVideoOutSetFlipRate(handle, 1) at start: rate 0. -->
+            <Line Type="bytes" Address="0x0027bf05" Value="be00000000" Pattern="41 c7 87 7c 01 00 00 99 99 01 3f 41 8b 3e be 01 00 00 00" At="14"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype 2"
+              Name="Render Resolution - 1280x720"
+              Note="Experimental: the game renders at 1280x720 instead of 1920x1080 (display device, back buffers and the renderer's target size). The window shows the image scaled to its own size."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- display device size after sceVideoOutGetResolutionStatus -->
+            <Line Type="bytes" Address="0x0027be83" Value="48b800050000d0020000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
+            <!-- Pure3D display init parameters -->
+            <Line Type="bytes" Address="0x00112f32" Value="c78554feffff0005000048b8d002000020000000" Pattern="c7 85 54 fe ff ff 80 07 00 00 48 b8 38 04 00 00 20 00 00 00" At="0"/>
+            <!-- the display's render size (virtual getters returning 1920 / 1080) -->
+            <Line Type="bytes" Address="0x00d4e6b0" Value="b800050000c3" Pattern="b8 80 07 00 00 c3 90 90" At="0"/>
+            <Line Type="bytes" Address="0x00d4e6c0" Value="b8d0020000c3" Pattern="b8 38 04 00 00 c3 90 90" At="0"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype 2"
+              Name="Render Resolution - 1600x900"
+              Note="Experimental: the game renders at 1600x900 instead of 1920x1080 (display device, back buffers and the renderer's target size). The window shows the image scaled to its own size."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- display device size after sceVideoOutGetResolutionStatus -->
+            <Line Type="bytes" Address="0x0027be83" Value="48b84006000084030000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
+            <!-- Pure3D display init parameters -->
+            <Line Type="bytes" Address="0x00112f32" Value="c78554feffff4006000048b88403000020000000" Pattern="c7 85 54 fe ff ff 80 07 00 00 48 b8 38 04 00 00 20 00 00 00" At="0"/>
+            <!-- the display's render size (virtual getters returning 1920 / 1080) -->
+            <Line Type="bytes" Address="0x00d4e6b0" Value="b840060000c3" Pattern="b8 80 07 00 00 c3 90 90" At="0"/>
+            <Line Type="bytes" Address="0x00d4e6c0" Value="b884030000c3" Pattern="b8 38 04 00 00 c3 90 90" At="0"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype 2"
+              Name="Render Resolution - 2560x1440"
+              Note="Experimental: the game renders at 2560x1440 instead of 1920x1080 (display device, back buffers and the renderer's target size). The window shows the image scaled to its own size. Requires setting DMEM to 512 MB."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- display device size after sceVideoOutGetResolutionStatus -->
+            <Line Type="bytes" Address="0x0027be83" Value="48b8000a0000a0050000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
+            <!-- Pure3D display init parameters -->
+            <Line Type="bytes" Address="0x00112f32" Value="c78554feffff000a000048b8a005000020000000" Pattern="c7 85 54 fe ff ff 80 07 00 00 48 b8 38 04 00 00 20 00 00 00" At="0"/>
+            <!-- the display's render size (virtual getters returning 1920 / 1080) -->
+            <Line Type="bytes" Address="0x00d4e6b0" Value="b8000a0000c3" Pattern="b8 80 07 00 00 c3 90 90" At="0"/>
+            <Line Type="bytes" Address="0x00d4e6c0" Value="b8a0050000c3" Pattern="b8 38 04 00 00 c3 90 90" At="0"/>
+            <!-- Video memory for the bigger render targets: the "Render" heap's Garlic part
+                 683 -> 1195 MiB, and the Garlic direct memory block (allocation, mapping,
+                 "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0024642c" Value="ba0000809e" Pattern="ba 00 00 80 7e b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x00246448" Value="be0000809e" Pattern="4c 8b 45 b8 be 00 00 80 7e" At="4"/>
+            <Line Type="bytes" Address="0x00246510" Value="c704240000809e" Pattern="c7 04 24 00 00 80 7e" At="0"/>
+            <Line Type="bytes" Address="0x00594ec7" Value="c740040080b94a" Pattern="c7 40 04 00 80 b9 2a" At="0"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype 2"
+              Name="Render Resolution - 3200x1800"
+              Note="Experimental: the game renders at 3200x1800 instead of 1920x1080 (display device, back buffers and the renderer's target size). The window shows the image scaled to its own size. Requires setting DMEM to 1024 MB."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- display device size after sceVideoOutGetResolutionStatus -->
+            <Line Type="bytes" Address="0x0027be83" Value="48b8800c000008070000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
+            <!-- Pure3D display init parameters -->
+            <Line Type="bytes" Address="0x00112f32" Value="c78554feffff800c000048b80807000020000000" Pattern="c7 85 54 fe ff ff 80 07 00 00 48 b8 38 04 00 00 20 00 00 00" At="0"/>
+            <!-- the display's render size (virtual getters returning 1920 / 1080) -->
+            <Line Type="bytes" Address="0x00d4e6b0" Value="b8800c0000c3" Pattern="b8 80 07 00 00 c3 90 90" At="0"/>
+            <Line Type="bytes" Address="0x00d4e6c0" Value="b808070000c3" Pattern="b8 38 04 00 00 c3 90 90" At="0"/>
+            <!-- Video memory for the bigger render targets: the "Render" heap's Garlic part
+                 683 -> 1707 MiB, and the Garlic direct memory block (allocation, mapping,
+                 "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0024642c" Value="ba000080be" Pattern="ba 00 00 80 7e b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x00246448" Value="be000080be" Pattern="4c 8b 45 b8 be 00 00 80 7e" At="4"/>
+            <Line Type="bytes" Address="0x00246510" Value="c70424000080be" Pattern="c7 04 24 00 00 80 7e" At="0"/>
+            <Line Type="bytes" Address="0x00594ec7" Value="c740040080b96a" Pattern="c7 40 04 00 80 b9 2a" At="0"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype 2"
+              Name="Render Resolution - 3840x2160"
+              Note="Experimental: the game renders at 3840x2160 instead of 1920x1080 (display device, back buffers and the renderer's target size). The window shows the image scaled to its own size. Requires setting DMEM to 1536 MB."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="prototype2_ps4f.elf"
+              isEnabled="false">
+        <PatchList>
+            <!-- display device size after sceVideoOutGetResolutionStatus -->
+            <Line Type="bytes" Address="0x0027be83" Value="48b8000f000070080000498907" Pattern="48 b8 80 07 00 00 38 04 00 00 49 89 07" At="0"/>
+            <!-- Pure3D display init parameters -->
+            <Line Type="bytes" Address="0x00112f32" Value="c78554feffff000f000048b87008000020000000" Pattern="c7 85 54 fe ff ff 80 07 00 00 48 b8 38 04 00 00 20 00 00 00" At="0"/>
+            <!-- the display's render size (virtual getters returning 1920 / 1080) -->
+            <Line Type="bytes" Address="0x00d4e6b0" Value="b8000f0000c3" Pattern="b8 80 07 00 00 c3 90 90" At="0"/>
+            <Line Type="bytes" Address="0x00d4e6c0" Value="b870080000c3" Pattern="b8 38 04 00 00 c3 90 90" At="0"/>
+            <!-- Video memory for the bigger render targets: the "Render" heap's Garlic part
+                 683 -> 2219 MiB, and the Garlic direct memory block (allocation, mapping,
+                 "PS4 core" heap) as much bigger. -->
+            <Line Type="bytes" Address="0x0024642c" Value="ba000080de" Pattern="ba 00 00 80 7e b9 00 00 20 00 41 b8 03 00 00 00" At="0"/>
+            <Line Type="bytes" Address="0x00246448" Value="be000080de" Pattern="4c 8b 45 b8 be 00 00 80 7e" At="4"/>
+            <Line Type="bytes" Address="0x00246510" Value="c70424000080de" Pattern="c7 04 24 00 00 80 7e" At="0"/>
+            <Line Type="bytes" Address="0x00594ec7" Value="c740040080b98a" Pattern="c7 40 04 00 80 b9 2a" At="0"/>
+        </PatchList>
+    </Metadata>
+</Patch>
