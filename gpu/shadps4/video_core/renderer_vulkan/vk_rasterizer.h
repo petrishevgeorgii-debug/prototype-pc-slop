@@ -349,6 +349,8 @@ private:
     /// Before a draw is recorded: the water's snapshot and mask, and at the first
     /// post-processing draw the reflections.
     void ReflectionsBeforeDraw(const GraphicsPipeline* pipeline);
+    /// The shader browser: notes the draw's pixel shader; true when it is hidden (skip it).
+    bool ShaderBrowserSkips(const GraphicsPipeline* pipeline);
     bool motion_draw = false;
     u64 motion_geometry{};    ///< vertex-stream identity of the current direct draw
     bool gbuffer_draw = false;

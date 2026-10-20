@@ -36,6 +36,22 @@ ldd "$dest/bin/theorder-probe.exe" "$dest/bin/theorder-gpu-capabilities.exe" |
     awk '/\/clang64\/bin\// {print $3}' | sort -u | while read -r dll; do
         cp -u "$dll" "$dest/bin/"
     done
+# Shader mods (docs/SHADER_MODS.md): GLSL compiler and SPIR-V decompiler, with their DLLs and
+# licenses (glslang: BSD-3-Clause and others; SPIRV-Cross: Apache-2.0).
+for tool in glslangValidator spirv-cross; do
+    if command -v "$tool" >/dev/null; then
+        cp "$(command -v "$tool")" "$dest/bin/"
+        ldd "$dest/bin/$tool.exe" | awk '/\/clang64\/bin\// {print $3}' | sort -u | while read -r dll; do
+            cp -u "$dll" "$dest/bin/"
+        done
+        for license in /clang64/share/licenses/glslang /clang64/share/licenses/spirv-cross; do
+            [[ -d $license ]] && mkdir -p "$dest/licenses/$(basename "$license")" &&
+                cp -r "$license/." "$dest/licenses/$(basename "$license")/"
+        done
+    else
+        echo "Note: $tool not found: shader mods will need it from MSYS2" >&2
+    fi
+done
 cp -r scripts patches "$dest/"
 mkdir -p "$dest/fsr4_shaders"
 cp -r fsr4_shaders/. "$dest/fsr4_shaders/"

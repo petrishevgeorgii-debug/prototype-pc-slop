@@ -6,6 +6,7 @@
 #include <mutex>
 #include <unordered_set>
 #include <xxhash.h>
+#include "port_shader_mods.h"
 #include "video_core/renderer_vulkan/ui_composition.h"
 #include "port_toggles.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
@@ -518,6 +519,15 @@ void Rasterizer::PrepareRenderState(const GraphicsPipeline* pipeline) {
             }
         }
     }
+}
+
+bool Rasterizer::ShaderBrowserSkips(const GraphicsPipeline* pipeline) {
+    // port: the in-game shader browser (port_shader_mods.h): the frame's pixel shaders, and
+    // the draws of the hidden ones skipped.
+    const auto* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
+    const u64 fs_hash = fs ? fs->pgm_hash : 0;
+    PortShaderMods::NoteDraw(fs_hash);
+    return fs_hash && PortShaderMods::AnyHidden() && PortShaderMods::IsHidden(fs_hash);
 }
 
 void Rasterizer::ReflectionsBeforeDraw(const GraphicsPipeline* pipeline) {
@@ -1306,6 +1316,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         if (screen_reflections) {
             screen_reflections->OnFrameStart();
         }
+        PortShaderMods::OnFrame();
         NoteFrameStart();
         static const char* scene_debug = std::getenv("THEORDER_SCENE_DEBUG");
         scene_debug_frame = scene_debug && std::remove(scene_debug) == 0;
@@ -1329,6 +1340,10 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,
                          cb_descs[0].first, db_desc.first,
                          UiComposition::NativeViewport(viewport.xscale * 2, viewport.yscale * 2));
+    }
+    if (ShaderBrowserSkips(pipeline)) {
+        bind_prepared = nullptr;
+        return;
     }
     const PreparedDraw* draw_prepared = bind_prepared;
     // port: vertex and index buffers are resolved while the helper binds textures (their
@@ -1558,6 +1573,9 @@ void Rasterizer::DrawIndirectRecord(const GraphicsPipeline* pipeline, bool is_in
         upscaler->OnDraw(pipeline->GetStage(Shader::SwStage::Vertex).pgm_hash,
                          cb_descs[0].first, db_desc.first,
                          UiComposition::NativeViewport(viewport.xscale * 2, viewport.yscale * 2));
+    }
+    if (ShaderBrowserSkips(pipeline)) {
+        return;
     }
     if (!BindResources(pipeline)) {
         return;

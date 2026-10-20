@@ -19,6 +19,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#include "port_shader_mods.h"
 #include "common/elf_info.h"
 #include "common/hash.h"
 #include "common/path_util.h"
@@ -984,6 +985,10 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
     if (spv.empty() || SpvHash(spv) != spv_hash) {
         return false;
     }
+    // port: a shader mod (mods/shaders) replaces the cached original's module.
+    if (auto mod = PortShaderMods::Find(program->info.pgm_hash, perm_idx)) {
+        spv = std::move(*mod);
+    }
 
     // Permutation hash depends on shader variation index. To prevent collisions, we need insert it
     // at the exact position rather than append
@@ -1117,7 +1122,9 @@ vk::ShaderModule PipelineCache::LoadDeferredModule(Program& program, size_t perm
         entry.spec = {}; // never matches again
         return {};
     }
-    entry.module = CompileSPV(spv, instance.GetDevice());
+    // port: a shader mod (mods/shaders) replaces the cached original.
+    const auto mod = PortShaderMods::Find(program.info.pgm_hash, perm_idx);
+    entry.module = CompileSPV(mod ? *mod : spv, instance.GetDevice());
     return entry.module;
 }
 
@@ -1551,6 +1558,11 @@ void PipelineCache::ReadWarmEntry(BackgroundWarmup& warm, std::vector<u8>&& data
                             spv);
                     if (!spv.empty() && SpvHash(spv) == spv_hash) {
                         const auto module_started = std::chrono::steady_clock::now();
+                        // port: a shader mod (mods/shaders) replaces the cached original.
+                        if (auto mod = PortShaderMods::Find(stage->program->info.pgm_hash,
+                                                            stage->perm_idx)) {
+                            spv = std::move(*mod);
+                        }
                         stage->module = CompileSPV(spv, stage->device);
                         module_time = ElapsedNs(module_started);
                         warm.module_ns += module_time;

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+#include "port_shader_mods.h"
 #include "port_overlay.h"
 
 #include <algorithm>
@@ -828,6 +829,7 @@ struct Option {
 
 int category = 0;
 int row = 0;
+u64 shader_pick = 0; ///< the shader browser's pixel shader
 } // namespace Proto
 
 void PrototypeMenu() {
@@ -841,9 +843,11 @@ void PrototypeMenu() {
     auto Y = [&](float f) { return o.y + H * f; };
 
     // ---- the options of each category
-    static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY", "FSR TESTS"};
-    static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН", "ТЕСТЫ FSR"};
-    constexpr int CategoryCount = 4;
+    static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY", "FSR TESTS",
+                                                "SHADERS"};
+    static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН", "ТЕСТЫ FSR",
+                                                "ШЕЙДЕРЫ"};
+    constexpr int CategoryCount = 5;
     auto toggle_on = [](u64 bit) {
         return (__atomic_load_n(&runtime_disabled_optimizations, __ATOMIC_RELAXED) & bit) != 0;
     };
@@ -861,6 +865,14 @@ void PrototypeMenu() {
     };
     const std::string on = T("ON", "ВКЛ"), off = T("OFF", "ВЫКЛ");
     std::vector<Option> options;
+    // Shader browser (port_shader_mods.h): the last frame's pixel shaders.
+    std::vector<PortShaderMods::ShaderUse> shader_uses;
+    if (category == 4) {
+        shader_uses = PortShaderMods::LastFrame();
+        if (shader_uses.size() > 96) {
+            shader_uses.resize(96);
+        }
+    }
     switch (category) {
     case 0: {
         Option up{T("UPSCALER", "АПСКЕЙЛЕР"),
@@ -969,6 +981,56 @@ void PrototypeMenu() {
                              "Отладка: темно, если ничего не движется; красный/зелёный — движение."),
                            0, {off, on}, s.debug_view == PortSettings::DebugMotion ? 1 : 0});
         break;
+    case 4: {
+        int index = 0;
+        const auto found = std::find_if(shader_uses.begin(), shader_uses.end(),
+                                        [](const auto& u) { return u.hash == shader_pick; });
+        if (found != shader_uses.end()) {
+            index = int(found - shader_uses.begin());
+        } else if (!shader_uses.empty()) {
+            shader_pick = shader_uses[0].hash;
+        }
+        Option pick{T("SHADER", "ШЕЙДЕР"),
+                    T("The pixel shaders the last frame drew, most draws first. Left/Right picks one; "
+                      "HIDE shows what it draws by leaving it out.",
+                      "Пиксельные шейдеры последнего кадра, по числу отрисовок. Влево/вправо — выбор; "
+                      "СКРЫТЬ показывает, что он рисует, убирая его."),
+                    0, {}, index, !shader_uses.empty()};
+        for (const auto& use : shader_uses) {
+            char text[96];
+            std::snprintf(text, sizeof(text), "%llx  %u %s%s%s",
+                          static_cast<unsigned long long>(use.hash), use.draws,
+                          T("DRAWS", "ОТРИС."), use.hidden ? T("  HIDDEN", "  СКРЫТ") : "",
+                          use.modded ? "  MOD" : "");
+            pick.values.push_back(text);
+        }
+        if (pick.values.empty()) {
+            pick.values.push_back("-");
+        }
+        options.push_back(pick);
+        const bool picked_hidden = !shader_uses.empty() && PortShaderMods::IsHidden(shader_pick);
+        options.push_back({T("HIDE THIS SHADER", "СКРЫТЬ ШЕЙДЕР"),
+                           T("Leaves this shader's draws out: what disappears is what it draws.",
+                             "Пропускает отрисовки шейдера: исчезнувшее — то, что он рисует."),
+                           0, {off, on}, picked_hidden ? 1 : 0, !shader_uses.empty()});
+        options.push_back({T("SHOW ALL", "ПОКАЗАТЬ ВСЕ"),
+                           T("Shows every hidden shader again.", "Снова показывает все скрытые шейдеры."),
+                           0, {T("SHOW", "ПОКАЗАТЬ")}, 0});
+        options.push_back({T("EXPORT FOR EDITING", "ЭКСПОРТ ДЛЯ ПРАВКИ"),
+                           T("Writes this shader as GLSL into mods\\shaders (every version the shader cache "
+                             "holds). Edit it and restart the game: the port compiles and uses it. Needs "
+                             "spirv-cross and glslangValidator (MSYS2, or the port's tools folder).",
+                             "Записывает шейдер в GLSL в mods\\shaders (все версии из кэша). Измените и "
+                             "перезапустите игру: порт скомпилирует и использует его. Нужны spirv-cross и "
+                             "glslangValidator (MSYS2 или папка tools порта)."),
+                           0, {T("EXPORT", "ЭКСПОРТ")}, 0, !shader_uses.empty()});
+        static std::string status, folder;
+        status = PortShaderMods::Status();
+        folder = PortShaderMods::Folder();
+        options.push_back({T("SHADER MODS", "МОДЫ ШЕЙДЕРОВ"), "", 2, {status}, 0, true});
+        options.push_back({T("FOLDER", "ПАПКА"), "", 2, {folder}, 0, true});
+        break;
+    }
     default:
         options.push_back({T("DISPLAY MODE", "РЕЖИМ ЭКРАНА"),
                            T("Windowed, borderless window or exclusive fullscreen.",
@@ -1024,6 +1086,12 @@ void PrototypeMenu() {
         }
         case 51: PortStats::dump_request = 1; break;
         case 52: s.debug_view = value ? PortSettings::DebugMotion : PortSettings::DebugNone; break;
+        case 64:
+            if (value < int(shader_uses.size())) shader_pick = shader_uses[value].hash;
+            break;
+        case 65: PortShaderMods::SetHidden(shader_pick, value == 1); break;
+        case 66: PortShaderMods::ShowAll(); break;
+        case 67: PortShaderMods::Export(shader_pick); break;
         default: break;
         }
     };
@@ -1059,6 +1127,7 @@ void PrototypeMenu() {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
@@ -1216,6 +1285,7 @@ void PrototypeMenu() {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
+        if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;

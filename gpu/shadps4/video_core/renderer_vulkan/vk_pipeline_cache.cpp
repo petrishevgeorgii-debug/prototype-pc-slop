@@ -23,6 +23,7 @@
 #include "shader_recompiler/recompiler.h"
 #include "shader_recompiler/runtime_info.h"
 #include "port_settings.h"
+#include "port_shader_mods.h"
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -662,8 +663,11 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
         DumpShader(spv, build->info.pgm_hash, build->info.hw_stage, build->permutation, "spv");
         auto patch = GetShaderPatch(build->info.pgm_hash, build->info.hw_stage,
                                     build->permutation, "spv");
-        build->module = CompileSPV(patch && EmulatorSettings.IsPatchShaders() ? *patch : spv,
-                                    instance.GetDevice());
+        // port: a shader mod (mods/shaders) replaces the module, the cache keeps the original.
+        const auto mod = PortShaderMods::Find(build->info.pgm_hash, build->permutation);
+        build->module = CompileSPV(mod ? *mod
+                                   : patch && EmulatorSettings.IsPatchShaders() ? *patch : spv,
+                                   instance.GetDevice());
         build->binary = std::move(spv);
         build->ir.reset();
         compiler_pools.Recycle(std::move(build->pools));
@@ -1568,7 +1572,9 @@ vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::Runtim
 
     auto patch = GetShaderPatch(info.pgm_hash, info.hw_stage, perm_idx, "spv");
     const bool is_patched = patch && EmulatorSettings.IsPatchShaders();
-    if (is_patched) {
+    if (const auto mod = PortShaderMods::Find(info.pgm_hash, perm_idx)) {
+        module = CompileSPV(*mod, instance.GetDevice()); // port: a shader mod (mods/shaders)
+    } else if (is_patched) {
         LOG_INFO(Loader, "Loaded patch for {} shader {:#x}", info.hw_stage, info.pgm_hash);
         module = CompileSPV(*patch, instance.GetDevice());
     } else {

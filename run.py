@@ -547,6 +547,9 @@ def main():
         user_dir = Path(get_env(env, 'USER_DIR', str(data / 'user'))).resolve()
         user_dir.mkdir(parents=True, exist_ok=True)
         env.setdefault('THEORDER_GPU_USER_DIR', str(user_dir))
+        # Shader mods (docs/SHADER_MODS.md): mods/shaders and mods/<name>/shaders.
+        env.setdefault('THEORDER_SHADER_MODS_DIR',
+                       str(Path(get_env(env, 'MODS_DIR', str(data / 'mods'))).resolve()))
         from save_backup import backup
         try:
             if made := backup(user_dir):
