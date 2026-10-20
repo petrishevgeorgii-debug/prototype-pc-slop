@@ -488,6 +488,10 @@ def main():
             if is_prototype and not is_prototype2 and get_env(env, 'PROTO_SHADOWS', '2048') == '4096' and \
                     'Shadow Resolution - 4096' not in names:
                 names.append('Shadow Resolution - 4096')
+            # THEORDER_PROTO_SHADOW_DISTANCE=2|3|4: shadows reach that many times as far (launcher).
+            shadow_distance = get_env(env, 'PROTO_SHADOW_DISTANCE', '1')
+            if is_prototype and not is_prototype2 and shadow_distance in ('2', '3', '4'):
+                names.append(f'Shadow Distance - {shadow_distance}x')
             names = graphics_options.restrict_to_available(names, patches.available_patches(patch_xml, profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'

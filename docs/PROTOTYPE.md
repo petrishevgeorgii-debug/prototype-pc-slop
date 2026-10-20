@@ -62,6 +62,12 @@ pattern, so nothing is written to a different build.
   Garlic direct memory block get 64 MiB more. Those are `add32` lines: patches.py adds them on
   top of a resolution patch's values, and the note's "Adds 64 MB to DMEM" adds to its pool.
   (`rm_SetShadowResolution` is registered but its handler is an empty function in this build.)
+- **Shadow Distance - 2x / 3x / 4x** (experimental; launcher GAME page) — the sun's shadow volume
+  is a box of ± the global shadow range around the camera (`0x1218930`, 200.0; the variable
+  `rm_SetGlobalShadowRangeHack` sets), and the cascade distances are `2 × range × scale / 40`
+  (10 m) times each light's `shadowCascadeExtent` values. The patch sets the range to 400 / 600 /
+  800 and the 200.0 the setup compares it with (`0xc9f818`, read only at `0x2c95db`; any other
+  range selects a fixed debug box around (0, 0, -300)), so the box and every cascade grow alike.
 
 ## PROTOTYPE 2 (`prototype2_ps4f.elf`, experimental)
 

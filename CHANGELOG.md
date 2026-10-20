@@ -8,6 +8,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 ### Added
 - Graphics modding: shader mods (`mods/shaders`, GLSL, compiled at start) and an in-game shader browser (port menu, SHADERS) that lists the last frame's pixel shaders, with names for the known passes, hides one to show what it draws and exports it for editing. See [docs/SHADER_MODS.md](docs/SHADER_MODS.md).
 - PROTOTYPE: shadow resolution 4096 (launcher, GAME page; experimental). The sun's shadow map is 4096 × 4096 instead of 2048 × 2048, for sharper shadows, using 64 MB more video memory.
+- PROTOTYPE: shadow distance 2×, 3× or 4× (launcher, GAME page; experimental): shadows reach that many times as far.
 - Water reflections on the river (screen-space; off by default, in the launcher's Graphics page and the in-game menu).
 
 ### Fixed

@@ -149,4 +149,49 @@
             <Line Type="add32" Address="0x0000427f" Value="0x4000000" Pattern="c7 44 24 08 00 00 c0 6b" At="4"/>
         </PatchList>
     </Metadata>
+    <Metadata Title="Prototype"
+              Name="Shadow Distance - 2x"
+              Note="Shadows reach 2 times as far: the sun's shadow volume around the camera is 400 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 2 times as far. Each cascade's detail is spread over 2 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <!-- The global shadow range (rm_SetGlobalShadowRangeHack's variable, 200.0) and the
+                 200.0 the shadow setup compares it with (anything else selects a fixed debug box). -->
+            <Line Type="bytes" Address="0x01218930" Value="0000c843" Pattern="00 00 00 00 00 00 48 43 00 00 80 bf 00 00 80 bf 00 00 80 bf" At="4"/>
+            <Line Type="bytes" Address="0x00c9f818" Value="0000c8c3" Pattern="ac c5 27 37 00 00 48 c3 ac c5 27 37 00 00 96 c3 00 00 80 3f" At="4"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype"
+              Name="Shadow Distance - 3x"
+              Note="Shadows reach 3 times as far: the sun's shadow volume around the camera is 600 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 3 times as far. Each cascade's detail is spread over 3 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <!-- The global shadow range (rm_SetGlobalShadowRangeHack's variable, 200.0) and the
+                 200.0 the shadow setup compares it with (anything else selects a fixed debug box). -->
+            <Line Type="bytes" Address="0x01218930" Value="00001644" Pattern="00 00 00 00 00 00 48 43 00 00 80 bf 00 00 80 bf 00 00 80 bf" At="4"/>
+            <Line Type="bytes" Address="0x00c9f818" Value="000016c4" Pattern="ac c5 27 37 00 00 48 c3 ac c5 27 37 00 00 96 c3 00 00 80 3f" At="4"/>
+        </PatchList>
+    </Metadata>
+    <Metadata Title="Prototype"
+              Name="Shadow Distance - 4x"
+              Note="Shadows reach 4 times as far: the sun's shadow volume around the camera is 800 m instead of 200 m in each direction, and its cascades (which the game sizes from it) reach 4 times as far. Each cascade's detail is spread over 4 times the distance; with Shadow Resolution - 4096, 2x keeps the PS4's sharpness."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <!-- The global shadow range (rm_SetGlobalShadowRangeHack's variable, 200.0) and the
+                 200.0 the shadow setup compares it with (anything else selects a fixed debug box). -->
+            <Line Type="bytes" Address="0x01218930" Value="00004844" Pattern="00 00 00 00 00 00 48 43 00 00 80 bf 00 00 80 bf 00 00 80 bf" At="4"/>
+            <Line Type="bytes" Address="0x00c9f818" Value="000048c4" Pattern="ac c5 27 37 00 00 48 c3 ac c5 27 37 00 00 96 c3 00 00 80 3f" At="4"/>
+        </PatchList>
+    </Metadata>
 </Patch>
