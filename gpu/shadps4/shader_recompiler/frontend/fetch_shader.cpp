@@ -4,6 +4,8 @@
 #include <array>
 #include <cstring>
 #include <mutex>
+#include <optional>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -19,6 +21,114 @@ namespace {
 thread_local const FetchShaderSnapshot* compiler_snapshot = nullptr;
 }
 
+namespace {
+/// port: where the vertex shader's SGPR pairs point when it calls the fetch shader. PROTOTYPE 2's
+/// vertex shaders load the V# table pointer themselves (s_load_dwordx2 from a user data
+/// pointer, or further), and the fetch shader's s_load_dwordx4 then reads through that pair:
+/// read as user data, the pair was out of range (or another value) and the V# was garbage.
+struct CallerPointers {
+    struct Node {
+        enum Kind : u8 { UserData, Load } kind;
+        u8 reg;          ///< UserData: the user data SGPR of the pointer
+        u16 dword_offset; ///< Load: dwords past the pointer of `child`
+        s32 child;       ///< Load: node of the pointer read from
+    };
+    std::vector<Node> nodes;
+    std::array<s32, IR::NumScalarRegs> regs{}; ///< node of the pair starting here; -1 none, -2 unknown
+    bool scanned{};
+
+    s32 NodeFor(u32 reg) {
+        if (reg >= regs.size()) {
+            return -2;
+        }
+        if (regs[reg] == -1 && reg + 1 < 16) {
+            nodes.push_back({Node::UserData, u8(reg), 0, -1});
+            regs[reg] = s32(nodes.size() - 1);
+        }
+        return regs[reg];
+    }
+    void Clobber(u32 first, u32 count) {
+        for (u32 r = first >= 1 ? first - 1 : 0; r < first + count && r < regs.size(); ++r) {
+            regs[r] = -2;
+        }
+    }
+    void Scan(const u32* code) {
+        regs.fill(-1);
+        GcnCodeSlice slice(code, code + 0x4000);
+        GcnDecodeContext decoder;
+        for (u32 n = 0; n < 2048 && !slice.atEnd(); ++n) {
+            const auto inst = decoder.decodeInstruction(slice);
+            if (inst.opcode == Opcode::S_SWAPPC_B64) {
+                scanned = true;
+                return;
+            }
+            if (inst.opcode == Opcode::S_ENDPGM) {
+                return;
+            }
+            if (inst.dst[0].field != OperandField::ScalarGPR) {
+                continue;
+            }
+            const u32 dst = inst.dst[0].code;
+            if (inst.opcode == Opcode::S_LOAD_DWORDX2 && inst.control.smrd.imm) {
+                const s32 child = NodeFor(inst.src[0].code * 2u);
+                Clobber(dst, 2);
+                if (child >= 0 && dst < regs.size()) {
+                    nodes.push_back({Node::Load, 0, u16(inst.control.smrd.offset), child});
+                    regs[dst] = s32(nodes.size() - 1);
+                }
+            } else if (inst.opcode == Opcode::S_MOV_B64 &&
+                       inst.src[0].field == OperandField::ScalarGPR) {
+                const s32 source = NodeFor(inst.src[0].code);
+                Clobber(dst, 2);
+                if (dst < regs.size()) {
+                    regs[dst] = source;
+                }
+            } else {
+                Clobber(dst, inst.category == InstCategory::ScalarMemory ? 16 : 2);
+            }
+        }
+    }
+    /// The 64-bit pointer node `index` holds for this draw's user data; nullopt: unknown.
+    std::optional<u64> Eval(const Shader::Info& info, s32 index, u32 depth = 0) const {
+        if (index < 0 || depth > 8) {
+            return std::nullopt;
+        }
+        const Node& node = nodes[index];
+        if (node.kind == Node::UserData) {
+            const auto ud = info.UserData();
+            if (node.reg + 1u >= ud.size()) {
+                return std::nullopt;
+            }
+            return (u64(ud[node.reg]) | (u64(ud[node.reg + 1]) << 32)) & 0xFFFFFFFFFFFFULL;
+        }
+        const auto base = Eval(info, node.child, depth + 1);
+        if (!base || *base < 0x10000) {
+            return std::nullopt;
+        }
+        u64 value;
+        std::memcpy(&value, reinterpret_cast<const u32*>(*base) + node.dword_offset, sizeof(value));
+        return value & 0xFFFFFFFFFFFFULL;
+    }
+};
+
+const CallerPointers& CallerPointersFor(const Shader::Info& info) {
+    thread_local std::unordered_map<u64, CallerPointers> cache;
+    const VAddr pgm = info.ProgramBase();
+    const u64 key = pgm ^ (u64(info.pgm_hash) << 1);
+    auto [it, inserted] = cache.try_emplace(key);
+    if (inserted) {
+        if (cache.size() > 8192) {
+            cache.clear();
+            std::tie(it, inserted) = cache.try_emplace(key);
+        }
+        if (pgm) {
+            it->second.Scan(reinterpret_cast<const u32*>(pgm));
+        }
+    }
+    return it->second;
+}
+} // namespace
+
 AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcept {
     if (compiler_snapshot && compiler_snapshot->info == &info && compiler_snapshot->fetch) {
         const auto& attributes = compiler_snapshot->fetch->attributes;
@@ -29,7 +139,37 @@ AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcep
         }
         UNREACHABLE_MSG("Fetch attribute missing from compiler snapshot");
     }
-    auto buffer = info.ReadUdReg<AmdGpu::Buffer>(sgpr_base, dword_offset);
+    AmdGpu::Buffer buffer{};
+    bool read = false;
+    if (sgpr_base < IR::NumScalarRegs) {
+        const auto& caller = CallerPointersFor(info);
+        const s32 node = caller.scanned ? caller.regs[sgpr_base] : -1;
+        const bool plain = node == -1 ||
+                           (node >= 0 && caller.nodes[node].kind == CallerPointers::Node::UserData &&
+                            caller.nodes[node].reg == sgpr_base);
+        if (!plain) {
+            // The vertex shader set this pair before calling the fetch shader.
+            if (const auto table = caller.Eval(info, node); table && *table >= 0x10000) {
+                std::memcpy(&buffer, reinterpret_cast<const u32*>(*table) + dword_offset,
+                            sizeof(buffer));
+            }
+            read = true;
+            static std::mutex noted_mutex;
+            static std::unordered_map<u64, s32> noted;
+            std::scoped_lock lock{noted_mutex};
+            if (noted.size() < 256 && noted.emplace(info.pgm_hash ^ (u64(sgpr_base) << 56), node).second) {
+                LOG_WARNING(Render_Recompiler,
+                            "Vertex shader {:#x}: the fetch shader's V# table s[{}:{}] is {} "
+                            "(V# at {:#x})",
+                            info.pgm_hash, sgpr_base, sgpr_base + 1,
+                            node >= 0 ? "a pointer the vertex shader loaded" : "not known",
+                            u64(buffer.base_address));
+            }
+        }
+    }
+    if (!read) {
+        buffer = info.ReadUdReg<AmdGpu::Buffer>(sgpr_base, dword_offset);
+    }
     buffer.base_address += inst_offset;
     if (data_format) {
         buffer.data_format = data_format;
