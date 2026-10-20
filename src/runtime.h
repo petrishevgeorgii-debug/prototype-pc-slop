@@ -117,4 +117,8 @@ void runtime_fiber_report_state(void);
 void runtime_sema_report_waiting(void);
 /* The guest image's base (probe.c), for guest offsets in diagnostics; 0 before it is mapped. */
 extern uintptr_t runtime_guest_image;
+/* PROTOTYPE's engine event Set/Reset, each whole under a lock (runtime_sema.c; probe.c points
+ * the game's own functions here). */
+ABI int32_t runtime_event_set(void *event,uint32_t n);
+ABI int32_t runtime_event_reset(void *event,uint32_t n);
 #endif

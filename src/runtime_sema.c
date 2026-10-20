@@ -174,6 +174,47 @@ static ABI int32_t sem_delete(uint32_t id) {
     pthread_mutex_unlock(&lock);
     return 0;
 }
+/* PROTOTYPE's engine event: { uint32 counter; uint64 semaphore id at +8 }. Set(n) lowers the
+ * counter by n and, when it reaches 0, signals the semaphore with its maximum (every waiter and
+ * later waiter passes); Reset(n) re-arms a zero counter with n and cancels the semaphore's
+ * tokens; Wait waits on the semaphore while the counter is not 0. In the game's code Set's
+ * decrement and its signal are two steps: a Reset and a new job between them (the waiter saw
+ * 0 and moved on) leave the late signal's tokens on the re-armed event, and the next Wait
+ * returns before its job ran. The decompressor then reads empty results and loops for ever:
+ * endless loading screens. On the PS4 the gap is a few instructions; here sem_signal first
+ * takes the semaphore lock every thread shares, so it is far wider. probe.c points the game's
+ * Set and Reset here, where each runs whole under a lock of its event. */
+typedef struct { volatile uint32_t counter; uint32_t pad; uint64_t sema; } GuestEvent;
+static pthread_mutex_t event_locks[64]={[0 ... 63]=PTHREAD_MUTEX_INITIALIZER};
+static size_t events_set, events_reset;
+static pthread_mutex_t *event_lock(const void *e) { return &event_locks[((uintptr_t)e>>4)%64]; }
+ABI int32_t runtime_event_set(void *event,uint32_t n) {
+    GuestEvent *e=event;
+    if (!n) return 0;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    pthread_mutex_t *l=event_lock(e);
+    pthread_mutex_lock(l);
+    uint32_t old=__atomic_load_n(&e->counter,__ATOMIC_SEQ_CST), next;
+    do next=old>n ? old-n : 0;
+    while (!__atomic_compare_exchange_n(&e->counter,&old,next,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST));
+    int32_t r=0;
+    if (old-1<n) r=sem_signal((uint32_t)e->sema,0x7fffffff);
+    ++events_set;
+    pthread_mutex_unlock(l);
+    return r;
+}
+ABI int32_t runtime_event_reset(void *event,uint32_t n) {
+    GuestEvent *e=event;
+    pthread_mutex_t *l=event_lock(e);
+    pthread_mutex_lock(l);
+    uint32_t zero=0;
+    __atomic_compare_exchange_n(&e->counter,&zero,n,0,__ATOMIC_SEQ_CST,__ATOMIC_SEQ_CST);
+    int32_t r=0;
+    if (n) r=sem_cancel((uint32_t)e->sema,0,NULL);
+    ++events_reset;
+    pthread_mutex_unlock(l);
+    return r;
+}
 /* The F10 hang report: semaphores someone waits on, with their counts. */
 void runtime_sema_report_waiting(void) {
     pthread_mutex_lock(&lock);
@@ -212,6 +253,8 @@ void runtime_sema_report(void) {
     pthread_mutex_lock(&lock);
     printf("Runtime: semaphores created=%zu, deleted=%zu, acquired=%zu, signals=%zu, timeouts=%zu\n",
            created,deleted,acquired,signaled,timed_out);
+    if (events_set || events_reset)
+        printf("Runtime: engine events set=%zu, reset=%zu (made atomic)\n",events_set,events_reset);
     pthread_mutex_unlock(&lock);
 }
 

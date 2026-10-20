@@ -104,6 +104,51 @@ __asm__(".text\n.globl enter_on_stack\nenter_on_stack:\n"
         " mov %rbp,%rsp\n pop %rbp\n ret\n");
 #endif
 static ABI void guest_exit(void) { puts("Runtime: process finalizer callback reached"); }
+/* PROTOTYPE's engine event Set and Reset (runtime_sema.c, runtime_event_set) jump to host
+ * versions that run whole under a lock: found by their code, so other builds and games are left
+ * alone. THEORDER_EVENT_FIX=0 keeps the game's own. */
+static const unsigned char *find_code(const Segment *segments, uint64_t count, const unsigned char *pattern,
+                                      const unsigned char *mask, size_t size) {
+    const unsigned char *found=NULL;
+    for (uint64_t s=0;s<count;++s) {
+        if (!(segments[s].flags&1) || segments[s].size<size) continue;
+        const unsigned char *at=image+segments[s].address, *end=at+segments[s].size-size;
+        for (; at<=end; ++at) {
+            if (at[0]!=pattern[0]) continue;
+            size_t i=1;
+            while (i<size && (!mask[i] || at[i]==pattern[i])) ++i;
+            if (i<size) continue;
+            if (found) return NULL; /* not unique */
+            found=at;
+        }
+    }
+    return found;
+}
+static void jump_to_host(unsigned char *at, void *target) {
+    static const unsigned char jmp[6]={0xff,0x25,0,0,0,0}; /* jmp [rip+0]; the address follows */
+    memcpy(at,jmp,6);
+    uintptr_t address=(uintptr_t)target;
+    memcpy(at+6,&address,8);
+}
+static void install_event_fix(const Segment *segments, uint64_t count) {
+    const char *env=getenv("THEORDER_EVENT_FIX");
+    if (env && *env=='0') return;
+    static const unsigned char reset[]={0x31,0xc0,0xf0,0x0f,0xb1,0x37,0x85,0xf6,0x74,0x0d,0x48,0x8b,0x7f,0x08,
+                                        0x31,0xf6,0x31,0xd2,0xe9};
+    static const unsigned char set[]={0x55,0x48,0x89,0xe5,0x48,0x83,0xec,0x10,0x4c,0x8b,0x05,0,0,0,0,
+                                      0x49,0x8b,0x00,0x48,0x89,0x45,0xf8,0x85,0xf6,0x74,0x4d,0x0f,0xae,0xf0,0x8b,0x07};
+    unsigned char reset_mask[sizeof(reset)], set_mask[sizeof(set)];
+    memset(reset_mask,1,sizeof(reset_mask));
+    memset(set_mask,1,sizeof(set_mask));
+    memset(set_mask+11,0,4); /* rip-relative stack guard address */
+    unsigned char *r=(unsigned char *)find_code(segments,count,reset,reset_mask,sizeof(reset));
+    unsigned char *e=(unsigned char *)find_code(segments,count,set,set_mask,sizeof(set));
+    if (!r || !e) return;
+    jump_to_host(r,(void *)runtime_event_reset);
+    jump_to_host(e,(void *)runtime_event_set);
+    printf("Runtime: engine event Set/Reset at 0x%" PRIxPTR "/0x%" PRIxPTR " run whole under a lock\n",
+           (uintptr_t)(e-image),(uintptr_t)(r-image));
+}
 #ifdef _WIN32
 static void describe_address(char *out, size_t size, uintptr_t address) {
     HMODULE module=NULL;
@@ -1384,6 +1429,7 @@ int main(int argc, char **argv) {
         _exit(missing ? 1 : 0); /* no destructors: GPU threads are running */
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
+    install_event_fix(segments, ns);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
