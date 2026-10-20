@@ -3,6 +3,32 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## 0.6.0 — October 20, 2026 ([notes](docs/releases/v0.6.0.md))
+
+### Added
+- PROTOTYPE 2 (experimental): starts from the launcher or the bundle menu (LoadExec) and plays. Fixes needed for it:
+  - the PSN toolkit thread's lost start-up signal (black screen);
+  - buffers larger than the GPU buffer cache's arenas, now bound up to the arena end (crash after the Activision logo);
+  - the GPU layer's draw preparation on worker threads, now off for PROTOTYPE 2, plus stale vertex buffer descriptors read as empty streams (exploding geometry);
+  - 101 more system imports (PSN offline, dialogs, RFC 3339 dates and others).
+- PROTOTYPE 2 patches in their own file (`patches/Prototype2-Orbis.xml`): render resolution 1280 × 720 to 3840 × 2160 (above 1080p with more video memory) and 60 FPS.
+- Launcher redesign:
+  - big game tabs across the top, each in its own colours and key art;
+  - a GAME page with each game's own resolution, frame rate and fixes;
+  - graphics, display and controls shared by both games.
+- Mouse look drives PROTOTYPE's on-foot camera directly: no dead zone, curve or turn-speed limit.
+- The hang report also runs on its own when a compressed game file stays half-read for a minute.
+
+### Changed
+- Semaphores each have their own lock instead of one shared by every thread.
+
+### Known issues
+- PROTOTYPE 2:
+  - no keyboard and mouse button icons;
+  - FSR upscaling does not work;
+  - the mouse camera goes through stick emulation;
+  - 4K is untested.
+
 ## 0.5.3 — October 20, 2026 ([notes](docs/releases/v0.5.3.md))
 
 ### Fixed

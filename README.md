@@ -6,7 +6,7 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 0.5.3 — October 20, 2026** ([notes](docs/releases/v0.5.3.md), [changelog](CHANGELOG.md)): the endless loading screens and soft locks fixed, picked-up objects visible again above 1080p, keyboard icons for archive dumps. Keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
+**Version 0.6.0 — October 20, 2026** ([notes](docs/releases/v0.6.0.md), [changelog](CHANGELOG.md)): PROTOTYPE 2 starts and plays (experimental), with its own resolution and 60 FPS patches; a redesigned launcher with a tab per game; PC-style mouse look in PROTOTYPE. Keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
@@ -18,7 +18,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 | | |
 |---|---|
 | PROTOTYPE | Playable; tested through the early missions: saving, loading, cutscenes, videos, combat, consume, HUD and map |
-| PROTOTYPE 2 | Not yet: choosing it in the bundle menu ends the game with a message |
+| PROTOTYPE 2 | Experimental: starts and plays (30 or 60 FPS, 720p to 4K); no keyboard button icons or FSR yet |
 | Platform | Windows 10 / 11, x86-64, a Vulkan 1.3 graphics card with a current driver |
 | AMD Radeon | Tested (RX 9070 XT) |
 | NVIDIA, Intel | **Untested** — reports welcome ([Issues](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/issues), with `last_run.log`) |
@@ -43,18 +43,20 @@ fix is applied in memory, and the port checks the executables against the untouc
   language), with keyboard, controller and mouse.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
-- A **launcher** (`Prototype.exe`): game folder check, settings, controls, saves and backups, the log.
+- A **launcher** (`Prototype.exe`): a tab for each game with its own resolution and frame rate,
+  game folder check, shared graphics, display and controls settings, saves and backups, the log.
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v0.5.3.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v0.6.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
-   `sce_module`, `p1`, `p2`) and press **PLAY**. The first start prepares the game (about a
+   `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** at the top and press **PLAY**. The first start prepares the game (about a
    minute); later starts are quick.
 
-The launcher holds the render resolution, FSR 1 and sharpening, anisotropic filtering,
-30 / 60 FPS, display mode, V-Sync, the frame counter and the keyboard and mouse controls.
+The launcher's **GAME** page holds each game's own render resolution and 30 / 60 FPS (and
+PROTOTYPE's tendril fix). FSR 1 and sharpening, anisotropic filtering, display mode, V-Sync, the
+frame counter and the keyboard and mouse controls are shared by both games.
 
 ### Keyboard and mouse
 
@@ -99,7 +101,9 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 - A loading screen can rarely never end (seen when opening the pause menu). Press **F10** while
   it hangs and send `last_run.log` and `out\hang_sample.txt`.
-- PROTOTYPE 2 does not start yet.
+- PROTOTYPE 2 is experimental. It has no keyboard and mouse button icons yet (it shows the
+  PlayStation buttons) and FSR upscaling does not work in it yet. Its mouse camera goes through
+  the right stick, and 4K is untested.
 - Render resolutions above 1080p are experimental.
 - FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows
   driver does not offer yet; the menu hides it.
@@ -114,7 +118,7 @@ what you did, and `last_run.log` from the port folder. For FSR problems, the men
 
 ## Roadmap
 
-- PROTOTYPE 2
+- PROTOTYPE 2: keyboard button icons, FSR, the direct mouse camera
 - Object motion vectors for FSR (less ghosting on characters)
 - Higher shadow resolution and more draw distance
 - NVIDIA and Intel testing and fixes

@@ -50,7 +50,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.5.3'
+VERSION = '0.6.0'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {

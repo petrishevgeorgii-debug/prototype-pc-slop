@@ -1,6 +1,6 @@
 # PROTOTYPE port — technical notes
 
-First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)). Current: v0.5.3 ([notes](releases/v0.5.3.md), [changelog](../CHANGELOG.md)); v0.5.0 added keyboard and mouse ([notes](releases/v0.5.0.md)).
+First public release: v0.4.0, October 19, 2026 ([release notes](releases/v0.4.0.md)). Current: v0.6.0 ([notes](releases/v0.6.0.md), [changelog](../CHANGELOG.md)); v0.6.0 added PROTOTYPE 2 (experimental); v0.5.0 added keyboard and mouse ([notes](releases/v0.5.0.md)).
 
 Game: PROTOTYPE BIOHAZARD BUNDLE, CUSA06545, APP_VER 01.00. `eboot.bin` is PROTOTYPE (with the
 bundle menu); `prototype2_ps4f.elf` is PROTOTYPE 2, started from the menu with
@@ -20,14 +20,14 @@ Reference hashes (sha256) of the untouched executables:
 |---|---|---|
 | Fibers (`_sceFiberInitializeImpl`, Run, Switch, ReturnToThread, Finalize) | `src/runtime_proto.c` | The save system runs on a fiber. Each fiber gets a 1 MiB host stack (Windows fibers with the whole stack committed, ucontext on Linux) instead of the 16 KiB the game provides: runtime code called from the fiber overflowed it under shadPS4. |
 | POSIX semaphores (`sem_*`) | `src/runtime_proto.c` | Imported through libScePosix. |
-| PlayGo language mask / to-do list, trophy icons, local-time conversion, module list, LoadExec | `src/runtime_proto.c` | Imports The Order never used. LoadExec ends the game with exit code 42 (PROTOTYPE 2 is not prepared yet). |
+| PlayGo language mask / to-do list, trophy icons, local-time conversion, module list, LoadExec | `src/runtime_proto.c` | Imports The Order never used. LoadExec ends the game with exit code 42 and writes the executable to `out/loadexec.txt`; `run.py` then starts that one. |
 | `sceKernelReadTsc` / `GetTscFrequency` at 1,593,749,508 Hz | `src/runtime_kernel.c` | The game hardcodes the PS4 TSC rate for frame timing; a nanosecond counter made it run at 63% speed. |
 | Import names | `src/import_names.inc` | NID → symbol table for this game's imports (names from shadPS4's aerolib). |
 | Present cap 60 FPS | `run.py` (`THEORDER_FPS_LIMIT`) | The game paces itself on 60 Hz flips; without a cap menus ran at up to 120 FPS. |
 | Quieter logs | `runtime_sema.c`, `runtime_pad.c`, `video_out.cpp` | The game creates thousands of semaphores and sets the flip rate every frame. |
 | FSR 1 setting | `gpu/shim/port_settings.cpp` | Re-enabled as a launcher setting. |
 | Save/load dialog | `gpu/shim/port_overlay.cpp` | Redesigned list (picture, title, location, date). |
-| Selectable executable | `scripts/*.py` (`THEORDER_EBOOT`) | Groundwork for PROTOTYPE 2. |
+| Selectable executable | `scripts/*.py` (`THEORDER_EBOOT`) | PROTOTYPE 2 is prepared in `out/prototype2_ps4f/`. |
 
 ## Patches (`patches/Prototype-Orbis.xml`)
 
@@ -50,6 +50,25 @@ pattern, so nothing is written to a different build.
   and the Garlic direct memory block (`0x419c` allocation, `0x41b8` mapping, `0x427b` "PS4 core"
   heap; 1724 MiB) grows by as much. Without it the held-object fade's blur target failed to
   allocate (texture address 0) and picked-up objects vanished instead of turning half-transparent.
+
+## PROTOTYPE 2 (`prototype2_ps4f.elf`, experimental)
+
+Runtime fixes, installed only when the bytes match this executable (`src/probe.c`):
+- **PSN toolkit start-up** — the main thread locks the toolkit event, starts `Toolkit::NP` and
+  waits. Offline, the thread signalled at once without taking the lock, so on Windows the signal
+  could come before the wait (black screen). The thread entry (`0xc32740`) now goes through
+  `p2_np_entry`, which takes and releases the lock first.
+- **Draw preparation off** — the GPU layer's worker threads read each draw's V# tables ahead of
+  the GPU thread; PROTOTYPE 2 fills its vertex tables later (exploding geometry). `run.py` sets
+  the GPU toggles 4096 + 8192 for it.
+
+Patches (`patches/Prototype2-Orbis.xml`, `AppElf="prototype2_ps4f.elf"`):
+- **Prototype 2 60 FPS** — `0x27bf05`: the flip rate set once at start, 1 → 0.
+- **Render Resolution - WxH** (experimental) — `0x27be83` display device size, `0x112f32`
+  Pure3D display init, `0xd4e6b0` / `0xd4e6c0` the render-size getters (1920 / 1080). Above
+  1080p also the Garlic direct block (`0x24642c` allocation, `0x246448` mapping, `0x246510`
+  "PS4 core" heap) and the render heap's Garlic part (`0x594ec7`, 683 MiB) grow by 512 / 1024 /
+  1536 MiB. The game settings defaults at `0x114360` are not changed.
 
 ## Frame structure (for temporal upscaling)
 
