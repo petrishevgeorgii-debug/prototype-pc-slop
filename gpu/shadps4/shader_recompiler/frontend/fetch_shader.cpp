@@ -173,29 +173,34 @@ AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcep
     if (!read) {
         buffer = info.ReadUdReg<AmdGpu::Buffer>(sgpr_base, dword_offset);
     }
-    if (u64(buffer.num_records) * std::max<u64>(buffer.stride, 1) > (u64{1} << 30)) {
-        // port: a V# of over 1 GiB is not a vertex stream: the code and user data, once per
-        // vertex shader, to see where the V# really comes from.
-        static std::mutex dumped_mutex;
-        static std::unordered_set<u64> dumped;
-        std::scoped_lock lock{dumped_mutex};
-        if (dumped.size() < 8 && dumped.insert(info.pgm_hash).second) {
-            std::string text = fmt::format("V# s[{}]+{} records {} stride {}; user data:",
-                                           sgpr_base, dword_offset, u32(buffer.num_records),
-                                           u32(buffer.stride));
-            for (const u32 v : info.UserData()) {
-                text += fmt::format(" {:08x}", v);
+    // port: a V# no vertex stream can have (PROTOTYPE 2): the game reuses fetch shaders for
+    // meshes without every stream and leaves those table slots stale; its vertex shaders do not
+    // read them, the GPU loads garbage and drops it. Here the garbage became a vertex binding of
+    // gigabytes and, worse, a shader permutation per garbage value (the input's number type
+    // and swizzle are specialized), built while the draws flickered. Such a slot reads as an
+    // empty float stream.
+    const u64 bytes = buffer.stride ? u64(buffer.num_records) * buffer.stride : u64(buffer.num_records);
+    if (!buffer.Valid() || bytes > (u64{256} << 20)) {
+        static std::mutex noted_mutex;
+        static std::unordered_set<u64> noted;
+        {
+            std::scoped_lock lock{noted_mutex};
+            if (noted.size() < 64 && noted.insert(info.pgm_hash ^ (u64(dword_offset) << 48)).second) {
+                LOG_WARNING(Render_Recompiler,
+                            "Vertex shader {:#x}: V# at s[{}]+{} ({} records, stride {}) is not a "
+                            "vertex stream: read as empty",
+                            info.pgm_hash, sgpr_base, dword_offset, u32(buffer.num_records),
+                            u32(buffer.stride));
             }
-            const auto dump = [&](const char* name, const u32* code, u32 count) {
-                text += fmt::format("; {} {}:", name, fmt::ptr(code));
-                for (u32 i = 0; code && i < count; ++i) {
-                    text += fmt::format(" {:08x}", code[i]);
-                }
-            };
-            dump("vs", reinterpret_cast<const u32*>(info.ProgramBase()), 96);
-            dump("fetch", GetFetchShaderCode(info, info.fetch_shader_sgpr_base), 48);
-            LOG_WARNING(Render_Recompiler, "Vertex shader {:#x}: {}", info.pgm_hash, text);
         }
+        AmdGpu::Buffer empty{};
+        empty.dst_sel_x = u32(AmdGpu::CompSwizzle::Red);
+        empty.dst_sel_y = u32(AmdGpu::CompSwizzle::Green);
+        empty.dst_sel_z = u32(AmdGpu::CompSwizzle::Blue);
+        empty.dst_sel_w = u32(AmdGpu::CompSwizzle::Alpha);
+        empty.num_format = u32(AmdGpu::NumberFormat::Float);
+        empty.data_format = u32(AmdGpu::DataFormat::Format32_32_32_32);
+        return empty;
     }
     buffer.base_address += inst_offset;
     if (data_format) {
