@@ -861,10 +861,10 @@ class Launcher:
             self.stepper('Shadow resolution', 'Experimental. The sun\'s shadow map: 4096 gives every shadow '
                          'twice the detail (sharper edges, less shimmer) for 64 MB more video memory. 2048 is '
                          'the PS4\'s.', 'game.shadows', [('2048', '2048 (PS4)'), ('4096', '4096')])
-            self.stepper('Shadow distance', 'Experimental. How far shadows reach. The detail of the shadow map '
-                         'is spread over the longer distance: with 4096 shadows, 2× keeps the PS4\'s sharpness; '
-                         '3× and 4× reach further and are softer up close.', 'game.shadow_distance',
-                         [('1', 'PS4'), ('2', '2×'), ('3', '3×'), ('4', '4×')])
+            self.stepper('Shadow distance', 'Experimental. How far shadows reach. 2× to 4× stretch the PS4\'s '
+                         'shadows (softer up close); Whole city keeps near shadows sharp and casts the far ones '
+                         'out to about 1.5 km (best with 4096 shadows).', 'game.shadow_distance',
+                         [('1', 'PS4'), ('2', '2×'), ('3', '3×'), ('4', '4×'), ('city', 'Whole city')])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
                         'difference). Keep it on.', 'game.tendril_fix')
         self.row_y += 20

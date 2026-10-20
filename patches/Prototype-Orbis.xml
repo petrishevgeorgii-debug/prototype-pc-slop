@@ -194,4 +194,28 @@
             <Line Type="bytes" Address="0x00c9f818" Value="000048c4" Pattern="ac c5 27 37 00 00 48 c3 ac c5 27 37 00 00 96 c3 00 00 80 3f" At="4"/>
         </PatchList>
     </Metadata>
+    <Metadata Title="Prototype"
+              Name="Shadow Distance - City"
+              Note="Shadows over the whole city: the sun's shadow box is 2000 m around the camera instead of 200 m, and its four cascades end at about 8, 40, 200 and 1500 m instead of 5, 10, 20 and 120 m. Near shadows keep their detail (best with Shadow Resolution - 4096); far ones are coarse but cover whole buildings."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <!-- The shadow box: +-2000 m around the camera (the range and the value it is compared with). -->
+            <Line Type="bytes" Address="0x01218930" Value="0000fa44" Pattern="00 00 00 00 00 00 48 43 00 00 80 bf 00 00 80 bf 00 00 80 bf" At="4"/>
+            <Line Type="bytes" Address="0x00c9f818" Value="0000fac4" Pattern="ac c5 27 37 00 00 48 c3 ac c5 27 37 00 00 96 c3 00 00 80 3f" At="4"/>
+            <!-- The cascade unit 2 x range / 40 -> 2 x range / 400: 10 as on the PS4. -->
+            <Line Type="bytes" Address="0x002c5ecd" Value="48b80000c8430000803f" Pattern="00 00 00 00 48 b8 00 00 20 42 00 00 80 3f 48 89 83 2c 03 00 00 48" At="4"/>
+            <!-- The sun light's shadow settings: four cascades (the shadow map holds four tiles), their
+                 extents 1.6 / 8 / 40 / 300 (read-only constants elsewhere in the eboot) instead of the light's
+                 1 / 2 / 4 / 24: cascades end at about 8, 40, 200 and 1500 m instead of 5, 10, 20 and 120 m. -->
+            <Line Type="bytes" Address="0x000b05ca" Value="be0400000090" Pattern="86 11 01 00 8b b3 a0 01 00 00 4c 89 f7 e8 c8 10 01 00" At="4"/>
+            <Line Type="bytes" Address="0x000b05d8" Value="c5fa1005fcb4c900" Pattern="c8 10 01 00 c5 fa 10 83 8c 01 00 00 31 f6 4c 89 f7 e8 f6 10" At="4"/>
+            <Line Type="bytes" Address="0x000b05ea" Value="c5fa1005de42b800" Pattern="f6 10 01 00 c5 fa 10 83 90 01 00 00 be 01 00 00 00 4c 89 f7" At="4"/>
+            <Line Type="bytes" Address="0x000b05ff" Value="c5fa1005b11cc000" Pattern="e1 10 01 00 c5 fa 10 83 94 01 00 00 be 02 00 00 00 4c 89 f7" At="4"/>
+            <Line Type="bytes" Address="0x000b0614" Value="c5fa1005140cc100" Pattern="cc 10 01 00 c5 fa 10 83 9c 01 00 00 be 03 00 00 00 4c 89 f7" At="4"/>
+        </PatchList>
+    </Metadata>
 </Patch>

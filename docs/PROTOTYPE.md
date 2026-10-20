@@ -68,6 +68,13 @@ pattern, so nothing is written to a different build.
   (10 m) times each light's `shadowCascadeExtent` values. The patch sets the range to 400 / 600 /
   800 and the 200.0 the setup compares it with (`0xc9f818`, read only at `0x2c95db`; any other
   range selects a fixed debug box around (0, 0, -300)), so the box and every cascade grow alike.
+- **Shadow Distance - City** (experimental) — cascade `i` ends at `0.5 × unit × extent[i]` along the
+  horizontal view direction (clipped to the box), `unit = 2 × range / 40` (the `/ 40` is the shadow's
+  default at `0x2c5ecd`). The sun light hands its shadow 4 cascades (`numShadowCascadesPS3`, at
+  `0xb05ca`) with extents 1 / 2 / 4 / 24 (`0xb05d8` .. `0xb0614`; index 3 reads extent 5), i.e. 5,
+  10, 20 and 120 m. The patch sets the range to 2000 (box ± 2 km), the divisor to 400 (unit 10 as
+  before), forces 4 cascades and loads the extents 1.6 / 8 / 40 / 300 from read-only constants:
+  about 8, 40, 200 and 1500 m.
 
 ## PROTOTYPE 2 (`prototype2_ps4f.elf`, experimental)
 
