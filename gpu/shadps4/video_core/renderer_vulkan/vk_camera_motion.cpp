@@ -18,6 +18,35 @@
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 #include "video_core/texture_cache/texture_cache.h"
 
+#include <atomic>
+#include <chrono>
+#include <mutex>
+// theordergpu_camera_forward is declared in gpu/theordergpu.h (C linkage).
+
+namespace {
+// port: the latest camera view axis for mouse look (theordergpu_camera_forward, runtime_pad.c).
+std::mutex forward_mutex;
+float forward_axis[3]{};
+uint64_t forward_serial = 0, forward_ns = 0;
+} // namespace
+
+extern "C" int theordergpu_camera_forward(float* out, uint64_t* serial, uint64_t* ns) {
+    std::scoped_lock lk{forward_mutex};
+    if (!forward_serial) {
+        return 0;
+    }
+    out[0] = forward_axis[0];
+    out[1] = forward_axis[1];
+    out[2] = forward_axis[2];
+    if (serial) {
+        *serial = forward_serial;
+    }
+    if (ns) {
+        *ns = forward_ns;
+    }
+    return 1;
+}
+
 namespace Vulkan {
 
 namespace {
@@ -430,6 +459,16 @@ void CameraMotion::FinalizeFrame() {
     }
     current.proj = {scales[0], scales[1], a, b};
     current.valid = scales[0] > 0.0f && scales[1] > 0.0f && b < 0.0f;
+    if (current.valid) {
+        std::scoped_lock lk{forward_mutex};
+        forward_axis[0] = vz[0];
+        forward_axis[1] = vz[1];
+        forward_axis[2] = vz[2];
+        ++forward_serial;
+        forward_ns = uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                  std::chrono::steady_clock::now().time_since_epoch())
+                                  .count());
+    }
     ++diag_commits;
     diag_invalid += !current.valid;
     // Diagnostics: the largest camera movement between frames in this window (world units,

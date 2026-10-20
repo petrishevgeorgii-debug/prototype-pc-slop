@@ -290,6 +290,236 @@ static void mouse_to_stick(float dx, float dy, float speed, int *out_x, int *out
     *out_x=(int)lround(mouse_stick_x);
     *out_y=(int)lround(mouse_stick_y);
 }
+/* PROTOTYPE mouse look as on PC: the camera turns by the distance the mouse moved.
+ *
+ * The game only knows a right stick, and it turns the camera at a speed that depends on how far
+ * the stick is pushed (with a dead zone and a curve of its own). A calibration (F8, below) measures
+ * that speed for a range of stick positions from the camera the GPU side sees
+ * (theordergpu_camera_forward); with it, the mouse's movement becomes an angle the camera owes,
+ * and every read the stick is set to the position that turns the camera by what is owed in one
+ * read (up to the game's fastest turn; the rest follows in the next reads). So a slow drag turns
+ * slowly, a flick turns fast, and the same distance always gives the same angle.
+ *
+ * THEORDER_MOUSE_CALIBRATION=<file>: the measured speeds ("yaw <stick> <rad/s>", "pitch ..."), read
+ * at start and written by the calibration. Without it the mouse moves the stick as before
+ * (mouse_to_stick). The menu's sensitivity scales the angle per pixel (MOUSE_RAD_PER_PIXEL). */
+#define MOUSE_RAD_PER_PIXEL (0.075*3.14159265358979/180.0) /* at 100%: 0.075 degrees per pixel */
+enum { MODEL_POINTS=16 };
+typedef struct { int n; double stick[MODEL_POINTS], rate[MODEL_POINTS]; } TurnModel;
+static TurnModel yaw_model, pitch_model;
+static int models_loaded;
+static const char *calibration_path(void) {
+    static const char *path; static int checked;
+    if (!checked) { path=getenv("THEORDER_MOUSE_CALIBRATION"); checked=1; }
+    return path && *path ? path : NULL;
+}
+static void model_add(TurnModel *m, double stick, double rate) {
+    if (m->n>=MODEL_POINTS || rate<0.0) return;
+    /* kept rising: a slower point after a faster one (noise) is raised to it */
+    if (m->n && rate<m->rate[m->n-1]) rate=m->rate[m->n-1];
+    m->stick[m->n]=stick; m->rate[m->n]=rate; ++m->n;
+}
+static int model_valid(const TurnModel *m) { return m->n>=4 && m->rate[m->n-1]>0.2; }
+static void load_models(void) {
+    if (models_loaded) return;
+    models_loaded=1;
+    const char *path=calibration_path();
+    FILE *f=path ? fopen(path,"r") : NULL;
+    if (!f) return;
+    char axis[16]; double stick, rate;
+    TurnModel yaw={0}, pitch={0};
+    while (fscanf(f,"%15s %lf %lf",axis,&stick,&rate)==3) {
+        if (!strcmp(axis,"yaw")) model_add(&yaw,stick,rate);
+        else if (!strcmp(axis,"pitch")) model_add(&pitch,stick,rate);
+    }
+    fclose(f);
+    if (model_valid(&yaw)) yaw_model=yaw;
+    if (model_valid(&pitch)) pitch_model=pitch;
+    printf("Runtime: mouse look: %s (turn %.0f / %.0f degrees per second at full stick)\n",
+           model_valid(&yaw_model) ? "calibrated" : "not calibrated (F8 calibrates)",
+           yaw_model.n ? yaw_model.rate[yaw_model.n-1]*57.2958 : 0.0,
+           pitch_model.n ? pitch_model.rate[pitch_model.n-1]*57.2958 : 0.0);
+}
+/* The stick position (0..1) that turns at `rate` (rad/s, >= 0), and the rate it gives. */
+static double model_stick(const TurnModel *m, double rate, double *gives) {
+    if (rate<=0.0) { *gives=0.0; return 0.0; }
+    if (rate>=m->rate[m->n-1]) { *gives=m->rate[m->n-1]; return m->stick[m->n-1]; }
+    /* below the first measured point: from the dead zone (no turn) up to it */
+    double s0=0.0, r0=0.0;
+    for (int i=0;i<m->n;++i) {
+        if (m->rate[i]<=0.0) { s0=m->stick[i]; r0=0.0; continue; }
+        if (rate<=m->rate[i]) {
+            const double t=(rate-r0)/(m->rate[i]-r0);
+            *gives=rate;
+            return s0+t*(m->stick[i]-s0);
+        }
+        s0=m->stick[i]; r0=m->rate[i];
+    }
+    *gives=m->rate[m->n-1];
+    return m->stick[m->n-1];
+}
+/* The turn speed (rad/s) the game gives at stick position s (0..1). */
+static double model_rate(const TurnModel *m, double s) {
+    double s0=0.0, r0=0.0;
+    for (int i=0;i<m->n;++i) {
+        if (s<=m->stick[i]) {
+            if (m->stick[i]<=s0) return m->rate[i];
+            return r0+(s-s0)/(m->stick[i]-s0)*(m->rate[i]-r0);
+        }
+        s0=m->stick[i]; r0=m->rate[i];
+    }
+    return m->n ? m->rate[m->n-1] : 0.0;
+}
+static double owed_yaw, owed_pitch;
+static uint64_t owed_us;
+/* Calibrated mouse look: the stick deflection (-128..127) for this read. */
+static void mouse_to_turn(float dx, float dy, float sensitivity, int *out_x, int *out_y) {
+    const uint64_t now=now_us();
+    /* the time one read's stick lasts: the game reads once a frame; averaged over reads */
+    static double read_dt=1.0/60.0;
+    double dt=owed_us ? (double)(now-owed_us)/1e6 : read_dt;
+    owed_us=now;
+    if (dt<0.004) dt=0.004;
+    if (dt>0.05) dt=0.05;
+    read_dt+=(dt-read_dt)*0.2;
+    dt=read_dt;
+    const double k=MOUSE_RAD_PER_PIXEL*sensitivity;
+    owed_yaw+=dx*k; owed_pitch+=dy*k;
+    const double limit=1.6; /* about 90 degrees: never more owed than that */
+    if (owed_yaw>limit) owed_yaw=limit; else if (owed_yaw<-limit) owed_yaw=-limit;
+    if (owed_pitch>limit) owed_pitch=limit; else if (owed_pitch<-limit) owed_pitch=-limit;
+    double gives;
+    const double dir_x=owed_yaw<0.0 ? -1.0 : 1.0, dir_y=owed_pitch<0.0 ? -1.0 : 1.0;
+    /* the stick in whole steps, and what it turns at that step (the rest stays owed) */
+    const long ix=lround(model_stick(&yaw_model,fabs(owed_yaw)/dt,&gives)*127.0);
+    owed_yaw-=dir_x*model_rate(&yaw_model,ix/127.0)*dt;
+    if (fabs(owed_yaw)<1e-4 || owed_yaw*dir_x<0.0) owed_yaw=0.0;
+    long iy=0;
+    if (model_valid(&pitch_model)) {
+        iy=lround(model_stick(&pitch_model,fabs(owed_pitch)/dt,&gives)*127.0);
+        owed_pitch-=dir_y*model_rate(&pitch_model,iy/127.0)*dt;
+        if (fabs(owed_pitch)<1e-4 || owed_pitch*dir_y<0.0) owed_pitch=0.0;
+    }
+    *out_x=(int)(dir_x*ix);
+    *out_y=(int)(dir_y*iy);
+}
+
+/* F8: calibrates mouse look. Stand still on the ground (no menu, nobody around) and keep your
+ * hands off the controls for about 50 s: the port turns the camera with the right stick at a range
+ * of positions, measures how fast it turns, writes THEORDER_MOUSE_CALIBRATION and from then on
+ * uses it. Every camera sample goes to out/mouse_calibration_samples.txt. F8 again stops. */
+static const double calib_levels[]={0.06,0.1,0.14,0.18,0.22,0.26,0.3,0.35,0.4,0.5,0.6,0.7,0.8,0.9,1.0};
+enum { CALIB_LEVELS=sizeof(calib_levels)/sizeof(*calib_levels) };
+typedef struct { int axis; double value; uint32_t ms, from_ms; } CalibStep; /* measure from from_ms */
+static CalibStep calib_steps[CALIB_LEVELS*6];
+static int calib_count, calib_step=-1;
+static uint64_t calib_step_start, calib_last_serial;
+static double calib_sum_t[CALIB_LEVELS*6], calib_sum_a[CALIB_LEVELS*6], calib_sum_tt[CALIB_LEVELS*6],
+              calib_sum_ta[CALIB_LEVELS*6];
+static int calib_n[CALIB_LEVELS*6];
+static double calib_rate[CALIB_LEVELS*6]; /* measured, rad/s */
+static double calib_unwrap_prev, calib_unwrap_add;
+static FILE *calib_samples;
+static void calib_plan(void) {
+    calib_count=0;
+    for (int i=0;i<CALIB_LEVELS;++i) {
+        calib_steps[calib_count++]=(CalibStep){0,calib_levels[i],1500,600};
+        calib_steps[calib_count++]=(CalibStep){0,0.0,400,400};
+    }
+    for (int i=0;i<CALIB_LEVELS;++i) { /* up and back down: the pitch stops at its limits */
+        calib_steps[calib_count++]=(CalibStep){1,-calib_levels[i],600,250};
+        calib_steps[calib_count++]=(CalibStep){1,0.0,250,250};
+        calib_steps[calib_count++]=(CalibStep){1,calib_levels[i],600,250};
+        calib_steps[calib_count++]=(CalibStep){1,0.0,250,250};
+    }
+}
+static void calib_finish(int completed) {
+    if (calib_samples) { fclose(calib_samples); calib_samples=NULL; }
+    calib_step=-1;
+    if (!completed) { puts("Runtime: mouse calibration stopped"); return; }
+    TurnModel yaw={0}, pitch={0};
+    char line[160];
+    memset(calib_rate,0,sizeof(calib_rate));
+    FILE *f=calibration_path() ? fopen(calibration_path(),"w") : NULL;
+    for (int i=0;i<calib_count;++i) {
+        const CalibStep *c=&calib_steps[i];
+        if (c->value==0.0) continue;
+        /* least-squares slope of the angle over time: the turn speed (rad/s) */
+        const double n=calib_n[i], den=n*calib_sum_tt[i]-calib_sum_t[i]*calib_sum_t[i];
+        const double rate=calib_n[i]>=4 && den>0.0 ? fabs((n*calib_sum_ta[i]-calib_sum_t[i]*calib_sum_a[i])/den) : 0.0;
+        snprintf(line,sizeof(line),"Runtime: mouse calibration: %s stick %.2f turns %.1f degrees/s (%d samples)",
+                 c->axis ? "pitch" : "yaw",c->value,rate*57.2958,calib_n[i]);
+        puts(line);
+        if (!c->axis) model_add(&yaw,c->value,rate<0.02 ? 0.0 : rate);
+        else if (c->value>0) { /* pitch: the faster of the two directions (one may hit a limit) */
+            const double best=rate>calib_rate[i-2] ? rate : calib_rate[i-2];
+            model_add(&pitch,c->value,best<0.02 ? 0.0 : best);
+        }
+        calib_rate[i]=rate;
+    }
+    if (f) {
+        for (int i=0;i<yaw.n;++i) fprintf(f,"yaw %.3f %.5f\n",yaw.stick[i],yaw.rate[i]);
+        for (int i=0;i<pitch.n;++i) fprintf(f,"pitch %.3f %.5f\n",pitch.stick[i],pitch.rate[i]);
+        fclose(f);
+    }
+    if (model_valid(&yaw)) yaw_model=yaw;
+    if (model_valid(&pitch)) pitch_model=pitch;
+    owed_yaw=owed_pitch=0.0;
+    printf("Runtime: mouse calibration done: %s%s\n",model_valid(&yaw) ? "mouse look calibrated" : "no camera turn measured (stand in the open and try again)",
+           calibration_path() ? "" : " (THEORDER_MOUSE_CALIBRATION not set: not saved)");
+}
+static void mouse_calibration(PadData *d) {
+    static int f8_was_down;
+    const bool *k=sdl_ready ? SDL_GetKeyboardState(NULL) : NULL;
+    const int f8=k && k[SDL_SCANCODE_F8];
+    if (f8 && !f8_was_down) {
+        if (calib_step>=0) calib_finish(0);
+        else {
+            calib_plan();
+            memset(calib_n,0,sizeof(calib_n)); memset(calib_sum_t,0,sizeof(calib_sum_t));
+            memset(calib_sum_a,0,sizeof(calib_sum_a)); memset(calib_sum_tt,0,sizeof(calib_sum_tt));
+            memset(calib_sum_ta,0,sizeof(calib_sum_ta));
+            calib_step=0; calib_step_start=now_us(); calib_last_serial=0; calib_unwrap_add=0.0; calib_unwrap_prev=NAN;
+            calib_samples=fopen("out/mouse_calibration_samples.txt","w");
+            puts("Runtime: mouse calibration started (about a minute; keep your hands off the controls, F8 stops)");
+        }
+    }
+    f8_was_down=f8;
+    if (calib_step<0) return;
+    const uint64_t now=now_us();
+    uint32_t ms=(uint32_t)((now-calib_step_start)/1000);
+    while (calib_step<calib_count && ms>=calib_steps[calib_step].ms) {
+        calib_step_start+= (uint64_t)calib_steps[calib_step].ms*1000;
+        ms-=calib_steps[calib_step].ms;
+        ++calib_step;
+    }
+    if (calib_step>=calib_count) { calib_finish(1); return; }
+    const CalibStep *c=&calib_steps[calib_step];
+    /* the player's input is held neutral: only the calibration turns the camera */
+    d->buttons=0; d->l2=d->r2=0;
+    d->left_x=d->left_y=128;
+    const int v=128+(int)lround(c->value*(c->value<0 ? 128.0 : 127.0));
+    d->right_x=c->axis ? 128 : (uint8_t)v;
+    d->right_y=c->axis ? (uint8_t)v : 128;
+    float fwd[3]; uint64_t serial=0, ns=0;
+    if (!theordergpu_camera_forward(fwd,&serial,&ns) || serial==calib_last_serial) return;
+    calib_last_serial=serial;
+    const double yaw=atan2(fwd[0],fwd[2]), pitch=asin(fwd[1]<-1.f ? -1.f : fwd[1]>1.f ? 1.f : fwd[1]);
+    double angle=c->axis ? pitch : yaw;
+    if (!c->axis) { /* the yaw unwrapped across +-pi */
+        if (!isnan(calib_unwrap_prev)) {
+            if (yaw-calib_unwrap_prev>3.14159265) calib_unwrap_add-=6.28318531;
+            else if (yaw-calib_unwrap_prev<-3.14159265) calib_unwrap_add+=6.28318531;
+        }
+        calib_unwrap_prev=yaw;
+        angle=yaw+calib_unwrap_add;
+    }
+    if (calib_samples) fprintf(calib_samples,"%d %d %.2f %u %.5f %.5f\n",calib_step,c->axis,c->value,ms,yaw,pitch);
+    if (ms>=c->from_ms) {
+        const double t=ms/1000.0; const int i=calib_step;
+        calib_sum_t[i]+=t; calib_sum_a[i]+=angle; calib_sum_tt[i]+=t*t; calib_sum_ta[i]+=t*angle; ++calib_n[i];
+    }
+}
 /* Wheel notches become presses of WHEEL_PRESS_US with a WHEEL_GAP_US release between them, so the
  * game sees every notch even when several arrive between two reads. */
 enum { WHEEL_PRESS_US=70000, WHEEL_GAP_US=50000 };
@@ -322,6 +552,7 @@ static void mouse_input(PadData *d) {
     theordergpu_mouse_take(&m);
     if (!m.captured) {
         mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; mouse_held=0;
+        owed_yaw=owed_pitch=0.0; owed_us=0;
         memset(wheel,0,sizeof(wheel));
         return;
     }
@@ -331,7 +562,12 @@ static void mouse_input(PadData *d) {
     if (wheel_held(0,m.wheel>0 ? m.wheel : 0,now)) mouse_held|=1u<<30;
     if (wheel_held(1,m.wheel<0 ? -m.wheel : 0,now)) mouse_held|=1u<<31;
     int mx=0, my=0;
-    mouse_to_stick(m.dx,m.dy,m.sensitivity,&mx,&my);
+    load_models();
+    if (model_valid(&yaw_model)) {
+        mouse_to_turn(m.dx,m.dy,m.sensitivity,&mx,&my);
+        /* the vertical axis keeps the stick response until the pitch was measured too */
+        if (!model_valid(&pitch_model)) { int ox=0, oy=0; mouse_to_stick(0.0f,m.dy,m.sensitivity,&ox,&oy); my=oy; }
+    } else mouse_to_stick(m.dx,m.dy,m.sensitivity,&mx,&my);
     const int x=d->right_x-128+mx, y=d->right_y-128+my;
     d->right_x=(uint8_t)(128+(x<-128 ? -128 : x>127 ? 127 : x));
     d->right_y=(uint8_t)(128+(y<-128 ? -128 : y>127 ? 127 : y));
@@ -524,6 +760,7 @@ static void sample(PadData *d) {
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
     play_click(d);
+    mouse_calibration(d);
     /* Options and the touchpad change what the game shows (pause, Web of Intrigue): logged. */
     static uint32_t logged_before;
     const uint32_t edges=d->buttons & ~logged_before & (BTN_OPTIONS|BTN_TOUCHPAD);

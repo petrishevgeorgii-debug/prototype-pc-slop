@@ -373,9 +373,10 @@ KEYSYM_NAMES = {'space': 'Space', 'Tab': 'Tab', 'Return': 'Return', 'BackSpace':
                 'Up': 'Up', 'Down': 'Down', 'Left': 'Left', 'Right': 'Right', 'Prior': 'PageUp', 'Next': 'PageDown',
                 'Home': 'Home', 'End': 'End', 'semicolon': ';', 'minus': '-', 'period': '.', 'slash': '/',
                 'grave': '`', 'bracketleft': '[', 'backslash': '\\', 'bracketright': ']', 'apostrophe': "'"}
-# Not bindable: the port's own keys (Insert opens its menu, F7 mouse look, F9 pad recording) and
-# the characters THEORDER_KEY_MAP uses as separators.
-RESERVED_KEYS = {'Insert', 'F7', 'F9', ',', '=', '+'}
+# Not bindable: the port's own keys (Insert opens its menu, F7 mouse look, F8 mouse look
+# calibration, F9 pad recording, F10 hang report) and the characters THEORDER_KEY_MAP uses as
+# separators.
+RESERVED_KEYS = {'Insert', 'F7', 'F8', 'F9', 'F10', ',', '=', '+'}
 
 
 def sdl_key_name(event):
@@ -738,7 +739,9 @@ class Launcher:
         self.stepper('Button icons in game', 'The buttons the game shows in its hints and tutorials: your keys '
                      'and mouse buttons (below), or the PlayStation buttons. Automatic: the ones of what you '
                      'played with last time. Takes effect at the next start.', 'prompts', PROMPTS)
-        self.toggle('Mouse look', 'The mouse turns the camera (F7 switches it in game).', 'mouse_look')
+        self.toggle('Mouse look', 'The mouse turns the camera (F7 switches it in game). For aim as on PC '
+                    '(the camera turns by how far the mouse moves), press F8 once in game while standing '
+                    'still, and keep your hands off the controls for about a minute.', 'mouse_look')
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
                     'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])
         groups = [(g, en) for g, en, _ in proto_controls.GROUPS]

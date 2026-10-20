@@ -48,6 +48,10 @@ typedef struct {
     int wheel;
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
+/* PROTOTYPE: the view axis (unit vector, world space) of the last frame's camera, a counter that
+ * grows with every new camera and its time (steady clock, ns); 0 before the first camera (it is
+ * found while the camera is tracked, THEORDER_UPSCALER not "none"). For mouse look (runtime_pad.c). */
+int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned theordergpu_symbol_count(void);
 #ifdef __cplusplus

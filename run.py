@@ -503,6 +503,8 @@ def main():
         user_dir = Path(get_env(env, 'USER_DIR', str(data / 'user'))).resolve()
         user_dir.mkdir(parents=True, exist_ok=True)
         env.setdefault('THEORDER_GPU_USER_DIR', str(user_dir))
+        # PROTOTYPE mouse look: the camera's measured turn speeds (F8 in game, runtime_pad.c).
+        env.setdefault('THEORDER_MOUSE_CALIBRATION', str(user_dir / 'mouse_calibration.txt'))
         from save_backup import backup
         try:
             if made := backup(user_dir):

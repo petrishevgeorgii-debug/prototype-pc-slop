@@ -502,21 +502,38 @@ static DWORD WINAPI win_sampler_thread(LPVOID param) {
 }
 /* F10 in the game window: a hang report in the log (the files the game opened last and where
  * every thread spends its time, 3 seconds of samples; all of them in out/hang_sample.txt). */
+static void hang_report(const char *why, unsigned seconds) {
+    fprintf(stderr,"Hang report (%s):\n",why);
+    fflush(stdout);
+    runtime_file_report_recent();
+    runtime_fiber_report_state();
+    runtime_sema_report_waiting();
+    fflush(stderr);
+    sample_threads("*",seconds,"out/hang_sample.txt",1);
+}
+/* F10 in the game window: a hang report. Also on its own, once per run: a compressed game file
+ * the game stopped reading half way for a minute is a load that will not finish
+ * (THEORDER_AUTO_HANG_REPORT=0: never). */
 static DWORD WINAPI win_hang_key_thread(LPVOID param) {
     (void)param;
+    const char *env=getenv("THEORDER_AUTO_HANG_REPORT");
+    int automatic=!(env && *env=='0');
+    unsigned ticks=0;
     for (;;) {
         Sleep(150);
+        if (automatic && ++ticks%33==0) { /* every 5 s */
+            char path[160], why[256];
+            if (runtime_file_stalled(60000,path,sizeof(path))) {
+                snprintf(why,sizeof(why),"automatic: %s stopped loading a minute ago",path);
+                hang_report(why,1);
+                automatic=0;
+            }
+        }
         if (!(GetAsyncKeyState(VK_F10) & 0x8000)) continue;
         DWORD pid=0;
         GetWindowThreadProcessId(GetForegroundWindow(),&pid);
         if (pid!=GetCurrentProcessId()) continue;
-        fprintf(stderr,"Hang report (F10):\n");
-        fflush(stdout);
-        runtime_file_report_recent();
-        runtime_fiber_report_state();
-        runtime_sema_report_waiting();
-        fflush(stderr);
-        sample_threads("*",3,"out/hang_sample.txt",1);
+        hang_report("F10",3);
         while (GetAsyncKeyState(VK_F10) & 0x8000) Sleep(100);
     }
     return 0;

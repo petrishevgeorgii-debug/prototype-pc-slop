@@ -115,6 +115,9 @@ void runtime_proto_report(void);
 /* Live fibers and semaphores with waiters, for the F10 hang report (probe.c). */
 void runtime_fiber_report_state(void);
 void runtime_sema_report_waiting(void);
+/* A compressed game file (.rz) the game opened, read part of and has not read for `ms`: its
+ * path into `path`; 1 if there is one (a stalled load, for the automatic hang report). */
+int runtime_file_stalled(unsigned ms,char *path,size_t size);
 /* The guest image's base (probe.c), for guest offsets in diagnostics; 0 before it is mapped. */
 extern uintptr_t runtime_guest_image;
 /* PROTOTYPE's engine event Set/Reset, each whole under a lock (runtime_sema.c; probe.c points

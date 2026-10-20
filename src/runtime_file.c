@@ -657,6 +657,23 @@ void runtime_file_report_recent(void) {
     }
     pthread_mutex_unlock(&lock);
 }
+int runtime_file_stalled(unsigned ms,char *path,size_t size) {
+    int found=0;
+    pthread_mutex_lock(&lock);
+    const uint64_t now=now_ms();
+    for (int fd=3;fd<MAX_FILES && !found;++fd) {
+        const File *f=&files[fd];
+        const size_t n=strlen(f->path);
+        if (!f->used || f->dir || !f->tracked || !f->reads || n<3 || strcmp(f->path+n-3,".rz")) continue;
+        HostStat st;
+        if (f->host<0 || host_fstat(f->host,&st) || f->bytes>=(uint64_t)st.st_size) continue;
+        if (now-f->last_ms<ms || now-f->opened_ms<ms) continue;
+        snprintf(path,size,"%s",f->path);
+        found=1;
+    }
+    pthread_mutex_unlock(&lock);
+    return found;
+}
 static int64_t do_open(const char *guest,int flags,int mode) {
     int64_t r=do_open_impl(guest,flags,mode);
     if (r>=3) {
