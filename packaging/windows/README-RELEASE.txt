@@ -34,10 +34,9 @@ IN GAME
   The launcher has the render resolution, FSR 1, sharpening, texture filtering, 30/60 FPS,
   display mode, V-Sync and the controls.
 
-WHAT'S NEW IN 0.5.2 (all versions: CHANGELOG.md)
-  - Picked-up objects are half-transparent again at render resolutions above 1080p (they were
-    invisible: the game's video memory for its screen images was sized for 1080p).
-  - Fewer endless loading screens (after cutscenes, loading a save, the pause menu).
+WHAT'S NEW IN 0.5.3 (all versions: CHANGELOG.md)
+  - Endless loading screens, the black pause menu and soft locks after consuming are fixed.
+  - Picked-up objects are half-transparent again at render resolutions above 1080p (0.5.2).
   - Keyboard and mouse button icons also for dumps that keep the game's files in .rcf archives.
 
 SAVES AND LOGS
@@ -45,7 +44,7 @@ SAVES AND LOGS
   Log:     last_run.log (send it with any problem report)
 
 KNOWN ISSUES
-  - A loading screen can rarely never end: press F10 while it hangs and send last_run.log
+  - If a loading screen still never ends: press F10 while it hangs and send last_run.log
     and out\hang_sample.txt.
   - PROTOTYPE 2 (from the bundle menu) is not supported yet: choosing it ends the game.
   - Render resolution above 1080p is experimental.

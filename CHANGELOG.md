@@ -3,6 +3,14 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## 0.5.3 — October 20, 2026 ([notes](docs/releases/v0.5.3.md))
+
+### Fixed
+- Endless loading screens, a black pause menu and soft locks after consuming. The game's "job done" signal lowers a counter and then wakes the waiting thread in a second step. A new job set up in between got the late wake-up, so the file unpacker read an empty result and looped forever. The port now runs each of these signal steps whole (in memory; game files unchanged).
+
+### Added
+- The F10 hang report shows the game's call stacks, which thread waits on which semaphore, and the open files with how far each was read.
+
 ## 0.5.2 — October 19, 2026 ([notes](docs/releases/v0.5.2.md))
 
 ### Fixed
@@ -16,7 +24,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 - The F10 hang report lists the game's fibers and the semaphores threads wait on.
 - Frame captures record every draw's render state (developer option).
 
-0.5.1 was prepared but not published; its fixes are in 0.5.2.
+0.5.1 was prepared but not published; its fixes are in 0.5.2. 0.5.2 was published as a tag only; its notes are part of 0.5.3.
 
 ## 0.5.0 — October 19, 2026 ([notes](docs/releases/v0.5.0.md))
 
