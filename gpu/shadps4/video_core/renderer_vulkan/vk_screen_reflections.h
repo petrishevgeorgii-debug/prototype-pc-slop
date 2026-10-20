@@ -29,8 +29,10 @@ class CameraMotion;
 
 class ScreenReflections {
 public:
-    /// The river's pixel shader (CUSA06545 01.00 eboot.bin).
-    static constexpr u64 WaterShader = 0xa71ff1ce;
+    /// The river's shaders (CUSA06545 01.00 eboot.bin, daytime): a draw with either is water.
+    /// THEORDER_SSR_WATER=<hex>,<hex>... adds vertex or pixel shaders (other times of day).
+    static constexpr u64 WaterPixelShader = 0xa71ff1ce;
+    static constexpr u64 WaterVertexShader = 0xd57d4272;
 
     ScreenReflections(const Instance& instance, Scheduler& scheduler,
                       VideoCore::TextureCache& texture_cache, Runtime& runtime);
@@ -45,7 +47,10 @@ public:
     /// Before each colour draw (outside rendering): the draw's pixel shader and colour target.
     /// The first water draw copies the target, the first other draw after the water marks the
     /// water's pixels. Returns true when it recorded work (rendering was ended).
-    bool OnDraw(u64 fs_hash, VideoCore::ImageId color);
+    bool OnDraw(u64 vs_hash, u64 fs_hash, VideoCore::ImageId color);
+    /// Diagnostics: a scene draw whose pixel shader reflects a cube map (water candidates),
+    /// printed once per shader pair.
+    void NoteCubeDraw(u64 vs_hash, u64 fs_hash);
 
     /// Before post-processing: reflections into `color` (the scene colour) from `depth`.
     void Apply(VideoCore::ImageId color, VideoCore::ImageId depth, const CameraMotion& camera);
@@ -98,6 +103,11 @@ private:
     /// and why Apply did nothing.
     u64 masks = 0, calls = 0, no_mask = 0, other_color = 0, no_camera = 0, bad_size = 0;
     u32 reports = 0;
+    std::array<u64, 16> extra_water{};
+    u32 extra_count = 0;
+    std::array<u64, 64> noted{};
+    u32 noted_count = 0;
+    bool IsWater(u64 vs_hash, u64 fs_hash) const;
 };
 
 } // namespace Vulkan

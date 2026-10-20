@@ -120,6 +120,21 @@ ScreenReflections::ScreenReflections(const Instance& instance_, Scheduler& sched
                                      vk::DescriptorType::eStorageImage});
     make_pipeline(ssr_layout, ssr_pipeline_layout, ssr_pipeline, sizeof(SsrConstants),
                   PROTO_SSR_COMP);
+    if (const char* env = std::getenv("THEORDER_SSR_WATER"); env && env[0]) {
+        const char* p = env;
+        while (*p && extra_count < extra_water.size()) {
+            char* end = nullptr;
+            const u64 hash = std::strtoull(p, &end, 16);
+            if (end == p) {
+                ++p;
+                continue;
+            }
+            extra_water[extra_count++] = hash;
+            std::printf("Water reflections: shader %08llx is water too\n",
+                        static_cast<unsigned long long>(hash));
+            p = end;
+        }
+    }
     ready = true;
     std::printf("Water reflections: ready (%s; menu: Image)\n",
                 PortSettings::Get().ssr ? "on" : "off");
@@ -228,11 +243,39 @@ bool ScreenReflections::EnsureImages(u32 w, u32 h) {
     return true;
 }
 
-bool ScreenReflections::OnDraw(u64 fs_hash, VideoCore::ImageId color) {
+bool ScreenReflections::IsWater(u64 vs_hash, u64 fs_hash) const {
+    if (fs_hash == WaterPixelShader || vs_hash == WaterVertexShader) {
+        return true;
+    }
+    for (u32 i = 0; i < extra_count; ++i) {
+        if (extra_water[i] == vs_hash || extra_water[i] == fs_hash) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void ScreenReflections::NoteCubeDraw(u64 vs_hash, u64 fs_hash) {
+    const u64 key = vs_hash * 0x9e3779b97f4a7c15ull ^ fs_hash;
+    for (u32 i = 0; i < noted_count; ++i) {
+        if (noted[i] == key) {
+            return;
+        }
+    }
+    if (noted_count == noted.size()) {
+        return;
+    }
+    noted[noted_count++] = key;
+    std::printf("Water reflections: scene draw vs %08llx ps %08llx reflects a cube map%s\n",
+                static_cast<unsigned long long>(vs_hash), static_cast<unsigned long long>(fs_hash),
+                IsWater(vs_hash, fs_hash) ? " (water)" : "");
+}
+
+bool ScreenReflections::OnDraw(u64 vs_hash, u64 fs_hash, VideoCore::ImageId color) {
     if (!Enabled()) {
         return false;
     }
-    const bool water = fs_hash == WaterShader && color;
+    const bool water = color && IsWater(vs_hash, fs_hash);
     if (water && !in_water) {
         in_water = true;
         if (copied) {

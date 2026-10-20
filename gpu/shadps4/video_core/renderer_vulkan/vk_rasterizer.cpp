@@ -525,7 +525,14 @@ void Rasterizer::ReflectionsBeforeDraw(const GraphicsPipeline* pipeline) {
         return;
     }
     const auto* fs = pipeline->GetStages()[u32(Shader::SwStage::Fragment)];
-    screen_reflections->OnDraw(fs ? fs->pgm_hash : 0, cb_descs[0].first);
+    const auto* vs = pipeline->GetStages()[u32(Shader::SwStage::Vertex)];
+    const u64 vs_hash = vs ? vs->pgm_hash : 0, fs_hash = fs ? fs->pgm_hash : 0;
+    if (fs && proto_scene_draw &&
+        std::any_of(fs->images.begin(), fs->images.end(),
+                    [](const auto& image) { return image.cube_coords; })) {
+        screen_reflections->NoteCubeDraw(vs_hash, fs_hash);
+    }
+    screen_reflections->OnDraw(vs_hash, fs_hash, cb_descs[0].first);
     // Before post-processing (and FSR, which then resolves the reflections too).
     if (proto_post_trigger && proto_main_color && proto_scene_depth) {
         camera_motion->FinalizeFrame();
