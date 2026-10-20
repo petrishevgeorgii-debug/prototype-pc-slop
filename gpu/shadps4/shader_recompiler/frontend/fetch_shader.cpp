@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <array>
 #include <cstring>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -90,6 +92,63 @@ const u32* GetFetchShaderCode(const Info& info, u32 sgpr_base) {
     return code;
 }
 
+/// port: the V# in SGPRs srsrc..srsrc+3 that the fetch shader uses without loading it. The
+/// vertex shader's code up to the fetch call (s_swappc_b64) is scanned for the s_load_dwordx4
+/// that filled them from a user data pointer; without one, SGPRs below 16 are user data.
+static void ResolveCallerVsharp(const Shader::Info& info, const u32* fetch_code, u32 srsrc,
+                                VertexAttribute& attrib) {
+    struct Load {
+        u32 dword_offset{};
+        u32 base_sgpr{};
+        bool loaded{};
+    };
+    std::array<Load, 104> loads{};
+    bool scanned = false;
+    if (const auto* pgm = reinterpret_cast<const u32*>(info.ProgramBase()); pgm) {
+        GcnCodeSlice slice(pgm, pgm + 0x4000);
+        GcnDecodeContext decoder;
+        for (u32 n = 0; n < 1024 && !slice.atEnd(); ++n) {
+            const auto inst = decoder.decodeInstruction(slice);
+            if (inst.opcode == Opcode::S_SWAPPC_B64 || inst.opcode == Opcode::S_ENDPGM) {
+                scanned = inst.opcode == Opcode::S_SWAPPC_B64;
+                break;
+            }
+            if (inst.opcode == Opcode::S_LOAD_DWORDX4 && inst.control.smrd.imm &&
+                inst.dst[0].code + 3 < loads.size()) {
+                loads[inst.dst[0].code] = Load{inst.control.smrd.offset, inst.src[0].code * 2u, true};
+            } else if (inst.dst[0].field == OperandField::ScalarGPR) {
+                // Anything else writing these SGPRs: the V# is no longer the loaded one.
+                // Conservative widths: any scalar load up to 16 SGPRs, other writes up to two.
+                const u32 first = inst.dst[0].code, count = inst.category == InstCategory::ScalarMemory ? 16 : 2;
+                for (u32 r = first >= 3 ? first - 3 : 0; r < first + count && r < loads.size(); ++r) {
+                    loads[r].loaded = false;
+                }
+            }
+        }
+    }
+    const char* how = "unresolved";
+    if (scanned && srsrc < loads.size() && loads[srsrc].loaded && loads[srsrc].base_sgpr + 1 < 16) {
+        attrib.sgpr_base = static_cast<u8>(loads[srsrc].base_sgpr);
+        attrib.dword_offset = static_cast<u8>(loads[srsrc].dword_offset);
+        how = "loaded by the vertex shader";
+    } else if (srsrc + 3 < 16) {
+        attrib.sgpr_base = static_cast<u8>(IR::NumScalarRegs);
+        attrib.dword_offset = static_cast<u8>(srsrc);
+        how = "in the user data";
+    } else {
+        attrib.sgpr_base = static_cast<u8>(IR::NumScalarRegs);
+        attrib.dword_offset = 0;
+    }
+    static std::mutex noted_mutex;
+    static std::unordered_map<const u32*, u32> noted;
+    std::scoped_lock lock{noted_mutex};
+    if (noted.size() < 256 && noted.emplace(fetch_code, srsrc).second) {
+        LOG_WARNING(Render_Recompiler,
+                    "Fetch shader {} reads V# s[{}:{}] it does not load: {} (vs {:#x})",
+                    fmt::ptr(fetch_code), srsrc, srsrc + 3, how, info.pgm_hash);
+    }
+}
+
 bool ParseFetchShader(const Shader::Info& info, FetchShaderData& out_fetch_data) {
     if (compiler_snapshot && compiler_snapshot->info == &info) {
         if (!compiler_snapshot->fetch) {
@@ -122,6 +181,7 @@ bool ParseFetchShader(const Shader::Info& info, FetchShaderData& out_fetch_data)
     struct VsharpLoad {
         u32 dword_offset{};
         u32 base_sgpr{};
+        bool loaded{};
     };
     std::array<VsharpLoad, 104> loads{};
 
@@ -141,7 +201,7 @@ bool ParseFetchShader(const Shader::Info& info, FetchShaderData& out_fetch_data)
             const u32 sbase = (word0 >> 9) & 0x3f;
             const u32 offset = word0 & 0xff;
             ASSERT(opcode == OpcodeSMRD::S_LOAD_DWORDX4);
-            loads[sdst] = VsharpLoad{offset, sbase * 2};
+            loads[sdst] = VsharpLoad{offset, sbase * 2, true};
         } else if (encoding == InstEncoding::VOP2) {
             const auto opcode = OpcodeVOP2((word0 >> 25) & 0x3f);
             const u32 src0 = word0 & 0x1ff;
@@ -178,9 +238,21 @@ bool ParseFetchShader(const Shader::Info& info, FetchShaderData& out_fetch_data)
                                        std::to_underlying(OpcodeMTBUF::TBUFFER_LOAD_FORMAT_X)) +
                                       1;
             }
-            attrib.sgpr_base = loads[srsrc].base_sgpr;
-            attrib.dword_offset = loads[srsrc].dword_offset;
+            if (loads[srsrc].loaded) {
+                attrib.sgpr_base = loads[srsrc].base_sgpr;
+                attrib.dword_offset = loads[srsrc].dword_offset;
+            } else {
+                // port: a V# the fetch shader does not load itself (PROTOTYPE 2): the vertex
+                // shader loaded it before calling the fetch shader, or it is in the user data.
+                // Read as before, the V# came from the fetch shader's own code.
+                ResolveCallerVsharp(info, code, srsrc, attrib);
+            }
             attrib.inst_offset = word0 & 0xfff;
+            if ((word0 & 0xfff) > 0xff) {
+                // port: VertexAttribute keeps 8 bits of the 12-bit offset (noted, not seen yet).
+                LOG_ERROR(Render_Recompiler, "Fetch shader attribute offset {} does not fit 8 bits",
+                          word0 & 0xfff);
+            }
             attrib.instance_data = word1 & 0xff;
             if (encoding == InstEncoding::MTBUF) {
                 attrib.data_format = (word0 >> 19) & 0xf;
