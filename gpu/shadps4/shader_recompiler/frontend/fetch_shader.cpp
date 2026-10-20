@@ -4,7 +4,10 @@
 #include <array>
 #include <cstring>
 #include <mutex>
+#include <algorithm>
 #include <optional>
+#include <string>
+#include <unordered_set>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -169,6 +172,30 @@ AmdGpu::Buffer VertexAttribute::GetSharp(const Shader::Info& info) const noexcep
     }
     if (!read) {
         buffer = info.ReadUdReg<AmdGpu::Buffer>(sgpr_base, dword_offset);
+    }
+    if (u64(buffer.num_records) * std::max<u64>(buffer.stride, 1) > (u64{1} << 30)) {
+        // port: a V# of over 1 GiB is not a vertex stream: the code and user data, once per
+        // vertex shader, to see where the V# really comes from.
+        static std::mutex dumped_mutex;
+        static std::unordered_set<u64> dumped;
+        std::scoped_lock lock{dumped_mutex};
+        if (dumped.size() < 8 && dumped.insert(info.pgm_hash).second) {
+            std::string text = fmt::format("V# s[{}]+{} records {} stride {}; user data:",
+                                           sgpr_base, dword_offset, u32(buffer.num_records),
+                                           u32(buffer.stride));
+            for (const u32 v : info.UserData()) {
+                text += fmt::format(" {:08x}", v);
+            }
+            const auto dump = [&](const char* name, const u32* code, u32 count) {
+                text += fmt::format("; {} {}:", name, fmt::ptr(code));
+                for (u32 i = 0; code && i < count; ++i) {
+                    text += fmt::format(" {:08x}", code[i]);
+                }
+            };
+            dump("vs", reinterpret_cast<const u32*>(info.ProgramBase()), 96);
+            dump("fetch", GetFetchShaderCode(info, info.fetch_shader_sgpr_base), 48);
+            LOG_WARNING(Render_Recompiler, "Vertex shader {:#x}: {}", info.pgm_hash, text);
+        }
     }
     buffer.base_address += inst_offset;
     if (data_format) {
