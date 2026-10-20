@@ -324,6 +324,16 @@ def main():
     if reverted:
         print('Graphics: the last restart never reached the game; previous options restored', flush=True)
     env.update(graphics_options.environment(graphics))
+    # THEORDER_SAFE_GPU=1 (test): the GPU layer's optimizations and early readbacks off, to tell
+    # an emulation fault from an optimization one (PROTOTYPE 2 bring-up).
+    if get_env(env, 'SAFE_GPU') == '1':
+        env['THEORDER_DEFERRED_READBACK'] = '0'
+        env['THEORDER_STALE_READBACK'] = '0'
+        env['THEORDER_ASYNC_SHADERS'] = '0'
+        toggles = out / 'safe_gpu_toggles.txt'
+        toggles.write_text('4468274514573098427\n', encoding='utf-8')
+        env['THEORDER_TOGGLE_FILE'] = str(toggles)
+        print('GPU safe mode: optimizations, deferred readbacks and async shaders off', flush=True)
     if not get_env(env, 'FSR411_DIR') and not (PORT / 'fsr4_411').is_dir() and (data / 'fsr4_411').is_dir():
         env['THEORDER_FSR411_DIR'] = str(data / 'fsr4_411')
 

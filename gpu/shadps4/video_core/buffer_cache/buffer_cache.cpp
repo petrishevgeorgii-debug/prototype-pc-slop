@@ -601,7 +601,16 @@ void PrintBufferStats() {
 std::pair<const Buffer*, u64> BufferCache::ObtainBuffer(VAddr device_addr, u32 size,
                                                         ObtainBufferFlags flags) {
     // port: never a range the arenas cannot hold (callers that bind the buffer clamp first).
-    size = static_cast<u32>(ClampToArenaSpan(device_addr, size));
+    if (const u64 fits = ClampToArenaSpan(device_addr, size); fits != size) {
+        static std::mutex noted_mutex;
+        static std::unordered_set<u64> noted;
+        std::scoped_lock lock{noted_mutex};
+        if (noted.size() < 32 && noted.insert(device_addr >> 20).second) {
+            LOG_WARNING(Render_Vulkan, "Buffer request of {} bytes at {:#x} (flags {:#x}) cut to {}",
+                        size, device_addr, u32(flags), fits);
+        }
+        size = static_cast<u32>(fits);
+    }
     const bool is_written = True(flags & ObtainBufferFlags::IsWritten);
     const bool is_texel_buffer = True(flags & ObtainBufferFlags::IsTexelBuffer);
     const bool skip_stream_buffer = True(flags & ObtainBufferFlags::IgnoreStreamBuffer);

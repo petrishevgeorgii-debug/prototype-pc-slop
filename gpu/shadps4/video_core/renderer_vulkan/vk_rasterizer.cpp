@@ -2214,6 +2214,25 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
         }
     }
 
+    // port: vertex streams larger than the buffer cache's arenas (PROTOTYPE 2), once per address.
+    for (const auto& range : ranges_merged) {
+        if (buffer_cache.ClampToArenaSpan(range.base_address, range.GetSize()) == range.GetSize()) {
+            continue;
+        }
+        static std::mutex noted_mutex;
+        static std::unordered_set<u64> noted;
+        std::scoped_lock lock{noted_mutex};
+        if (noted.size() >= 32 || !noted.insert(range.base_address >> 20).second) {
+            continue;
+        }
+        LOG_WARNING(Render_Vulkan, "Vertex range {:#x}-{:#x} ({} bytes) is larger than the arenas",
+                    range.base_address, range.end_address, range.GetSize());
+        for (const auto& vb : guest_buffers) {
+            LOG_WARNING(Render_Vulkan, "  stream at {:#x}: stride {} records {} size {}",
+                        vb.base_address, u32(vb.GetStride()), u32(vb.num_records),
+                        u64(vb.GetSize()));
+        }
+    }
     // Map buffers for merged ranges
     for (auto& range : ranges_merged) {
         const u64 size = buffer_cache.ClampToArenaSpan(
