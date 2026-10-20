@@ -424,6 +424,14 @@ def main():
                   'PROTOTYPE 1 settings', flush=True)
             # Addresses in PROTOTYPE 1's image (a start from its bundle menu still has them).
             env.pop('THEORDER_FOV_SITES', None)
+            # The GPU layer's draw preparation on worker threads reads each draw's resource tables
+            # ahead of the GPU thread; PROTOTYPE 2 fills its vertex tables later, and the early
+            # copies made geometry explode. Off for it (4096 + 8192) unless a test sets its own.
+            if not get_env(env, 'GPU_TOGGLES') and get_env(env, 'SAFE_GPU') != '1':
+                toggles = out / 'gpu_test_toggles.txt'
+                toggles.write_text('12288\n', encoding='utf-8')
+                env['THEORDER_TOGGLE_FILE'] = str(toggles)
+                derived.append('THEORDER_TOGGLE_FILE')
         engine_fps, fps_patched = 60, False
         # The window shows the game's icon (BMP: the format SDL loads without extra libraries); on
         # Linux the launcher's own icon (the AppImage ships the one chosen when it was built) and
