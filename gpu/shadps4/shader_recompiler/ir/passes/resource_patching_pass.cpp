@@ -124,6 +124,7 @@ public:
         image.is_atomic |= desc.is_atomic;
         image.is_written |= desc.is_written;
         image.needs_native |= desc.needs_native;
+        image.cube_coords |= desc.cube_coords;
         return index;
     }
 
@@ -231,6 +232,46 @@ void PatchBufferSharp(const ResourceDiscovery& resource, Info& info, Descriptors
     inst.SetArg(0, ir.Imm32(buffer_binding));
 }
 
+// port: whether a sample's address registers hold a face index from V_CUBEID (directly or
+// through phis): the sampled T# is a cube map even without the MIMG DA bit.
+bool HoldsCubeFaceIndex(const IR::Value& value, int depth = 0) {
+    const IR::Inst* producer = value.TryInst();
+    if (!producer) {
+        return false;
+    }
+    if (producer->GetOpcode() == IR::Opcode::CubeFaceIndex) {
+        return true;
+    }
+    if (producer->GetOpcode() == IR::Opcode::Phi && depth < 4) {
+        for (size_t i = 0; i < producer->NumArgs(); ++i) {
+            if (HoldsCubeFaceIndex(producer->Arg(i), depth + 1)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool SamplesWithCubeFace(const IR::Inst& inst) {
+    if (inst.GetOpcode() != IR::Opcode::ImageSampleRaw) {
+        return false;
+    }
+    // Address registers 0-7 (address1, address2): the face index comes after an optional
+    // offset, bias and depth reference.
+    for (const u32 arg : {2u, 3u}) {
+        const IR::Inst* body = inst.Arg(arg).TryInst();
+        if (!body || body->GetOpcode() != IR::Opcode::CompositeConstructF32x4) {
+            continue;
+        }
+        for (size_t i = 0; i < body->NumArgs(); ++i) {
+            if (HoldsCubeFaceIndex(body->Arg(i))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors& descriptors,
                      const Profile& profile) {
     IR::Inst& inst = *resource.user;
@@ -260,6 +301,7 @@ void PatchImageSharp(const ResourceDiscovery& resource, Info& info, Descriptors&
         .is_written = is_written,
         .is_r128 = bool(inst_info.is_r128),
         .needs_native = !normalized_sample,
+        .cube_coords = SamplesWithCubeFace(inst),
         .post_op = resource.sharps[0].post_op,
     };
 

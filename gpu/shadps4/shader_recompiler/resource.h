@@ -142,6 +142,9 @@ struct ImageResource {
     /// port: read other than by normalized sampling without offsets (texel loads, size
     /// queries, offsets): needs the native-size image, not a reduced scene proxy.
     bool needs_native{};
+    /// port: a sample whose address holds a V_CUBEID face index: the T# is a cube map although
+    /// the instruction does not set the MIMG DA bit (PROTOTYPE's water and world shaders).
+    bool cube_coords{};
     u8 constant_mip_index{};
     MipStorageFallbackMode mip_fallback_mode{};
     SharpFetchPostOp post_op{};
@@ -196,10 +199,13 @@ struct ImageResource {
                 return false;
             }
         }
-        // A cube is sampled as an array (MIMG DA bit), a 3D image never is. Only for plain
-        // sampling: a size query need not set the bit.
+        // A cube is sampled as an array (MIMG DA bit) or with a V_CUBEID face index in its
+        // address; a 3D image never is. Only for plain sampling: a size query need not set the
+        // bit. PROTOTYPE's shaders sample their reflection cube maps without the DA bit: read as
+        // stale, the reflection was black (the river).
         if (!is_written && !is_atomic && !needs_native) {
-            return image.GetType() == AmdGpu::ImageType::Cube ? is_array : !(is_3d && is_array);
+            return image.GetType() == AmdGpu::ImageType::Cube ? (is_array || cube_coords)
+                                                               : !(is_3d && is_array);
         }
         return true;
     }
