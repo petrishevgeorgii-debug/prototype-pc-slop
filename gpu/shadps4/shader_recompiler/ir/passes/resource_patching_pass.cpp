@@ -799,20 +799,6 @@ void PatchBufferArgs(IR::Inst& inst, Info& info) {
                 CalculateBufferAddress(ir, inst, info, buffer, buffer.stride));
 }
 
-IR::Value FixCubeCoords(IR::IREmitter& ir, const AmdGpu::Image& image, const IR::Value& x,
-                        const IR::Value& y, const IR::Value& face) {
-    if (image.GetType() != AmdGpu::ImageType::Cube) {
-        return ir.CompositeConstruct(x, y, face);
-    }
-    // AMD cube math results in coordinates in the range [1.0, 2.0]. We need
-    // to convert this to the range [0.0, 1.0] to get correct results.
-    const auto fixed_x = ir.FPSub(IR::F32{x}, ir.Imm32(1.f));
-    const auto fixed_y = ir.FPSub(IR::F32{y}, ir.Imm32(1.f));
-    const auto fixed_face =
-        ir.FPFma(ir.FPFloor(ir.FPDiv(IR::F32{face}, ir.Imm32(8.f))), ir.Imm32(-2.f), IR::F32{face});
-    return ir.CompositeConstruct(fixed_x, fixed_y, fixed_face);
-}
-
 void PatchImageSampleArgs(IR::Inst& inst, Info& info, const ImageResource& image_res,
                           const AmdGpu::Image& image) {
     const auto handle = inst.Arg(0);
@@ -956,9 +942,13 @@ void PatchImageSampleArgs(IR::Inst& inst, Info& info, const ImageResource& image
             return ir.CompositeConstruct(get_coord(addr_reg - 2, 0), get_coord(addr_reg - 1, 1));
         case AmdGpu::ImageType::Color2DArray: // x, y, slice
         case AmdGpu::ImageType::Cube:         // x, y, face
+            // port: passed on as the GCN cube math made them ([1, 2], face index). The SPIR-V
+            // backend maps them to the 2D-array layer (FixImageCoords); converting them here too
+            // moved them to [-1, 0], and with clamping samplers every face read one edge texel
+            // (PROTOTYPE's river: flat colours with a hard seam where the face changed).
             addr_reg = addr_reg + 3;
-            return FixCubeCoords(ir, image, get_coord(addr_reg - 3, 0), get_coord(addr_reg - 2, 1),
-                                 get_addr_reg(addr_reg - 1));
+            return ir.CompositeConstruct(get_coord(addr_reg - 3, 0), get_coord(addr_reg - 2, 1),
+                                         get_addr_reg(addr_reg - 1));
         case AmdGpu::ImageType::Color3D:      // x, y, z
             addr_reg = addr_reg + 3;
             return ir.CompositeConstruct(get_coord(addr_reg - 3, 0), get_coord(addr_reg - 2, 1),

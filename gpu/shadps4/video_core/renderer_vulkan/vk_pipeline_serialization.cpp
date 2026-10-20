@@ -43,7 +43,7 @@ namespace Serialization {
 // port: past both histories (port 9/8/5, upstream 9/6/3 and #5365's binary 10): caches of
 // either are rebuilt. The meta layout lost the fetch shader (StageSpecialization carries it) and
 // keeps fs_interpolation; pipelines keep the per-vertex geometry shader (binary 12, meta 10, key 7).
-static constexpr u32 ShaderBinaryVersion = 14u; // MUBUF addr64 and inline V# BDA loads.
+static constexpr u32 ShaderBinaryVersion = 15u; // Cube coordinates converted once (backend).
 static constexpr u32 ShaderMetaVersion = 12u;   // ImageResource::cube_coords.
 static constexpr u32 PipelineKeyVersion = 7u;
 } // namespace Serialization
