@@ -52,11 +52,6 @@ float Luma(ivec2 p) {
     return dot(imageLoad(source_img, p).rgb, vec3(0.299, 0.587, 0.114));
 }
 
-// Interleaved gradient noise: a per-pixel start offset hides the step banding.
-float Noise(vec2 p) {
-    return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
-}
-
 void main() {
     const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if (pixel.x >= int(size.x) || pixel.y >= int(size.y)) {
@@ -79,23 +74,18 @@ void main() {
     const vec3 view_dir = normalize(position);
     const vec3 normal = normalize(up.xyz);
 
-    // The game's waves are in its water colour: its brightness gradient tilts the normal a
-    // little, so the reflections ripple with them.
-    const vec2 slope = vec2(Luma(pixel + ivec2(1, 0)) - Luma(pixel - ivec2(1, 0)),
-                            Luma(pixel + ivec2(0, 1)) - Luma(pixel - ivec2(0, 1)));
-    const vec3 tangent = normalize(vec3(1.0, 0.0, 0.0) - normal * normal.x);
-    const vec3 bitangent = cross(normal, tangent);
-    const vec3 wave_normal = normalize(normal + (tangent * slope.x + bitangent * slope.y) * 1.5);
-    const vec3 ray = reflect(view_dir, wave_normal);
+    // The ray leaves the flat water plane: every pixel of a stretch of water reflects the same
+    // picture (tilting each ray by the waves scattered the hits into noise). The waves move
+    // the picture instead, below.
+    const vec3 ray = reflect(view_dir, normal);
     if (dot(ray, normal) <= 0.0) {
         return;
     }
 
     // Steps grow geometrically from 0.25 units to max_distance.
     const float growth = pow(max_distance / 0.25, 1.0 / float(STEPS - 1));
-    const float offset = 0.5 + Noise(vec2(pixel));
     float previous_t = 0.0;
-    float t = 0.25 * offset;
+    float t = 0.25;
     bool hit = false;
     vec2 hit_uv = vec2(0.0);
     for (int i = 0; i < STEPS; ++i) {
@@ -165,7 +155,19 @@ void main() {
     const float edge = smoothstep(0.0, 0.06, min(edge2.x, edge2.y));
     const float distance_fade = far_hit ? 1.0 : 1.0 - smoothstep(0.6 * max_distance, max_distance, t);
     const float weight = clamp(fresnel * up.w, 0.0, 0.9) * edge * distance_fade;
-    const ivec2 hit_pixel = clamp(ivec2(hit_uv * size), ivec2(0), ivec2(size) - 1);
-    const vec3 reflected = imageLoad(source_img, hit_pixel).rgb * 0.85;
+    // The game's waves are in its water colour: its brightness gradient (over a few pixels)
+    // shifts the reflected picture, so it ripples with them; and like a rippled reflection it
+    // is smeared vertically (5 taps).
+    const vec2 slope = vec2(Luma(pixel + ivec2(2, 0)) - Luma(pixel - ivec2(2, 0)),
+                            Luma(pixel + ivec2(0, 2)) - Luma(pixel - ivec2(0, 2)));
+    const vec2 ripple = clamp(slope, vec2(-0.25), vec2(0.25)) * vec2(0.01, 0.02);
+    const ivec2 hit_pixel = ivec2((hit_uv + ripple) * size);
+    const int spread = max(1, int(size.y / 540.0));
+    vec3 reflected = vec3(0.0);
+    for (int k = -2; k <= 2; ++k) {
+        const ivec2 tap = clamp(hit_pixel + ivec2(0, k * spread), ivec2(0), ivec2(size) - 1);
+        reflected += imageLoad(source_img, tap).rgb;
+    }
+    reflected *= 0.85 / 5.0;
     imageStore(color_img, pixel, vec4(mix(current.rgb, reflected, weight), current.a));
 }
