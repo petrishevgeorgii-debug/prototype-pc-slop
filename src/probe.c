@@ -821,6 +821,49 @@ static void install_mouse_camera(void) {
     printf("Runtime: mouse look drives the on-foot camera (call at 0x%" PRIx64 ")\n",site);
 }
 
+/* PROTOTYPE 2 (prototype2_ps4f.elf): the PSN toolkit's start-up handshake.
+ * The main thread locks an event (mutex + condition variable), starts the 'Toolkit::NP' thread
+ * (entry 0xc32740, argument = the toolkit, event at +0x68) and waits on the condition. Offline,
+ * the thread's PSN set-up fails at once and it signals the condition without taking the mutex:
+ * on the PS4 the main thread always waits first (the set-up takes long), here the signal could
+ * come first and be lost, and the game waited forever on a black screen. The thread now starts
+ * with the event's lock taken and released, which it gets only once the main thread waits. */
+static ABI void *(*p2_np_entry_original)(void *);
+static ABI void (*p2_event_lock)(void *), (*p2_event_unlock)(void *);
+static ABI void *p2_np_entry(void *toolkit) {
+    void *event=toolkit ? *(void **)((unsigned char *)toolkit+0x68) : NULL;
+    if (event) { p2_event_lock(event); p2_event_unlock(event); }
+    return p2_np_entry_original(toolkit);
+}
+static void *diag_stub_jump(void *target) {
+    if (!g_diag_stubs) return NULL;
+    unsigned char *stub=g_diag_stubs+g_diag_stub_offset;
+    g_diag_stub_offset+=32;
+    stub[0]=0x49; stub[1]=0xbb; /* movabs r11, target; jmp r11 */
+    uintptr_t address=(uintptr_t)target;
+    memcpy(stub+2,&address,8);
+    stub[10]=0x41; stub[11]=0xff; stub[12]=0xe3;
+    return stub;
+}
+static void install_p2_np_fix(void) {
+    static const uint64_t site=0xc3254d, entry=0xc32740, lock=0xc903a0, unlock=0xc903b0;
+    static const unsigned char lea[]={0x48,0x8d,0x15,0xec,0x01,0x00,0x00,0x4c,0x8d,0x05,0x86,0x41,0x41,0x00};
+    static const unsigned char entry_bytes[]={0x55,0x48,0x89,0xe5,0x41,0x57,0x41,0x56,0x41,0x55,0x41,0x54,0x53};
+    static const unsigned char lock_bytes[]={0x48,0x83,0xc7,0x18,0xe9,0x97,0x04,0x00,0x00};
+    static const unsigned char unlock_bytes[]={0x48,0x83,0xc7,0x18,0xe9,0xb7,0x04,0x00,0x00};
+    if (!image || !g_diag_stubs || memcmp(image+site,lea,sizeof(lea)) || memcmp(image+entry,entry_bytes,sizeof(entry_bytes)) ||
+        memcmp(image+lock,lock_bytes,sizeof(lock_bytes)) || memcmp(image+unlock,unlock_bytes,sizeof(unlock_bytes))) return;
+    p2_np_entry_original=(void *(ABI *)(void *))(image+entry);
+    p2_event_lock=(void (ABI *)(void *))(image+lock);
+    p2_event_unlock=(void (ABI *)(void *))(image+unlock);
+    unsigned char *stub=diag_stub_jump((void *)p2_np_entry);
+    int64_t delta=(int64_t)(uintptr_t)stub-(int64_t)(uintptr_t)(image+site+7);
+    if (!stub || delta!=(int32_t)delta) return;
+    const int32_t disp=(int32_t)delta;
+    memcpy(image+site+3,&disp,4);
+    printf("Runtime: PROTOTYPE 2 PSN thread start waits for its handshake (0x%" PRIx64 ")\n",site);
+}
+
 static ABI void log_failure_jump(uint64_t site, uint64_t rax_val, uint64_t rbx_val) {
     printf("--> FAILURE JUMP from guest offset 0x%" PRIx64 " with rax=0x%" PRIx64 " (%lld), rbx=0x%" PRIx64 "\n",
            site, rax_val, (long long)rax_val, rbx_val);
@@ -1464,6 +1507,7 @@ int main(int argc, char **argv) {
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     install_event_fix(segments, ns);
     install_mouse_camera();
+    install_p2_np_fix();
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
