@@ -127,7 +127,7 @@ LANGUAGES = [('English', 1), ('Français', 2), ('Español', 3), ('Deutsch', 4), 
 DEFAULTS = {
     'game_dir': '', 'anisotropy': 16, 'fsr1': True,
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
-    'show_fps': False, 'language': 1, 'panel': 'GAME', 'ssr': True,
+    'show_fps': False, 'language': 1, 'panel': 'GAME', 'ssr': False,
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'game': 'p1',
 }
@@ -207,7 +207,7 @@ def write_ini(values):
             'fsr1': int(values['fsr1']), 'rcas': int(values['rcas']),
             'rcas_strength': int(values['rcas_strength']),
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
-            'ssr': int(values.get('ssr', True)),
+            'ssr': int(values.get('ssr', False)),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')

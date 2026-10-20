@@ -1057,7 +1057,7 @@ void PrototypeMenu() {
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
         // Defaults of this category.
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = true; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 3) {
             s.jitter = true;
@@ -1214,7 +1214,7 @@ void PrototypeMenu() {
     if (hint(X(0.09f), 1, T("BACK", "НАЗАД"), "ESC")) close = true;
     if (hint(X(0.338f), 2, T("DEFAULTS", "ПО УМОЛЧАНИЮ"), "BACKSPACE")) {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = true; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 3) {
             s.jitter = true;
