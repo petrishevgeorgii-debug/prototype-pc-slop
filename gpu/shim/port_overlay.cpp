@@ -997,11 +997,12 @@ void PrototypeMenu() {
                       "СКРЫТЬ показывает, что он рисует, убирая его."),
                     0, {}, index, !shader_uses.empty()};
         for (const auto& use : shader_uses) {
-            char text[96];
-            std::snprintf(text, sizeof(text), "%llx  %u %s%s%s",
-                          static_cast<unsigned long long>(use.hash), use.draws,
-                          T("DRAWS", "ОТРИС."), use.hidden ? T("  HIDDEN", "  СКРЫТ") : "",
-                          use.modded ? "  MOD" : "");
+            char text[128];
+            const char* name = PortShaderMods::KnownName(use.hash, russian());
+            std::snprintf(text, sizeof(text), "%llx  %s%s%u %s%s%s",
+                          static_cast<unsigned long long>(use.hash), name ? name : "",
+                          name ? "  " : "", use.draws, T("DRAWS", "ОТРИС."),
+                          use.hidden ? T("  HIDDEN", "  СКРЫТ") : "", use.modded ? "  MOD" : "");
             pick.values.push_back(text);
         }
         if (pick.values.empty()) {

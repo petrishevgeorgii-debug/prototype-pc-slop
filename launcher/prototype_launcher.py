@@ -139,7 +139,7 @@ GAMES = {
 }
 # Settings each game keeps for itself (its patches); everything else is shared.
 GAME_DEFAULTS = {
-    'p1': {'render_res': '1920x1080', 'fps60': True, 'tendril_fix': True},
+    'p1': {'render_res': '1920x1080', 'fps60': True, 'tendril_fix': True, 'shadows': '2048'},
     'p2': {'render_res': '1920x1080', 'fps60': False},
 }
 PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
@@ -222,6 +222,7 @@ def game_environment(values):
         'THEORDER_FPS60': '1' if p1['fps60'] else '0',
         'THEORDER_PROTO_RES': p1['render_res'],
         'THEORDER_PROTO_TENDRIL_FIX': '1' if p1['tendril_fix'] else '0',
+        'THEORDER_PROTO_SHADOWS': p1.get('shadows', '2048'),
         'THEORDER_PROTO2_FPS60': '1' if p2['fps60'] else '0',
         'THEORDER_PROTO2_RES': p2['render_res'],
         'THEORDER_ANISOTROPY': str(values['anisotropy']),
@@ -855,6 +856,9 @@ class Launcher:
                          'game misbehaves, set it back to 1920 × 1080.', 'game.render_res', res)
             self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.',
                          'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
+            self.stepper('Shadow resolution', 'Experimental. The sun\'s shadow map: 4096 gives every shadow '
+                         'twice the detail (sharper edges, less shimmer) for 64 MB more video memory. 2048 is '
+                         'the PS4\'s.', 'game.shadows', [('2048', '2048 (PS4)'), ('4096', '4096')])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
                         'difference). Keep it on.', 'game.tendril_fix')
         self.row_y += 20

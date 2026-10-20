@@ -10,7 +10,8 @@ game's shaders: you export them from your own copy.
 
 1. In game, press **Insert** (or R3 + L2) and go to **SHADERS** (Tab / E).
 2. **SHADER** lists the pixel shaders the last frame drew, most draws first, by their ID (for
-   example `a71ff1ce`). Left / Right picks one.
+   example `a71ff1ce`), with a name next to the ones the port knows (RIVER, DEPTH OF FIELD,
+   AMBIENT OCCLUSION, POST FX...). Left / Right picks one.
 3. **HIDE THIS SHADER** leaves its draws out: whatever disappears from the picture is what it
    draws. **SHOW ALL** brings everything back (so does Backspace / Triangle on this page).
 

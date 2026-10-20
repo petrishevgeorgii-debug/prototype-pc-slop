@@ -3,6 +3,16 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## Unreleased
+
+### Added
+- Graphics modding: shader mods (`mods/shaders`, GLSL, compiled at start) and an in-game shader browser (port menu, SHADERS) that lists the last frame's pixel shaders, with names for the known passes, hides one to show what it draws and exports it for editing. See [docs/SHADER_MODS.md](docs/SHADER_MODS.md).
+- PROTOTYPE: shadow resolution 4096 (launcher, GAME page; experimental). The sun's shadow map is 4096 × 4096 instead of 2048 × 2048, for sharper shadows, using 64 MB more video memory.
+- Water reflections on the river (screen-space; off by default, in the launcher's Graphics page and the in-game menu).
+
+### Fixed
+- PROTOTYPE: black water. The river's reflection cube map was dropped (its image descriptor lacked the array bit the GPU layer expected), and its coordinates were converted twice.
+
 ## 0.6.0 — October 20, 2026 ([notes](docs/releases/v0.6.0.md))
 
 ### Added

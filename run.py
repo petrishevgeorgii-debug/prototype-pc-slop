@@ -484,6 +484,10 @@ def main():
             if is_prototype and not is_prototype2 and get_env(env, 'PROTO_TENDRIL_FIX', '1') == '1' and \
                     'Fix White Consume Tendrils' not in names:
                 names.append('Fix White Consume Tendrils')
+            # THEORDER_PROTO_SHADOWS=4096: the sun's shadow map at 4096 instead of 2048 (launcher).
+            if is_prototype and not is_prototype2 and get_env(env, 'PROTO_SHADOWS', '2048') == '4096' and \
+                    'Shadow Resolution - 4096' not in names:
+                names.append('Shadow Resolution - 4096')
             names = graphics_options.restrict_to_available(names, patches.available_patches(patch_xml, profile[2]))
             env['THEORDER_PATCHES'] = ';'.join(names)
             env['THEORDER_PATCHES_ONLY'] = '1'

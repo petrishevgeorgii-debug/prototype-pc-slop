@@ -144,7 +144,7 @@ def compile_patches(xml, names, app_version, segments, image=None, skipped=None,
             found[meta.get('Name')]=meta
     missing=[n for n in names if n not in found]
     if missing: raise ValueError(f'patches not found for app version {app_version}: {missing}')
-    writes=[]
+    writes,adds=[],[]
     for name in names:
         lines=list(found[name].iter('Line'))
         try:
@@ -160,9 +160,25 @@ def compile_patches(xml, names, app_version, segments, image=None, skipped=None,
             skipped[name]=str(error)
             continue
         for line,offset in zip(lines,sites):
+            if line.get('Type')=='add32':
+                adds.append((name,offset,int(line.get('Value'),0)))
+                continue
             data=fill(line.get('Value'),offset,targets) if '{' in line.get('Value','') else encode(line)
             if not any(start<=offset and offset+len(data)<=end for start,end in segments):
                 raise ValueError(f'{name}: address {offset+EBOOT_BASE:#x} is outside the eboot')
+            writes.append((offset,data))
+    # add32: a 32-bit value the code holds (a memory size) grows by Value, on top of what the other
+    # patches wrote there: two patches that each need more of the same memory both get it.
+    if adds:
+        if image is None: raise ValueError('add32 patch lines need the game\'s eboot')
+        current=bytearray(image)
+        for offset,data in writes: current[offset:offset+len(data)]=data
+        for name,offset,delta in adds:
+            if not any(start<=offset and offset+4<=end for start,end in segments):
+                raise ValueError(f'{name}: address {offset+EBOOT_BASE:#x} is outside the eboot')
+            value,=struct.unpack_from('<I',current,offset)
+            data=struct.pack('<I',(value+delta)&0xffffffff)
+            current[offset:offset+4]=data
             writes.append((offset,data))
     return writes
 
@@ -280,13 +296,18 @@ def selected_patches(xml, app_version, extra, only=False):
 
 def patch_requirements(xml, names, app_version):
     """(direct memory MiB, VBlank Hz) the selected patches' notes ask for, None when not needed.
-    shadPS4 notes say "Requires setting DMEM to N MB": N is on top of the retail pool."""
+    shadPS4 notes say "Requires setting DMEM to N MB": N is on top of the retail pool. "Adds N MB to
+    DMEM" (the port's own patches) adds N to whatever the others need."""
     dmem=vblank=None
+    added=0
     for meta in ET.parse(xml).getroot().iter('Metadata'):
         if meta.get('Name') not in names or meta.get('AppVer')!=app_version: continue
         note=meta.get('Note','')
         if m:=re.search(r'DMEM to (\d+) MB',note): dmem=max(dmem or 0,DMEM_RETAIL_MB+int(m.group(1)))
+        if m:=re.search(r'Adds (\d+) MB to DMEM',note): added+=int(m.group(1))
         if m:=re.search(r'VBlank to (\d+) FPS',note): vblank=max(vblank or 0,int(m.group(1)))
+    # "Adds N MB to DMEM": on top of the pool the other patches ask for (they share it).
+    if added: dmem=(dmem or DMEM_RETAIL_MB)+added
     return dmem,vblank
 
 

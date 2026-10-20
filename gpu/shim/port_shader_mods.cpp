@@ -354,6 +354,37 @@ void OnFrame() {
     last_frame = std::move(uses);
 }
 
+const char* KnownName(u64 ps_hash, bool russian) {
+    // PROTOTYPE (CUSA06545 01.00), from frame captures: the passes these shaders draw.
+    struct Known {
+        u64 hash;
+        const char* en;
+        const char* ru;
+    };
+    static constexpr Known known[] = {
+        {0xe1efb4fc, "SCREEN COPY", "КОПИЯ ЭКРАНА"},
+        {0xd9caa112, "DEPTH OF FIELD", "ГЛУБИНА РЕЗКОСТИ"},
+        {0xf6c8b098, "AMBIENT OCCLUSION", "ЗАТЕНЕНИЕ (AO)"},
+        {0x5e160f08, "AO BLUR", "РАЗМЫТИЕ AO"},
+        {0xbb27e350, "AO APPLY", "НАЛОЖЕНИЕ AO"},
+        {0x1f51c54f, "LINEAR DEPTH", "ЛИНЕЙНАЯ ГЛУБИНА"},
+        {0xa71ff1ce, "RIVER", "РЕКА"},
+        {0xe5684a4c, "DEPTH ONLY", "ТОЛЬКО ГЛУБИНА"},
+        {0x8aaeb600, "DEPTH CUT-OUT", "ГЛУБИНА С ВЫРЕЗОМ"},
+        {0x1071fad2, "POST FX", "ПОСТОБРАБОТКА"},
+        {0xb7f84c06, "POST FX", "ПОСТОБРАБОТКА"},
+        {0x9205fb38, "POST FX", "ПОСТОБРАБОТКА"},
+        {0xb211027f, "POST FX", "ПОСТОБРАБОТКА"},
+        {0x881eb27e, "POST FX", "ПОСТОБРАБОТКА"},
+    };
+    for (const auto& k : known) {
+        if (k.hash == ps_hash) {
+            return russian ? k.ru : k.en;
+        }
+    }
+    return nullptr;
+}
+
 std::vector<ShaderUse> LastFrame() {
     std::scoped_lock lk{browser_mutex};
     return last_frame;

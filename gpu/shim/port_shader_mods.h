@@ -36,6 +36,10 @@ struct ShaderUse {
     bool hidden;
     bool modded;
 };
+/// A short name of a pixel shader the port knows in PROTOTYPE (the browser shows it next to the
+/// ID), English and Russian; nullptr for the others.
+const char* KnownName(u64 ps_hash, bool russian);
+
 /// The last frame's pixel shaders, most draws first.
 std::vector<ShaderUse> LastFrame();
 

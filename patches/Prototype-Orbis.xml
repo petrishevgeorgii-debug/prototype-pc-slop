@@ -118,4 +118,35 @@
             <Line Type="bytes" Address="0x0056b036" Value="ba0000005a" Pattern="be 00 00 20 03 ba 00 00 80 16" At="5"/>
         </PatchList>
     </Metadata>
+    <Metadata Title="Prototype"
+              Name="Shadow Resolution - 4096"
+              Note="Sharper shadows: the sun's shadow map (its cascades share one depth texture) is 4096x4096 instead of 2048x2048, so each cascade has twice the detail in both directions. The shadow map's own memory heap and the Render heap's video memory grow by 64 MB. Adds 64 MB to DMEM."
+              Author="prototype-port"
+              PatchVer="1.0"
+              AppVer="01.00"
+              AppElf="eboot.bin"
+              isEnabled="false">
+        <PatchList>
+            <!-- The shadow render manager's resolution for its highest quality (the PS4's): width
+                 2048 -> 4096 and height (cascade rows x 1024) -> (cascade rows x 2048), in the
+                 constructor, the three setters and the static size query. -->
+            <Line Type="bytes" Address="0x002cac20" Value="41c7472800100000c1e20b4189572cbe00100000" Pattern="41 c7 47 28 00 08 00 00 c1 e2 0a 41 89 57 2c be 00 08 00 00" At="0"/>
+            <Line Type="bytes" Address="0x002cad08" Value="c7472800100000c1e20b89572cbe00100000" Pattern="5d 00 00 00 48 63 04 81 48 01 c8 ff e0 c7 47 28 00 08 00 00 c1 e2 0a 89 57 2c be 00 08 00 00" At="13"/>
+            <Line Type="bytes" Address="0x002cb72e" Value="c7472800100000c1e20b89572cbe00100000" Pattern="5f 00 00 00 48 63 04 81 48 01 c8 ff e0 c7 47 28 00 08 00 00 c1 e2 0a 89 57 2c be 00 08 00 00" At="13"/>
+            <Line Type="bytes" Address="0x002cb7f2" Value="c7472800100000c1e20b89572cbe00100000" Pattern="ff c7 47 28 00 08 00 00 c1 e2 0a 89 57 2c be 00 08 00 00" At="1"/>
+            <Line Type="bytes" Address="0x002cb1f3" Value="c7432800100000c1e20b89532cbe00100000" Pattern="c7 43 28 00 08 00 00 c1 e2 0a 89 53 2c be 00 08 00 00" At="0"/>
+            <Line Type="bytes" Address="0x002cb4ff" Value="c70600100000c1e00b" Pattern="c7 06 00 08 00 00 c1 e0 0a" At="0"/>
+            <Line Type="bytes" Address="0x002cae27" Value="c1e00bbb00500000" Pattern="c1 e0 0a bb 00 28 00 00" At="0"/>
+            <Line Type="bytes" Address="0x002caf93" Value="c1e10bb800500000" Pattern="c1 e1 0a b8 00 28 00 00" At="0"/>
+            <!-- The cascade tile size: min(width, height, 1024.0) -> min(width, height, 2048.0)
+                 (the read-only constant has no other user). -->
+            <Line Type="bytes" Address="0x00c36444" Value="00000045" Pattern="45 00 00 00 00 00 00 80 44" At="5"/>
+            <!-- The video memory: the "Render" heap's Garlic part and the Garlic direct memory block
+                 (allocation, mapping, "PS4 core" heap) 64 MiB bigger, on top of a resolution patch. -->
+            <Line Type="add32" Address="0x0056b037" Value="0x4000000" Pattern="be 00 00 20 03 ba 00 00 80 16" At="6"/>
+            <Line Type="add32" Address="0x0000419d" Value="0x4000000" Pattern="ba 00 00 c0 6b b9 00 00 20 00 41 b8 03 00 00 00" At="1"/>
+            <Line Type="add32" Address="0x000041b9" Value="0x4000000" Pattern="4c 8b 45 b8 be 00 00 c0 6b" At="5"/>
+            <Line Type="add32" Address="0x0000427f" Value="0x4000000" Pattern="c7 44 24 08 00 00 c0 6b" At="4"/>
+        </PatchList>
+    </Metadata>
 </Patch>
