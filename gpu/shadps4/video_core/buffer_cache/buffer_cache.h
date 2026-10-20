@@ -120,6 +120,16 @@ public:
     void ReadEdgeImagePages(const Image& image);
 
     /// Finds a buffer for the specified region.
+    /// port: the size of a buffer at device_addr that fits the cache's arenas (at most up to the
+    /// end of the next arena page). PROTOTYPE 2 binds buffers of several GiB.
+    [[nodiscard]] u64 ClampToArenaSpan(VAddr device_addr, u64 size) const {
+        if (size == 0) {
+            return 0;
+        }
+        const u64 limit_end = ((device_addr >> arena_page_bits) + 2) << arena_page_bits;
+        return std::min<u64>(size, limit_end - device_addr);
+    }
+
     [[nodiscard]] std::pair<const Buffer*, u64> ObtainBuffer(
         VAddr device_addr, u32 size, ObtainBufferFlags flags = ObtainBufferFlags::None);
 

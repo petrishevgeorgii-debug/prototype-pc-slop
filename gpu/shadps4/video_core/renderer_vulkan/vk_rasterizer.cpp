@@ -2216,7 +2216,8 @@ void Rasterizer::ResolveVertexBuffers(const GraphicsPipeline* pipeline,
 
     // Map buffers for merged ranges
     for (auto& range : ranges_merged) {
-        const u64 size = memory->ClampRangeSize(range.base_address, range.GetSize());
+        const u64 size = buffer_cache.ClampToArenaSpan(
+            range.base_address, memory->ClampRangeSize(range.base_address, range.GetSize()));
         std::tie(range.buffer, range.offset) = buffer_cache.ObtainBuffer(range.base_address, size);
         needs_barrier |= runtime.IsBufferAccessed(range.buffer, range.offset, size);
         bound_buffers.emplace_back(range.buffer, range.offset, size,
@@ -2611,10 +2612,26 @@ void Rasterizer::BindBuffers(const Shader::Info& stage, const PreparedStage* pre
                 !memory->IsValidGpuMapping(vsharp.base_address, 1)) {
                 buffer_infos.emplace_back(VK_NULL_HANDLE, 0, VK_WHOLE_SIZE);
             } else {
-                const u64 size = memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
-                if (size != vsharp.GetSize()) {
+                const u64 mapped_size = memory->ClampRangeSize(vsharp.base_address, vsharp.GetSize());
+                if (mapped_size != vsharp.GetSize()) {
                     LOG_ERROR(Render, "Clamped size from {} to {} for stage {:#x}",
-                              vsharp.GetSize(), size, stage.pgm_hash);
+                              vsharp.GetSize(), mapped_size, stage.pgm_hash);
+                }
+                // port: buffers of several GiB (PROTOTYPE 2) end where the buffer cache's arenas
+                // end; noted once per shader and slot.
+                const u64 size = buffer_cache.ClampToArenaSpan(vsharp.base_address, mapped_size);
+                if (size != mapped_size) {
+                    static std::mutex noted_mutex;
+                    static std::unordered_set<u64> noted;
+                    std::scoped_lock lock{noted_mutex};
+                    if (noted.insert(stage.pgm_hash ^ (u64(binding.buffer) << 56)).second) {
+                        LOG_WARNING(Render_Vulkan,
+                                    "Buffer of {} bytes at {:#x} (shader {:#x} slot {}, stride {}, "
+                                    "records {}, written {}) bound as its first {} bytes",
+                                    mapped_size, vsharp.base_address, stage.pgm_hash,
+                                    binding.buffer, vsharp.GetStride(), vsharp.num_records,
+                                    desc.is_written, size);
+                    }
                 }
                 VideoCore::ObtainBufferFlags flags = {};
                 if (desc.is_written) {
