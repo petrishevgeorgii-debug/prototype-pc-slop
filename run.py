@@ -324,16 +324,22 @@ def main():
     if reverted:
         print('Graphics: the last restart never reached the game; previous options restored', flush=True)
     env.update(graphics_options.environment(graphics))
-    # THEORDER_SAFE_GPU=1 (test): the GPU layer's optimizations and early readbacks off, to tell
-    # an emulation fault from an optimization one (PROTOTYPE 2 bring-up).
-    if get_env(env, 'SAFE_GPU') == '1':
+    # THEORDER_SAFE_GPU (tests, PROTOTYPE 2 bring-up): 1 = the GPU layer's optimizations, early
+    # readbacks and async shaders off; settings = only the readbacks and async shaders off.
+    # THEORDER_GPU_TOGGLES=<mask>: these optimizations off (bits: src/runtime_memory.c and
+    # gpu/shim/port_toggles.h).
+    safe_gpu = get_env(env, 'SAFE_GPU')
+    toggle_mask = get_env(env, 'GPU_TOGGLES') or ('4468274514573098427' if safe_gpu == '1' else '')
+    if safe_gpu in ('1', 'settings'):
         env['THEORDER_DEFERRED_READBACK'] = '0'
         env['THEORDER_STALE_READBACK'] = '0'
         env['THEORDER_ASYNC_SHADERS'] = '0'
-        toggles = out / 'safe_gpu_toggles.txt'
-        toggles.write_text('4468274514573098427\n', encoding='utf-8')
+        print('GPU test: deferred readbacks and async shaders off', flush=True)
+    if toggle_mask:
+        toggles = out / 'gpu_test_toggles.txt'
+        toggles.write_text(toggle_mask + '\n', encoding='utf-8')
         env['THEORDER_TOGGLE_FILE'] = str(toggles)
-        print('GPU safe mode: optimizations, deferred readbacks and async shaders off', flush=True)
+        print(f'GPU test: optimizations off (mask {toggle_mask})', flush=True)
     if not get_env(env, 'FSR411_DIR') and not (PORT / 'fsr4_411').is_dir() and (data / 'fsr4_411').is_dir():
         env['THEORDER_FSR411_DIR'] = str(data / 'fsr4_411')
 
