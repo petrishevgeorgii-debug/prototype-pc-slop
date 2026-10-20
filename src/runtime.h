@@ -124,4 +124,8 @@ extern uintptr_t runtime_guest_image;
  * the game's own functions here). */
 ABI int32_t runtime_event_set(void *event,uint32_t n);
 ABI int32_t runtime_event_reset(void *event,uint32_t n);
+/* PROTOTYPE mouse look on the on-foot camera (runtime_pad.c): probe.c redirects the camera's call
+ * of its stick helper (original) to runtime_chase_camera_input. */
+void runtime_set_chase_camera_input(void *original);
+ABI uint8_t runtime_chase_camera_input(void *input,float *x,float *y,float *boost);
 #endif

@@ -805,6 +805,22 @@ static void hook_call_site(uint64_t call_site_offset, void *target_fn) {
     memcpy(image + call_site_offset + 1, &disp, 4);
 }
 
+/* PROTOTYPE (CUSA06545 01.00): the on-foot camera (proto::ChaseCamera, update at 0x70fa90) reads
+ * the right stick through its input helper (0x8f68d0) at 0x70fe8a; that call goes to
+ * runtime_chase_camera_input, which adds the mouse movement (runtime_pad.c). Only when the bytes
+ * are exactly these; THEORDER_MOUSE_CAMERA=0 leaves the stick emulation only. */
+static void install_mouse_camera(void) {
+    const char *env=getenv("THEORDER_MOUSE_CAMERA");
+    if (env && *env=='0') return;
+    static const uint64_t site=0x70fe8a, helper=0x8f68d0;
+    static const unsigned char call[]={0x4c,0x89,0xff,0x4c,0x89,0xee,0x4c,0x89,0xe2,0xe8,0x41,0x6a,0x1e,0x00,0x84,0xc0};
+    static const unsigned char entry[]={0x83,0x7f,0x38,0x02,0x75,0x33,0xc5,0xfa,0x10,0x47,0x2c};
+    if (!image || !g_diag_stubs || memcmp(image+site-9,call,sizeof(call)) || memcmp(image+helper,entry,sizeof(entry))) return;
+    runtime_set_chase_camera_input(image+helper);
+    hook_call_site(site,(void *)runtime_chase_camera_input);
+    printf("Runtime: mouse look drives the on-foot camera (call at 0x%" PRIx64 ")\n",site);
+}
+
 static ABI void log_failure_jump(uint64_t site, uint64_t rax_val, uint64_t rbx_val) {
     printf("--> FAILURE JUMP from guest offset 0x%" PRIx64 " with rax=0x%" PRIx64 " (%lld), rbx=0x%" PRIx64 "\n",
            site, rax_val, (long long)rax_val, rbx_val);
@@ -1447,6 +1463,7 @@ int main(int argc, char **argv) {
     }
     if (patch_file) apply_patches(patch_file, segments, ns, relocs, nr);
     install_event_fix(segments, ns);
+    install_mouse_camera();
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif
