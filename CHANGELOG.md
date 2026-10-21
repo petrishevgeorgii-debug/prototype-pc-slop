@@ -17,6 +17,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
   - On foot (F): walk, sprint at 22 m/s and jump through the city with collision against its buildings, cars and props. Sprinting into a wall runs up it, Alex's way, and over the top. `--walk-test seconds` checks it without a screen.
   - Alex: the game's own model (body, head, hoodie, arms), skeletons and animations, read from `art/alex/alex.p3d.rz` (634 clips). On foot the camera is behind him; he stands, walks, runs, sprints, rises, falls and runs up walls with the game's clips, blended into each other, and vaults cars instead of running up them. V switches to first person; `--anim name` plays one clip.
   - More of Alex's moves, all the game's clips: the jump's take-off, a double jump (Space in the air: a flip), leaning into long jumps, landings by how hard he lands (soft, running on, heavy with a moment's hold, a dive roll when sprinting), stopping from a run or a sprint, and coming over the top of a wall.
+  - Charged jump (hold Space on the ground: up to about 20 m), glide (hold Space after the double jump), dash (E, once in the air), and a dive pose when falling fast; the game's clips for each.
 - `scripts/game_map.py` writes a map of the game's code to `out/game_map`. The map lists the 11,600 classes with their virtual functions, 73,000 functions with names where possible, and the engine's source files. It also writes a Ghidra symbol list.
 
 ## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))

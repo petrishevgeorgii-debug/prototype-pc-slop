@@ -22,6 +22,11 @@ constexpr float kJump = 13.0f;     ///< about 8 m up
 constexpr float kGravity = 28.0f;
 constexpr float kWallRun = 16.0f;  ///< up a wall while sprinting into it
 constexpr float kVault = 7.0f;     ///< over something low while sprinting into it
+constexpr float kChargedJump = 34.0f; ///< a fully charged jump: about 20 m up
+constexpr float kChargeTime = 1.0f;   ///< seconds to charge it fully
+constexpr float kDash = 32.0f;     ///< the dash's speed
+constexpr float kGlideFall = 4.0f; ///< gliding: the falling speed
+constexpr float kGlide = 18.0f;    ///< and the speed forward
 
 } // namespace
 
@@ -46,24 +51,63 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
     if (wl > 1.0f) wish[0] /= wl, wish[1] /= wl;
     float speed = in.sprint ? kSprint : kWalk;
     if (stun_ > 0) stun_ -= dt, speed = 0; // a heavy landing holds Alex down for a moment
-    const float rate = grounded ? 12.0f : wall_running ? 10.0f : 2.5f;
-    const float k = std::min(1.0f, rate * dt);
-    velocity[0] += (wish[0] * speed - velocity[0]) * k;
-    velocity[2] += (wish[1] * speed - velocity[2]) * k;
     const bool was_grounded = grounded, was_wall_running = wall_running;
-    jumped = double_jumped = landed = left_wall_top = false;
-    if (in.jump && (grounded || wall_running)) {
-        velocity[1] = kJump;
+    jumped = double_jumped = landed = left_wall_top = charged_jump = dashed = false;
+    // On the ground the jump goes when it is let go: a tap jumps, holding it charges a higher
+    // jump (crouched, standing still).
+    charging = false;
+    if (grounded && in.jump_held) {
+        charge_ += dt;
+        if (charge_ > 0.2f) charging = true, speed = 0;
+    }
+    gliding = !grounded && !wall_running && in.jump_held && double_used_ && velocity[1] < 0;
+    if (dash_cooldown_ > 0) dash_cooldown_ -= dt;
+    if (dash_time_ > 0) dash_time_ -= dt;
+    // A dash: a burst the way Alex goes (or faces); once in the air until he lands.
+    if (in.dash && dash_cooldown_ <= 0 && !wall_running && !(dash_used_ && !grounded)) {
+        float dir[2] = {wish[0], wish[1]};
+        if (wl < 0.1f) dir[0] = std::sin(facing), dir[1] = -std::cos(facing);
+        const float dl = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
+        velocity[0] = dir[0] / dl * kDash;
+        velocity[2] = dir[1] / dl * kDash;
+        if (!grounded) velocity[1] = std::max(velocity[1], 3.0f), dash_used_ = true;
+        dash_time_ = 0.35f;
+        dash_cooldown_ = 0.6f;
+        dashed = true;
+    }
+    const float rate = grounded ? 12.0f : wall_running ? 10.0f : gliding ? 1.5f : 2.5f;
+    const float k = std::min(1.0f, rate * dt);
+    if (gliding) {
+        // Gliding: forward at a steady speed, sinking slowly.
+        float dir[2] = {wish[0], wish[1]};
+        if (wl < 0.1f) dir[0] = std::sin(facing), dir[1] = -std::cos(facing);
+        velocity[0] += (dir[0] * kGlide - velocity[0]) * k;
+        velocity[2] += (dir[1] * kGlide - velocity[2]) * k;
+        velocity[1] += (-kGlideFall - velocity[1]) * std::min(1.0f, 4.0f * dt);
+    } else if (dash_time_ <= 0) {
+        velocity[0] += (wish[0] * speed - velocity[0]) * k;
+        velocity[2] += (wish[1] * speed - velocity[2]) * k;
+    }
+    if (grounded && in.jump_released) {
+        // From a tap's jump to a full charge's.
+        const float t = std::clamp((charge_ - 0.2f) / (kChargeTime - 0.2f), 0.0f, 1.0f);
+        velocity[1] = charge_ > 0.2f ? kJump + (kChargedJump - kJump) * t : kJump;
+        charged_jump = charge_ > 0.2f;
+        jumped = !charged_jump;
         grounded = false;
+        charge_ = 0;
+    } else if (in.jump && wall_running) {
+        velocity[1] = kJump;
         jumped = true;
-    } else if (in.jump && !double_used_) {
+    } else if (in.jump && !grounded && !double_used_) {
         // Once more in the air (Alex's double jump).
         velocity[1] = std::max(velocity[1], kJump * 0.85f);
         double_used_ = true;
         double_jumped = true;
     }
+    if (!in.jump_held) charge_ = 0;
     const float falling = -velocity[1];
-    velocity[1] = std::max(velocity[1] - kGravity * dt, -60.0f);
+    if (!gliding) velocity[1] = std::max(velocity[1] - kGravity * dt, -60.0f);
 
     // Moved in steps short enough not to pass through a wall.
     const float travel = std::sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2]) * dt;
@@ -134,7 +178,7 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
             velocity[1] = std::max(velocity[1], kVault);
         }
     }
-    if (grounded || wall_running) double_used_ = false;
+    if (grounded || wall_running) double_used_ = false, dash_used_ = false;
     if (was_wall_running && !wall_running && !grounded && velocity[1] > 0) left_wall_top = true;
     // The body turns to where it goes (quickly: Alex turns on the spot).
     const float hs = std::sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);

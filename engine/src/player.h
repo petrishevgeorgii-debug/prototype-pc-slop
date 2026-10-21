@@ -10,7 +10,11 @@ class City;
 
 struct PlayerInput {
     float forward = 0, right = 0; ///< -1..1
-    bool sprint = false, jump = false;
+    bool sprint = false;
+    bool jump = false;          ///< pressed this frame
+    bool jump_held = false;     ///< held down (charging on the ground, gliding in the air)
+    bool jump_released = false; ///< let go this frame
+    bool dash = false;          ///< pressed this frame
     float yaw = 0;                ///< the camera's, radians (0 looks along -z)
 };
 
@@ -29,13 +33,19 @@ public:
     float wall_normal[2] = {0, 1};   ///< x z, away from the wall it runs up
     // What happened in the last Update:
     bool jumped = false, double_jumped = false, landed = false, left_wall_top = false;
+    bool charged_jump = false, dashed = false;
     float impact = 0;                ///< falling speed when it landed
+    // What it is doing:
+    bool charging = false, gliding = false;
 
 private:
     float safe_[3] = {0, 0, 0}; ///< the last place it stood, to come back to after a fall out of the city
     bool has_safe_ = false;
     bool double_used_ = false;
     float stun_ = 0; ///< seconds held after a heavy landing
+    float charge_ = 0; ///< seconds the jump has been held on the ground
+    bool dash_used_ = false;
+    float dash_time_ = 0, dash_cooldown_ = 0;
 };
 
 } // namespace engine

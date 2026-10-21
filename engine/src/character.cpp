@@ -116,6 +116,11 @@ const char* kDiveRoll = "alex_loco_diveroll";
 const char* kRunStop = "alex_loco_run_stop";
 const char* kSprintStop = "alex_loco_run_sprint_stop";
 const char* kWallTop = "alex_wall_run_top";
+const char* kCharged = "alex_loco_jump_long_charged";     // its first frames: the crouch
+const char* kGlide = "alex_bullet_smash_glide_forward";
+const char* kDive = "alex_loco_jump_dive";                // falling fast
+const char* kAirDash = "alex_loco_aerial_dash";
+const char* kGroundDash = "alex_loco_trans_dash";
 
 bool Locomotion(const std::string& name) {
     return name == kWalk || name == kRun || name == kSprint;
@@ -297,7 +302,9 @@ void Character::Advance(Clip& clip, float dt) const {
 void Character::Animate(float dt, const CharacterState& s) {
     if (!forced_) {
         // What happened starts a move.
-        if (s.jumped) Act(Action::TakeOff, kTakeOff, 1.3f);
+        if (s.charged_jump) Act(Action::TakeOff, kCharged, 1.0f, 0.1f);
+        else if (s.jumped) Act(Action::TakeOff, kTakeOff, 1.3f);
+        if (s.dashed) Act(Action::Dash, s.grounded ? kGroundDash : kAirDash, s.grounded ? 1.0f : 1.3f);
         if (s.double_jumped) Act(Action::Flip, kFlip, 1.25f, 0.2f);
         if (s.left_wall_top) Act(Action::WallTop, kWallTop, 1.0f);
         if (s.landed) {
@@ -322,12 +329,16 @@ void Character::Animate(float dt, const CharacterState& s) {
                                      (s.moving && action_time_ > 0.35f); break;
             case Action::HeavyLand: end = end || !s.grounded || s.wall_running || (s.moving && action_time_ > 0.9f); break;
             case Action::WallTop: end = end || s.wall_running || (s.grounded && action_time_ > 0.25f); break;
+            case Action::Dash: end = end || s.wall_running || s.gliding || (s.grounded && current_.animation == Find(kAirDash) && action_time_ > 0.2f); break;
             case Action::None: break;
             }
             if (end) action_ = Action::None;
         }
         if (action_ == Action::None) {
             if (s.wall_running) Play(kWallRun, 1.5f, true);
+            else if (s.charging) Play(kCharged, 0.0f, false, 0.03f); // held in the crouch
+            else if (s.gliding) Play(kGlide, 1.0f, true);
+            else if (!s.grounded && s.vertical < -25.0f) Play(kDive, 1.0f, false); // diving: its last pose held
             else if (!s.grounded) {
                 // In the air: leaning into it when moving fast.
                 if (s.vertical > 1.0f) Play(s.speed > 6.0f ? kAirForward : kRise, 1.0f, true);

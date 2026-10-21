@@ -23,8 +23,11 @@ struct CharacterState {
     bool grounded = true;
     bool wall_running = false;
     bool moving = false;    ///< the player wants to move
+    bool charging = false;  ///< crouched, charging a jump
+    bool gliding = false;
     // What happened this frame:
     bool jumped = false, double_jumped = false, landed = false, left_wall_top = false;
+    bool charged_jump = false, dashed = false;
     float impact = 0;       ///< falling speed at the landing, m/s
 };
 
@@ -74,7 +77,7 @@ private:
 
     /// A one-off move: played through once, then the body goes back to moving as it does,
     /// unless what it does ends it first (landing, moving off, ...).
-    enum class Action { None, TakeOff, Flip, Land, HeavyLand, Stop, WallTop };
+    enum class Action { None, TakeOff, Flip, Land, HeavyLand, Stop, WallTop, Dash };
 
     int Find(const std::string& name) const;
     /// `restart`: play it from `start` (a fraction of it) even when it is playing already.

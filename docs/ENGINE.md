@@ -137,8 +137,14 @@ layer.
     holding him for 0.6 s), `alex_loco_diveroll` (above 28 m/s while sprinting);
   - stopping: `alex_loco_run_stop`, `alex_loco_run_sprint_stop`;
   - the top of a wall: `alex_wall_run_top`.
-- `--walk-test seconds --jump-at 0.3,0.6` presses jump at those times and logs the jumps and
-  landings.
+- Space on the ground jumps when let go; held longer than 0.2 s it charges (crouched in
+  `alex_loco_jump_long_charged`'s first frames) a jump of 13 to 34 m/s (full after 1 s), which
+  plays the rest of that clip. In the air: Space a double jump; then held while falling, a glide
+  (`alex_bullet_smash_glide_forward`: 18 m/s forward, sinking at 4 m/s). E dashes at 32 m/s
+  (`alex_loco_trans_dash` on the ground, `alex_loco_aerial_dash` in the air, once until he
+  lands). Falling faster than 25 m/s he dives (`alex_loco_jump_dive`).
+- `--walk-test seconds --jump-at 0.3,1.2:0.8 --dash-at 0.6` presses jump at those times (the
+  second held for 0.8 s), dashes at 0.6 s, and logs the moves and landings.
 - `--anim alex_loco_jump_backflip [--anim-time frame]` plays one clip only, to look at it.
 
 ## Next milestones

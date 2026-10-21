@@ -11,7 +11,8 @@
 // up and down, Shift faster, the mouse wheel changes the speed; N / B the next / previous district,
 // L shadows on and off, [ and ] the exposure; Esc releases the mouse or quits.
 // F: on foot and back to flying. On foot: W A S D walk, Shift sprints (into a wall: up it), Space
-// jumps (also off a wall); V first or third person. --walk-test runs forward for that many
+// jumps (held: a charged jump; in the air: a double jump, then held: a glide; off a wall), E
+// dashes; V first or third person. --walk-test runs forward for that many
 // seconds and logs the way; --anim plays one of Alex's animations only.
 
 #define SDL_MAIN_HANDLED // a plain main(); SDL is told it is ready
@@ -128,7 +129,8 @@ int main(int argc, char** argv) {
     bool validation = false, mirror = false, at_given = false, look_given = false, shadows = true;
     float exposure = 0.0f, walk_test = 0.0f, anim_time = 0.0f;
     std::string anim;
-    std::vector<float> jump_at; // --walk-test: when to press jump
+    std::vector<std::pair<float, float>> jump_at; // --walk-test: when to press jump, and how long to hold it
+    std::vector<float> dash_at;
     bool walk = false;
     int width = 1600, height = 900;
     Camera camera;
@@ -148,10 +150,26 @@ int main(int argc, char** argv) {
         else if (a == "--anim" && i + 1 < argc) anim = argv[++i];
         else if (a == "--anim-time" && i + 1 < argc) anim_time = std::strtof(argv[++i], nullptr);
         else if (a == "--jump-at" && i + 1 < argc) {
+            // "0.3,1.2:0.8": press at 0.3 s; press at 1.2 s and hold for 0.8 s.
             for (const char* p = argv[++i]; *p;) {
                 char* end = nullptr;
-                jump_at.push_back(std::strtof(p, &end));
+                const float t = std::strtof(p, &end);
                 if (end == p) break;
+                float hold = 0.0f;
+                if (*end == ':') {
+                    const char* q = end + 1;
+                    hold = std::strtof(q, &end);
+                }
+                jump_at.emplace_back(t, hold);
+                p = *end == ',' ? end + 1 : end;
+            }
+        } else if (a == "--dash-at" && i + 1 < argc) {
+            float t = 0;
+            for (const char* p = argv[++i]; *p;) {
+                char* end = nullptr;
+                t = std::strtof(p, &end);
+                if (end == p) break;
+                dash_at.push_back(t);
                 p = *end == ',' ? end + 1 : end;
             }
         }
@@ -248,7 +266,7 @@ int main(int argc, char** argv) {
         }
         bool running = true, looking = false;
         engine::Player player;
-        bool on_foot = false, jump_pressed = false;
+        bool on_foot = false, jump_pressed = false, jump_released = false, dash_pressed = false;
         float walk_time = 0.0f, walk_log = 0.0f;
         engine::CharacterState happened; // the player's events since Alex was last animated
         float body_dt = 0.0f;            // and the time it moved
@@ -282,8 +300,10 @@ int main(int argc, char** argv) {
                         third_person = !third_person;
                     } else if (ev.key.key == SDLK_F) {
                         set_on_foot(!on_foot);
-                    } else if (ev.key.key == SDLK_SPACE) {
+                    } else if (ev.key.key == SDLK_SPACE && !ev.key.repeat) {
                         jump_pressed = true;
+                    } else if (ev.key.key == SDLK_E && !ev.key.repeat) {
+                        dash_pressed = true;
                     } else if (ev.key.key == SDLK_L) {
                         lighting.shadows = !lighting.shadows;
                     } else if (ev.key.key == SDLK_RIGHTBRACKET) {
@@ -294,6 +314,9 @@ int main(int argc, char** argv) {
                         Log("Camera: --at %.1f,%.1f,%.1f --look %.1f,%.1f\n", camera.position[0], camera.position[1],
                                     camera.position[2], camera.yaw * 180 / 3.14159265f, camera.pitch * 180 / 3.14159265f);
                     }
+                    break;
+                case SDL_EVENT_KEY_UP:
+                    if (ev.key.key == SDLK_SPACE) jump_released = true;
                     break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN:
                     if (ev.button.button == SDL_BUTTON_RIGHT) looking = true;
@@ -326,41 +349,56 @@ int main(int argc, char** argv) {
                 in.right = side * ((keys[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_A] ? 1.0f : 0.0f));
                 in.sprint = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
                 in.jump = jump_pressed;
+                in.jump_held = keys[SDL_SCANCODE_SPACE];
+                in.jump_released = jump_released;
+                in.dash = dash_pressed;
                 in.yaw = camera.yaw;
+                const auto step = [&](float h) {
+                    player.Update(h, in, city);
+                    body_dt += h;
+                    happened.jumped |= player.jumped || player.charged_jump;
+                    happened.charged_jump |= player.charged_jump;
+                    happened.double_jumped |= player.double_jumped;
+                    happened.left_wall_top |= player.left_wall_top;
+                    happened.dashed |= player.dashed;
+                    if (player.landed) happened.landed = true, happened.impact = player.impact;
+                };
                 if (walk_test > 0.0f) {
-                    // Headless check: sprint straight ahead in fixed steps, several per frame.
+                    // Headless check: sprint straight ahead in fixed steps, several per frame, with
+                    // the jump pressed (and held) as --jump-at says.
                     in.forward = 1.0f;
                     in.sprint = true;
                     for (int i = 0; i < 15 && walk_time < walk_test; ++i) {
                         walk_time += 1.0f / 60.0f;
+                        const bool held = in.jump_held;
                         in.jump = false;
-                        for (float& t : jump_at) {
-                            if (t > 0 && walk_time >= t) in.jump = true, t = -1;
+                        in.jump_held = false;
+                        in.dash = false;
+                        for (auto& [t, hold] : jump_at) {
+                            if (walk_time >= t && walk_time < t + hold + 1.0f / 60.0f) in.jump_held = true;
+                            if (walk_time >= t && walk_time - 1.0f / 60.0f < t) in.jump = true;
                         }
-                        player.Update(1.0f / 60.0f, in, city);
-                        body_dt += 1.0f / 60.0f;
-                        happened.jumped |= player.jumped;
-                        happened.double_jumped |= player.double_jumped;
-                        happened.left_wall_top |= player.left_wall_top;
-                        if (player.landed) happened.landed = true, happened.impact = player.impact;
-                        if (player.jumped || player.double_jumped || player.landed || player.left_wall_top) {
-                            Log("Walk %.2f s:%s%s%s%s (impact %.1f)\n", walk_time, player.jumped ? " jump" : "",
-                                player.double_jumped ? " double jump" : "", player.landed ? " landed" : "",
-                                player.left_wall_top ? " over the top" : "", player.impact);
+                        for (float& t : dash_at) {
+                            if (t > 0 && walk_time >= t) in.dash = true, t = -1;
+                        }
+                        in.jump_released = held && !in.jump_held;
+                        step(1.0f / 60.0f);
+                        if (player.jumped || player.charged_jump || player.double_jumped || player.landed || player.left_wall_top ||
+                            player.dashed) {
+                            Log("Walk %.2f s:%s%s%s%s%s%s (impact %.1f)\n", walk_time, player.jumped ? " jump" : "",
+                                player.charged_jump ? " charged jump" : "", player.double_jumped ? " double jump" : "",
+                                player.landed ? " landed" : "", player.left_wall_top ? " over the top" : "",
+                                player.dashed ? " dash" : "", player.impact);
                         }
                         if (walk_time >= walk_log) {
-                            Log("Walk %.2f s: %.1f, %.1f, %.1f%s%s\n", walk_time, player.position[0], player.position[1],
-                                player.position[2], player.grounded ? " (ground)" : "", player.wall_running ? " (up a wall)" : "");
+                            Log("Walk %.2f s: %.1f, %.1f, %.1f%s%s%s%s\n", walk_time, player.position[0], player.position[1],
+                                player.position[2], player.grounded ? " (ground)" : "", player.wall_running ? " (up a wall)" : "",
+                                player.gliding ? " (gliding)" : "", player.charging ? " (charging)" : "");
                             walk_log += 0.25f;
                         }
                     }
                 } else {
-                    player.Update(dt, in, city);
-                    body_dt += dt;
-                    happened.jumped |= player.jumped;
-                    happened.double_jumped |= player.double_jumped;
-                    happened.left_wall_top |= player.left_wall_top;
-                    if (player.landed) happened.landed = true, happened.impact = player.impact;
+                    step(dt);
                 }
                 player.Eye(camera.position);
                 if (third_person && has_alex) {
@@ -384,7 +422,7 @@ int main(int argc, char** argv) {
                 }
                 camera.position[1] += speed * ((keys[SDL_SCANCODE_SPACE] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_C] ? 1.0f : 0.0f));
             }
-            jump_pressed = false;
+            jump_pressed = jump_released = dash_pressed = false;
 
             city.Update(camera.position);
             std::vector<const engine::Model*> models;
@@ -398,6 +436,8 @@ int main(int argc, char** argv) {
                 cs.vertical = player.velocity[1];
                 cs.grounded = player.grounded;
                 cs.wall_running = player.wall_running;
+                cs.charging = player.charging;
+                cs.gliding = player.gliding;
                 cs.moving = walk_test > 0.0f || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
                 alex.Animate(body_dt, cs);
                 body_dt = 0.0f;
