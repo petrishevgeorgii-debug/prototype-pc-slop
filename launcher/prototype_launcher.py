@@ -663,7 +663,8 @@ class Launcher:
         lx = x
         for text, command in (('Game folder', self.choose_folder), ('Saves', self.open_saves),
                               ('Save backups', self.open_backups), ('Log', self.open_log),
-                              ('Port folder', lambda: self.open_path(PORT_DIR))):
+                              ('Port folder', lambda: self.open_path(PORT_DIR)),
+                              ('Manhattan Engine', self.start_engine)):
             item = cv.create_text(lx, fy, text=text, anchor='w', fill=C['muted'], font=self.f(9))
             self.hover(item, C['muted'], C['text'])
             cv.tag_bind(item, '<Button-1>', lambda e, c=command: c())
@@ -1108,6 +1109,27 @@ class Launcher:
             self.open_path(folder)
         else:
             self.set_status('No save backups yet', C['muted'])
+
+    def start_engine(self):
+        """The Manhattan Engine (docs/ENGINE.md): PROTOTYPE's city in an engine of its own, a preview."""
+        names = ('manhattan.exe', 'manhattan')
+        exe = next((d / n for d in (PORT_DIR / 'out', PORT_DIR / 'bin', PORT_DIR) for n in names if (d / n).is_file()), None)
+        if not exe:
+            self.set_status('The Manhattan Engine is not built yet: run the setup again', C['muted'])
+            return
+        game = self.values.get('game_dir') or ''
+        if not game:
+            self.set_status('Choose the game folder first', C['muted'])
+            return
+        env = dict(os.environ)
+        clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+        if os.name == 'nt' and not (exe.parent / 'SDL3.dll').is_file() and clang64.is_dir():
+            env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
+        try:
+            subprocess.Popen([str(exe), game], cwd=str(PORT_DIR), env=env)
+            self.set_status('Manhattan Engine started: right mouse button to look, W A S D to fly', C['muted'])
+        except OSError as error:
+            self.set_status(f'The Manhattan Engine did not start: {error}', C['muted'])
 
     def open_log(self):
         if LOG_FILE.is_file():

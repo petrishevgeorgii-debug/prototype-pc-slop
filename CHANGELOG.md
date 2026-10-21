@@ -10,6 +10,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
   - First part: the sun's shadow distance, live in the port menu (Image → SHADOW DISTANCE: GAME or 250 to 2000 m). It is very experimental.
 - The Manhattan Engine ([docs/ENGINE.md](docs/ENGINE.md)) is the start of a PC engine that runs PROTOTYPE from your own copy's data, as the P.T. PC port does. Milestone 0 is the city's data read without the game: `tools/formats` reads PROTOTYPE's Pure3D files and untiles their textures ([docs/formats/pure3d.md](docs/formats/pure3d.md)).
   - The tools can draw the whole of Manhattan and a textured city block, and export cells to OBJ for Blender.
+  - Milestone 1: `manhattan.exe` (launcher: **Manhattan Engine**) flies through PROTOTYPE's city in its own Vulkan renderer. It shows the low-detail city, with the detailed cells and their textures streamed in around the camera.
 - `scripts/game_map.py` writes a map of the game's code to `out/game_map`. The map lists the 11,600 classes with their virtual functions, 73,000 functions with names where possible, and the engine's source files. It also writes a Ghidra symbol list.
 
 ## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))

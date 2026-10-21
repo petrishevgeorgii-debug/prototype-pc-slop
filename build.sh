@@ -28,6 +28,13 @@ MINGW*|MSYS*)
         echo 'Build failed (full log: out/gpu-build.log)' >&2; exit 1
     fi
     cp out/gpu/theorder-probe.exe out/gpu/theorder-gpu-capabilities.exe out/gpu/theorder-play.exe out/
+    # The Manhattan Engine (docs/ENGINE.md): its own program; a failure does not stop the game's build.
+    if ninja -C out/gpu manhattan > out/engine-build.log 2>&1; then
+        cp out/gpu/engine/manhattan.exe out/
+        echo "Built $PWD/out/manhattan.exe"
+    else
+        echo "The Manhattan Engine was not built (out/engine-build.log); the game is not affected." >&2
+    fi
     # Loaded instead of FFmpeg's real librsvg, which brings GIO in (packaging/windows/rsvg_stub.c).
     clang -shared -O2 -Wall -Wextra -Werror packaging/windows/rsvg_stub.c -o out/librsvg-2-2.dll
     echo "Built $PWD/out/theorder-probe.exe"
@@ -103,6 +110,12 @@ done < <(find game -name '*.cpp' -print0 | sort -z)
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -mgeneral-regs-only -c src/isa_emulate.c -o out/isa_emulate.o
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c "${native[@]}" out/libatrac9.a -lm -lstdc++ "${gpu[@]}" "${libraries[@]}" -o out/theorder-probe
 echo "Built $PWD/out/theorder-probe"
+if ninja -C out/gpu manhattan > out/engine-build.log 2>&1; then
+    cp out/gpu/engine/manhattan out/
+    echo "Built $PWD/out/manhattan"
+else
+    echo "The Manhattan Engine was not built (out/engine-build.log); the game is not affected." >&2
+fi
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/theorder-gpu-capabilities
 if [[ ${1:-} == --test ]]; then

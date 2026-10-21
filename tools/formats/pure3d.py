@@ -7,6 +7,7 @@ Format notes: docs/formats/pure3d.md. The Manhattan Engine (docs/ENGINE.md) load
   python tools/formats/pure3d.py tree  <file.p3d[.rz]> [--depth N]   chunk tree
   python tools/formats/pure3d.py stats <file>...                      chunk types and counts
   python tools/formats/pure3d.py meshes <file>                        meshes, their parts, sizes
+  python tools/formats/pure3d.py objects <cell>_ft.p3d.rz              placed objects (props, cars...)
 """
 import argparse
 import collections
@@ -295,6 +296,34 @@ def textures(root):
     return {Reader(c.data).pstr(): c for _, c in root.walk() if c.id == 0x19000}
 
 
+# ---- instances (the cells' _ft files)
+
+def game_objects(root):
+    """[(type, name, position, rotation quaternion, data after them)] of a file's GameObjects.
+
+    GameObject: full name ("proto::CloudSpawner(1):Cell_100Collectible004_148"), name, type, ...;
+    child GameObjectAttributes: u32 size, "META", then for the placed ones a position (3 floats)
+    and a rotation quaternion (4 floats, x y z w), then what the type keeps (CloudSpawner: the
+    cloud's name, a scale...). Generic GameObjects (no type) hold named attributes instead
+    (u32 count; per attribute: u32 length + name, u32 length + type, u16 1, the value)."""
+    out = []
+    for _, c in root.walk():
+        if c.id != 0x07f00000:
+            continue
+        full = Reader(c.data).pstr()
+        kind, _, name = full.partition('(1):')
+        attrs = c.first(0x07f00001)
+        if not attrs or b'META' not in attrs.data[:8] or kind == 'GameObject':
+            continue
+        at = attrs.data.index(b'META') + 4
+        if len(attrs.data) < at + 28:
+            continue
+        pos = struct.unpack_from('<3f', attrs.data, at)
+        rot = struct.unpack_from('<4f', attrs.data, at + 12)
+        out.append((kind, name, pos, rot, attrs.data[at + 28:]))
+    return out
+
+
 # ---- command line
 
 def main():
@@ -307,6 +336,8 @@ def main():
     s.add_argument('files', nargs='+')
     m = sub.add_parser('meshes')
     m.add_argument('file')
+    g = sub.add_parser('objects')
+    g.add_argument('file')
     a = p.parse_args()
     if a.cmd == 'tree':
         for depth, c in load(a.file).walk():
@@ -323,6 +354,14 @@ def main():
                     count[c.id] += 1
         for cid, n in count.most_common():
             print(f'{n:8d}  {cid:08x}  {name_of(cid)}')
+    elif a.cmd == 'objects':
+        kinds = collections.Counter()
+        for kind, name, pos, rot, rest in game_objects(load(a.file)):
+            kinds[kind] += 1
+            extra = Reader(rest).pstr() if rest[:1] and 0 < rest[0] < 64 else ''
+            print(f'{kind:32s} {name:40s} at {pos[0]:9.2f} {pos[1]:8.2f} {pos[2]:9.2f}  {extra}')
+        for kind, n in kinds.most_common():
+            print(f'{n:6d}  {kind}')
     elif a.cmd == 'meshes':
         for name, prims in meshes(load(a.file)):
             verts = sum(len(q.vertices) // max(q.stride, 1) for q in prims)

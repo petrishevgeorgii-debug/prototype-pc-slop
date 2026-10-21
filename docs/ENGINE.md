@@ -23,6 +23,28 @@ layer.
   infection) with its textures.
 - `export_obj.py` writes a cell as OBJ and PNG textures for Blender.
 
+**Milestone 1: fly through the city.** The first build is in.
+
+- `engine/` is the engine itself, C++20 with Vulkan and SDL3. The port's build makes it as
+  `out/manhattan.exe`, and the launcher starts it from **Manhattan Engine** at its bottom.
+- It shows:
+  - the whole city at low detail;
+  - the detailed cells around the camera, streamed in on a worker thread and swapped for their
+    low-detail mesh;
+  - the textures, uploaded as the BC textures they are, with all their mip levels;
+  - a first lighting model (sun, sky light, fog) in place of the game's.
+- Controls:
+  - hold the right mouse button (or press Tab) to look around;
+  - W A S D to fly, Space and C to go up and down;
+  - Shift to go faster, the mouse wheel to change the speed;
+  - P to print the camera position, Esc to quit.
+- `manhattan <game folder> --screenshot file.png [--at x,y,z --look yaw,pitch]` draws one view
+  and saves it, for checking without a screen. Messages also go to `manhattan.log`.
+- Not yet:
+  - props, cars and lights placed by instances (only geometry in world space is shown);
+  - the textures in other tile modes;
+  - the game's own shaders and lighting.
+
 ## Next milestones
 
 1. **The rest of the city's data:**
@@ -30,10 +52,9 @@ layer.
      and decals;
    - the 2D-tiled textures;
    - the shader effects' parameters, the height map, the time-of-day settings (`*_tod`).
-2. **Viewer**: `engine/` in C++20 with Vulkan (like the GPU layer the port already has). It
-   streams the cells around a free camera and draws them with materials written for PC:
-   physically based materials from the game's colour, normal and grime textures, sun and sky.
-   This is where ray-traced shadows and the like belong, without the PS4's rendering in the way.
+2. **The look**: physically based materials from the game's colour, normal and grime textures,
+   the sun and sky from the time-of-day files, shadows. Ray-traced shadows and the like belong
+   here, without the PS4's rendering in the way.
 3. **Characters**: skeletons, skinned meshes and animations (`art/alex`, `art/packages/pedestrians`).
 4. **Playable**:
    - Alex on foot in the city: movement, parkour and camera, rebuilt from the game's behaviour

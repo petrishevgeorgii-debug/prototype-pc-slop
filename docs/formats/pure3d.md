@@ -51,6 +51,36 @@ Positions are in metres, world space, y up. The island is about 2 x 3.7 km.
 | `07f00000` | GameObject | `name(1):instance`, attributes `07f00001` (`META`, then named values: `VectorAttribute`...) |
 | `00017005`..`0001700e` | Flares | light flares (FlareGroup `00017006`) |
 
+### Placed objects (`*_ft` files)
+
+The cells' `_ft` files place the city's objects as GameObjects (`07f00000`). Each chunk holds
+the full name (`proto::CloudSpawner(1):Cell_100airconditionerOS001_1`), the short name and the
+type. Its GameObjectAttributes child (`07f00001`) holds:
+
+- u32 size;
+- `"META"`;
+- a position (3 floats, world space);
+- a rotation quaternion (4 floats, x y z w);
+- what the type keeps.
+
+Cell 100 has these types:
+
+| Type | Count | What it is |
+|---|---|---|
+| `proto::CloudSpawner` | 1087 | Props. The data names the prop (`airconditionerOS001`, `Collectible004`), then a scale. |
+| `proto::ParkedCarSpawner` | 73 | Parked cars. |
+| `proto::LightDecalInfo` | 68 | Light decals (a layout of their own). |
+| `proto::WebNodeLocator` | 4 | |
+| `proto::AmbientExclusionVolume` | 2 | |
+
+A prop is in `props.p3d.rz` under its name, in three chunks:
+
+- a CompositeDrawable (`00123000`);
+- a Skeleton (`00023000`), whose joints place the parts;
+- meshes `<name>InitialShape` and `<name>DamagedShape`.
+
+`pure3d.py objects <cell>_ft.p3d.rz` lists the placed objects.
+
 ### Vertex elements
 
 Names are hashes; consecutive values are consecutive sets.
