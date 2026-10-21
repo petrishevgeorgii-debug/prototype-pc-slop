@@ -45,19 +45,46 @@ layer.
 - Not yet:
   - parked cars and light decals, and props whose parts have joints of their own (each prop is
     drawn as one piece);
-  - the textures in other tile modes;
-  - the game's own shaders and lighting.
+  - the textures in other tile modes (one font in the city's files).
+
+**Milestone 2: the look.** The first build is in.
+
+- The light is the city's own: `manhattan_tod.p3d.rz` holds the game's light rig, read as it is:
+  - the sun (`directional_sun`: its direction from its rotation, colour and intensity);
+  - the sky's light (`ambientLight1`) and two fill lights from above (`fillLight1`, `fillLight2`).
+  The engine makes the sun stronger and the others weaker than the game does, because it lights
+  in linear colour with real shadows.
+- The sun casts shadows: four cascades (to 18, 60, 200 and 650 m) in one 4096 × 4096 depth map,
+  each moved in whole texels so the edges stay still, filtered over four taps. Cut-out leaves
+  cast cut-out shadows.
+- The surfaces use the shader's textures:
+  - the colour map, and its alpha to cut out leaves, fences and signs (effects with `1a` or
+    `alpha` in their name);
+  - the normal map (red and green are x and y), with the vertices' tangents;
+  - the vertex tint: the effects whose name starts with `zCBV` ("colour by vertex") darken and
+    colour each building by its vertices' first colour;
+  - decals (`env_decal*`: the hive infection on the ground and walls) blended over what is
+    under them.
+- Left out until the engine draws them properly: light cones (`env_light_decal_spot`),
+  particles (`fx_*`), lit signs, the low-detail city's window lights and traffic.
+- A sky (from the haze at the horizon to the ambient light's colour overhead, with the sun),
+  haze that thins with height, and ACES tone mapping.
+- The districts (`proto::DistrictBehaviour` objects, from Times Square to Harlem) are read too:
+  N and B fly to the next and previous one, `--district Times_Square` starts there, and the
+  window's title shows where the camera is.
+- More controls: L turns the shadows off and on; [ and ] change the exposure (`--exposure`).
+- Not yet: the grime textures (with the second UVs and the tint's alpha), the vertices' second
+  colour (light baked near the street), reflections and glass, the time of day's keyframes
+  (`TimeOfDayVarGroup`, in `default[0]`).
 
 ## Next milestones
 
 1. **The rest of the city's data:**
    - instances (CompositeDrawable, locators, `_ft` game objects), which place props, flares
-     and decals;
-   - the 2D-tiled textures;
-   - the shader effects' parameters, the height map, the time-of-day settings (`*_tod`).
-2. **The look**: physically based materials from the game's colour, normal and grime textures,
-   the sun and sky from the time-of-day files, shadows. Ray-traced shadows and the like belong
-   here, without the PS4's rendering in the way.
+     and decals; parked cars;
+   - the shader effects' parameters, the height map, the time of day's keyframes.
+2. **More of the look**: grime, glass and reflections, the night's lights, the hive's glow;
+   ray-traced shadows and the like belong here, without the PS4's rendering in the way.
 3. **Characters**: skeletons, skinned meshes and animations (`art/alex`, `art/packages/pedestrians`).
 4. **Playable**:
    - Alex on foot in the city: movement, parkour and camera, rebuilt from the game's behaviour

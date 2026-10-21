@@ -6,13 +6,14 @@ find_package(Threads REQUIRED)
 
 set(ENGINE_SHADER_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 set(ENGINE_SHADERS "")
-foreach(stage vert frag)
-    set(out ${ENGINE_SHADER_DIR}/world_${stage}.h)
+foreach(shader world.vert world.frag sky.vert sky.frag shadow.vert shadow.frag)
+    string(REPLACE "." "_" name ${shader})
+    set(out ${ENGINE_SHADER_DIR}/${name}.h)
     add_custom_command(OUTPUT ${out}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${ENGINE_SHADER_DIR}
-        COMMAND ${GLSLANG_COMPILER} -V --target-env vulkan1.2 --vn world_${stage} -o ${out}
-                ${CMAKE_CURRENT_SOURCE_DIR}/shaders/world.${stage}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/world.${stage} VERBATIM)
+        COMMAND ${GLSLANG_COMPILER} -V --target-env vulkan1.2 --vn ${name} -o ${out}
+                ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader}
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/${shader} ${CMAKE_CURRENT_SOURCE_DIR}/shaders/common.glsl VERBATIM)
     list(APPEND ENGINE_SHADERS ${out})
 endforeach()
 

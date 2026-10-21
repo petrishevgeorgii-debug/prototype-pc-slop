@@ -35,10 +35,13 @@ bool Load(const std::filesystem::path& path, File& file, std::string& error);
 struct Vertex {
     float position[3];
     float uv[2];
-    float normal[3];  ///< zero when the game's vertices have none
-    std::uint32_t colour; ///< RGBA8, 0xffffffff when none
+    float uv1[2];       ///< the second set (grime, light maps); zero when none
+    float normal[3];    ///< zero when the game's vertices have none
+    float tangent[4];   ///< xyz and the bitangent's sign; zero when none
+    std::uint32_t colour;  ///< colour0, RGBA8: the tint and (alpha) the grime; 0xffffffff when none
+    std::uint32_t colour1; ///< colour1, RGBA8: light baked into the vertices; 0 when none
 };
-static_assert(sizeof(Vertex) == 36);
+static_assert(sizeof(Vertex) == 64);
 
 /// One PrimGroup: triangles with one shader.
 struct Part {
@@ -77,6 +80,19 @@ void ReadTextures(const File& file, std::vector<Texture>& textures, std::vector<
 
 /// The texture a shader shows as its surface colour, or "".
 std::string ColourTexture(const Shader& shader);
+/// Its normal map, or "".
+std::string NormalTexture(const Shader& shader);
+
+/// How the engine draws a shader's effect, from the effect's name.
+enum class Surface {
+    Opaque,
+    AlphaTest, ///< cut out by the colour texture's alpha (foliage, fences, signs)
+    Decal,     ///< blended over what is under it
+    Skip,      ///< drawn by systems the engine does not have yet (light cones, particles, HUD)
+};
+Surface SurfaceOf(const std::string& effect);
+/// The effect colours the surface by the vertices' colour0 (the city's "CBV" effects).
+bool TintedByVertices(const std::string& effect);
 
 /// An object the city places (the cells' _ft files): its type (e.g. proto::CloudSpawner), name,
 /// position and rotation (quaternion x y z w); for a CloudSpawner, the prop it places.
@@ -86,5 +102,20 @@ struct Placement {
     float rotation[4];
 };
 void ReadPlacements(const File& file, std::vector<Placement>& placements);
+
+/// A light of the city's light rig (manhattan_tod: ambientLight1, directional_sun, fillLight1,
+/// fillLight2, shadowLight).
+struct Light {
+    std::string name;
+    float direction[3]; ///< where the light goes (unit), world space
+    float colour[3];
+    float intensity;    ///< the sun's multiplier (1.1); 0 for the others
+};
+/// A district of the city (proto::DistrictBehaviour): its name and centre.
+struct District {
+    std::string name;
+    float position[3];
+};
+void ReadLightRig(const File& file, std::vector<Light>& lights, std::vector<District>& districts);
 
 } // namespace p3d

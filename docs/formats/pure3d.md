@@ -112,6 +112,24 @@ The city's textures seen so far are all:
 
 Other tile modes (2D macro tiling) are still to do.
 
+## The light rig (`manhattan_tod.p3d.rz`)
+
+The time-of-day file is game objects (0x07f00000) like the cells' `_ft` files, but the plain
+`GameObject(1):name` ones have named attributes after `META`: a u32 count, then for each a
+u32-length name, a u32-length type and the value.
+
+- `transform` (`MatrixAttribute`): u16 1, the position (3 floats) and rotation (quaternion
+  x y z w).
+- Lights (`engine::LightBehaviour`): 16 bytes after the behaviour's name, the colour (3 floats)
+  and the intensity (1.1 for the sun, 0 for the others). The light shines along its local +z.
+  - `directional_sun`: towards (0.58, 0.82, -0.03), colour (0.92, 0.91, 0.77) × 1.1.
+  - `ambientLight1` (0.29, 0.39, 0.55); `fillLight1`, `fillLight2` from above, blue-grey;
+    `shadowLight`, almost straight down.
+- Districts (`proto::DistrictBehaviour`, with an `engine::trigger::OBBVolume`): their centre is
+  the transform's position; their name and the vehicles they spawn follow.
+- `proto::TimeOfDayVarGroup` objects (`default[0]`, `Times Square`, `Infected`...) hold each
+  light's keyframes over the day; not read yet.
+
 ## Tools
 
 ```
@@ -124,3 +142,4 @@ python tools/formats/export_obj.py out manhattan_Cell_100.p3d.rz textures.p3d.rz
 
 What these make comes from your own copy of the game. Keep it to yourself: none of it belongs in
 the repository or a release.
+

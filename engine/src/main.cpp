@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Manhattan Engine: a PC engine that runs PROTOTYPE from your own copy's data (docs/ENGINE.md).
-// Milestone 1: fly through the city.
+// Milestone 2: the city lit by its own light rig, with the sun's shadows.
 //
-//   manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--screenshot file.png]
-//             [--size WxH] [--validation] [--mirror]
+//   manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png]
+//             [--size WxH] [--exposure e] [--no-shadows] [--validation] [--mirror]
 //
 // The game folder is the one with eboot.bin (THEORDER_GAME_DIR is used when none is given).
 // Controls: hold the right mouse button (or press Tab) to look around; W A S D to move, Space / C
-// up and down, Shift faster, the mouse wheel changes the speed, Esc releases the mouse or quits.
+// up and down, Shift faster, the mouse wheel changes the speed; N / B the next / previous district,
+// L shadows on and off, [ and ] the exposure; Esc releases the mouse or quits.
 
 #define SDL_MAIN_HANDLED // a plain main(); SDL is told it is ready
 #include <SDL3/SDL.h>
@@ -69,8 +70,12 @@ void Multiply(const float a[16], const float b[16], float out[16]) {
     }
 }
 
-/// The camera's view and an infinite, reverse-Z perspective (depth 1 at the near plane).
-void ViewProjection(const Camera& cam, float aspect, bool mirror, float out[16]) {
+constexpr float kFovY = 60.0f;
+
+/// The camera's view and an infinite, reverse-Z perspective (depth 1 at the near plane); the
+/// view's axes for the sky and the shadows.
+void ViewProjection(const Camera& cam, float aspect, bool mirror, engine::FrameView& frame) {
+    float* out = frame.view_projection;
     float f[3], up[3] = {0, 1, 0}, r[3], u[3];
     cam.Forward(f);
     Cross(f, up, r);
@@ -84,7 +89,13 @@ void ViewProjection(const Camera& cam, float aspect, bool mirror, float out[16])
                             -(u[0] * e[0] + u[1] * e[1] + u[2] * e[2]),
                             f[0] * e[0] + f[1] * e[1] + f[2] * e[2], 1};
     const float near_plane = 0.25f;
-    const float t = 1.0f / std::tan(0.5f * 60.0f * 3.14159265f / 180.0f);
+    const float tan_y = std::tan(0.5f * kFovY * 3.14159265f / 180.0f);
+    const float t = 1.0f / tan_y;
+    for (int k = 0; k < 3; ++k) {
+        frame.forward[k] = f[k];
+        frame.right[k] = r[k] * tan_y * aspect * (mirror ? -1.0f : 1.0f);
+        frame.up[k] = u[k] * tan_y;
+    }
     const float projection[16] = {(mirror ? -t : t) / aspect, 0, 0, 0,
                                   0, -t, 0, 0,
                                   0, 0, 0, -1,
@@ -107,7 +118,9 @@ bool ParseFloats(const char* text, float* out, int n) {
 int main(int argc, char** argv) {
     std::filesystem::path game;
     std::string screenshot;
-    bool validation = false, mirror = false, at_given = false, look_given = false;
+    std::string district;
+    bool validation = false, mirror = false, at_given = false, look_given = false, shadows = true;
+    float exposure = 0.0f;
     int width = 1600, height = 900;
     Camera camera;
     float look[2] = {0, 0};
@@ -119,9 +132,12 @@ int main(int argc, char** argv) {
         else if (a == "--at" && i + 1 < argc) at_given = ParseFloats(argv[++i], camera.position, 3);
         else if (a == "--look" && i + 1 < argc) look_given = ParseFloats(argv[++i], look, 2);
         else if (a == "--size" && i + 1 < argc) std::sscanf(argv[++i], "%dx%d", &width, &height);
+        else if (a == "--district" && i + 1 < argc) district = argv[++i];
+        else if (a == "--exposure" && i + 1 < argc) exposure = std::strtof(argv[++i], nullptr);
+        else if (a == "--no-shadows") shadows = false;
         else if (a == "--help" || a == "-h") {
-            std::puts("manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--screenshot file.png] [--size WxH] "
-                      "[--validation] [--mirror]");
+            std::puts("manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png] "
+                      "[--size WxH] [--exposure e] [--no-shadows] [--validation] [--mirror]");
             return 0;
         } else game = a;
     }
@@ -129,7 +145,7 @@ int main(int argc, char** argv) {
         if (const char* env = std::getenv("THEORDER_GAME_DIR")) game = env;
     }
     engine::OpenLog("manhattan.log");
-    Log("Manhattan Engine, milestone 1 (docs/ENGINE.md); game folder %s\n", game.string().c_str());
+    Log("Manhattan Engine, milestone 2 (docs/ENGINE.md); game folder %s\n", game.string().c_str());
     if (game.empty()) {
         Log("Manhattan Engine: give the game folder (the one with eboot.bin)\n");
         return 2;
@@ -164,9 +180,35 @@ int main(int argc, char** argv) {
             return 1;
         }
         float target[3];
+        engine::Lighting lighting = city.Lighting();
+        lighting.shadows = shadows;
+        if (exposure > 0.0f) lighting.exposure = exposure;
+        const auto& districts = city.Districts();
+        int district_index = -1;
+        // A district: from above its centre, looking across it.
+        const auto go_to_district = [&](int i) {
+            if (districts.empty()) return;
+            district_index = (i % int(districts.size()) + int(districts.size())) % int(districts.size());
+            const auto& d = districts[district_index];
+            camera.position[0] = d.position[0] - 90.0f;
+            camera.position[1] = d.position[1] + 70.0f;
+            camera.position[2] = d.position[2] + 90.0f;
+            camera.LookAt(d.position);
+            Log("District: %s\n", d.name.c_str());
+        };
         if (!at_given) {
             city.StartView(camera.position, target);
             camera.LookAt(target);
+        }
+        if (!district.empty()) {
+            for (std::size_t i = 0; i < districts.size(); ++i) {
+                if (districts[i].name == district) go_to_district(int(i));
+            }
+            if (district_index < 0) {
+                std::string names;
+                for (const auto& d : districts) names += " " + d.name;
+                Log("No district %s; the districts:%s\n", district.c_str(), names.c_str());
+            }
         }
         if (look_given) {
             camera.yaw = look[0] * 3.14159265f / 180.0f;
@@ -176,8 +218,6 @@ int main(int argc, char** argv) {
         auto last = std::chrono::steady_clock::now();
         auto title_time = last;
         int frames = 0, drawn = 0, idle_frames = 0, total_frames = 0;
-        float sun[3] = {0.35f, 0.8f, 0.45f};
-        Normalize(sun);
         while (running) {
             SDL_Event ev;
             while (SDL_PollEvent(&ev)) {
@@ -189,6 +229,16 @@ int main(int argc, char** argv) {
                         else running = false;
                     } else if (ev.key.key == SDLK_TAB) {
                         looking = !looking;
+                    } else if (ev.key.key == SDLK_N) {
+                        go_to_district(district_index + 1);
+                    } else if (ev.key.key == SDLK_B) {
+                        go_to_district(district_index < 0 ? -1 : district_index - 1);
+                    } else if (ev.key.key == SDLK_L) {
+                        lighting.shadows = !lighting.shadows;
+                    } else if (ev.key.key == SDLK_RIGHTBRACKET) {
+                        lighting.exposure *= 1.15f;
+                    } else if (ev.key.key == SDLK_LEFTBRACKET) {
+                        lighting.exposure /= 1.15f;
                     } else if (ev.key.key == SDLK_P) {
                         Log("Camera: --at %.1f,%.1f,%.1f --look %.1f,%.1f\n", camera.position[0], camera.position[1],
                                     camera.position[2], camera.yaw * 180 / 3.14159265f, camera.pitch * 180 / 3.14159265f);
@@ -236,10 +286,9 @@ int main(int argc, char** argv) {
             std::uint32_t w = 0, h = 0;
             renderer.Size(w, h);
             engine::FrameView view{};
-            ViewProjection(camera, h ? float(w) / float(h) : 1.0f, mirror, view.view_projection);
+            ViewProjection(camera, h ? float(w) / float(h) : 1.0f, mirror, view);
             std::copy(camera.position, camera.position + 3, view.camera);
-            std::copy(sun, sun + 3, view.sun);
-            view.fog_density = 0.0006f;
+            view.lighting = lighting;
             if (renderer.DrawFrame(view, models, hidden)) ++drawn;
             ++frames;
             ++total_frames;
@@ -259,9 +308,9 @@ int main(int argc, char** argv) {
             if (std::chrono::duration<float>(now - title_time).count() > 0.5f) {
                 const float fps = frames / std::chrono::duration<float>(now - title_time).count();
                 char title[256];
-                std::snprintf(title, sizeof(title), "Manhattan Engine  |  %.0f fps  |  %s  |  %.0f, %.0f, %.0f  |  %.0f m/s",
-                              fps, city.Status().c_str(), camera.position[0], camera.position[1], camera.position[2],
-                              camera.speed);
+                std::snprintf(title, sizeof(title), "Manhattan Engine  |  %.0f fps  |  %s  |  %s  |  %.0f, %.0f, %.0f  |  %.0f m/s",
+                              fps, city.Status().c_str(), city.DistrictAt(camera.position).c_str(), camera.position[0],
+                              camera.position[1], camera.position[2], camera.speed);
                 SDL_SetWindowTitle(window, title);
                 title_time = now;
                 frames = 0;

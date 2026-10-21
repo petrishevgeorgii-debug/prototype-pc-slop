@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 
 namespace engine {
 
@@ -35,7 +36,7 @@ struct City::Pending {
     struct Part {
         std::uint32_t first = 0, count = 0;
         std::int32_t offset = 0;
-        std::string texture;
+        Look look;
         int group = -1;
     };
     std::vector<Part> parts;
@@ -59,7 +60,60 @@ void Rotate(const float q[4], const float v[3], float out[3]) {
     out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
 }
 
+/// How the engine draws a shader; nullopt when it does not draw it (Skip).
+std::optional<City::Look> LookOf(const p3d::Shader& s, bool tint) {
+    const p3d::Surface surface = p3d::SurfaceOf(s.effect);
+    if (surface == p3d::Surface::Skip) return std::nullopt;
+    City::Look look;
+    look.colour = p3d::ColourTexture(s);
+    look.normal = p3d::NormalTexture(s);
+    if (!look.colour.empty()) look.flags |= Material::Textured;
+    if (!look.normal.empty()) look.flags |= Material::NormalMap;
+    if (surface == p3d::Surface::AlphaTest) look.flags |= Material::AlphaTest;
+    if (surface == p3d::Surface::Decal) look.flags |= Material::Decal;
+    if (tint && p3d::TintedByVertices(s.effect)) look.flags |= Material::Tint;
+    return look;
+}
+
 } // namespace
+
+void City::LoadLightRig(const std::filesystem::path& file) {
+    p3d::File f;
+    std::string error;
+    if (!p3d::Load(file, f, error)) {
+        Log("  light rig: %s (using defaults)\n", error.c_str());
+        return;
+    }
+    std::vector<p3d::Light> lights;
+    p3d::ReadLightRig(f, lights, districts_);
+    int fills = 0;
+    for (const auto& l : lights) {
+        const float towards[3] = {-l.direction[0], -l.direction[1], -l.direction[2]};
+        if (l.name == "directional_sun") {
+            std::copy(towards, towards + 3, lighting_.sun);
+            for (int k = 0; k < 3; ++k) lighting_.sun_colour[k] = l.colour[k] * (l.intensity > 0 ? l.intensity : 1.0f);
+        } else if (l.name == "ambientLight1") {
+            std::copy(l.colour, l.colour + 3, lighting_.ambient);
+        } else if (l.name.rfind("fillLight", 0) == 0 && fills < 2) {
+            std::copy(towards, towards + 3, lighting_.fill[fills]);
+            std::copy(l.colour, l.colour + 3, lighting_.fill_colour[fills]);
+            ++fills;
+        }
+        Log("  %s: towards %.2f %.2f %.2f, colour %.2f %.2f %.2f x %.2f\n", l.name.c_str(), towards[0], towards[1], towards[2],
+            l.colour[0], l.colour[1], l.colour[2], l.intensity);
+    }
+    Log("  %zu lights, %zu districts\n", lights.size(), districts_.size());
+}
+
+std::string City::DistrictAt(const float p[3]) const {
+    const p3d::District* best = nullptr;
+    float best_d = 1e30f;
+    for (const auto& d : districts_) {
+        const float dx = d.position[0] - p[0], dz = d.position[2] - p[2];
+        if (dx * dx + dz * dz < best_d) best_d = dx * dx + dz * dz, best = &d;
+    }
+    return best ? best->name : std::string();
+}
 
 void City::LoadProps(const std::filesystem::path& file) {
     p3d::File f;
@@ -78,21 +132,24 @@ void City::LoadProps(const std::filesystem::path& file) {
         if (shared_.count(t.name)) continue;
         GpuTexture g;
         if (renderer_->CreateTexture(t, g)) {
-            shared_[t.name] = g.set;
+            shared_[t.name] = g;
             library_.textures.push_back(g);
         }
     }
-    std::unordered_map<std::string, std::string> colour;
-    for (const auto& s : shaders) colour[s.name] = p3d::ColourTexture(s);
+    std::unordered_map<std::string, std::optional<Look>> looks;
+    for (const auto& s : shaders) looks[s.name] = LookOf(s, true);
     const std::string suffix = "InitialShape";
     for (auto& m : meshes) {
         if (m.name.size() <= suffix.size() || m.name.compare(m.name.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
         auto& parts = props_[m.name.substr(0, m.name.size() - suffix.size())];
         for (auto& part : m.parts) {
             PropPart p;
+            if (auto it = looks.find(part.shader); it != looks.end()) {
+                if (!it->second) continue; // not a surface
+                p.look = *it->second;
+            }
             p.vertices = std::move(part.vertices);
             p.indices = std::move(part.indices);
-            if (auto it = colour.find(part.shader); it != colour.end()) p.texture = it->second;
             parts.push_back(std::move(p));
         }
     }
@@ -109,8 +166,9 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
     p3d::ReadMeshes(f, meshes);
     p3d::ReadShaders(f, shaders);
     p3d::ReadTextures(f, p->textures);
-    std::unordered_map<std::string, std::string> colour;
-    for (const auto& s : shaders) colour[s.name] = p3d::ColourTexture(s);
+    // The low-detail city's vertex colours are not a tint.
+    std::unordered_map<std::string, std::optional<Look>> looks;
+    for (const auto& s : shaders) looks[s.name] = LookOf(s, group_from_name == 0);
     for (const auto& mesh : meshes) {
         // Props are modelled around their own origin and placed by instances the engine does not
         // read yet: leave out small meshes at the origin.
@@ -120,10 +178,13 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
         const int group = group_from_name ? CellNumber(mesh.name) : -1;
         for (const auto& part : mesh.parts) {
             Pending::Part d;
+            if (auto it = looks.find(part.shader); it != looks.end()) {
+                if (!it->second) continue; // not a surface
+                d.look = *it->second;
+            }
             d.first = static_cast<std::uint32_t>(p->indices.size());
             d.count = static_cast<std::uint32_t>(part.indices.size());
             d.offset = static_cast<std::int32_t>(p->vertices.size());
-            if (auto it = colour.find(part.shader); it != colour.end()) d.texture = it->second;
             d.group = group;
             p->vertices.insert(p->vertices.end(), part.vertices.begin(), part.vertices.end());
             p->indices.insert(p->indices.end(), part.indices.begin(), part.indices.end());
@@ -147,13 +208,15 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
                 d.first = static_cast<std::uint32_t>(p->indices.size());
                 d.count = static_cast<std::uint32_t>(part.indices.size());
                 d.offset = static_cast<std::int32_t>(p->vertices.size());
-                d.texture = part.texture;
+                d.look = part.look;
                 for (p3d::Vertex v : part.vertices) {
                     float r[3];
                     Rotate(o.rotation, v.position, r);
                     for (int k = 0; k < 3; ++k) v.position[k] = r[k] + o.position[k];
                     Rotate(o.rotation, v.normal, r);
                     std::copy(r, r + 3, v.normal);
+                    Rotate(o.rotation, v.tangent, r);
+                    std::copy(r, r + 3, v.tangent);
                     p->vertices.push_back(v);
                 }
                 p->indices.insert(p->indices.end(), part.indices.begin(), part.indices.end());
@@ -161,10 +224,10 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
             }
         }
     }
-    // One draw per texture (and group): the parts' indices regrouped, each made absolute.
-    std::map<std::pair<int, std::string>, std::vector<std::uint32_t>> merged;
+    // One draw per material (and group): the parts' indices regrouped, each made absolute.
+    std::map<std::pair<int, Look>, std::vector<std::uint32_t>> merged;
     for (const auto& part : p->parts) {
-        auto& out = merged[{part.group, part.texture}];
+        auto& out = merged[{part.group, part.look}];
         for (std::uint32_t i = 0; i < part.count; ++i) out.push_back(p->indices[part.first + i] + static_cast<std::uint32_t>(part.offset));
     }
     p->indices.clear();
@@ -172,7 +235,7 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
     for (auto& [key, indices] : merged) {
         Pending::Part d;
         d.group = key.first;
-        d.texture = key.second;
+        d.look = key.second;
         d.first = static_cast<std::uint32_t>(p->indices.size());
         d.count = static_cast<std::uint32_t>(indices.size());
         p->indices.insert(p->indices.end(), indices.begin(), indices.end());
@@ -182,15 +245,22 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
 }
 
 bool City::Upload(Pending& p, Model& model) {
-    std::unordered_map<std::string, VkDescriptorSet> own;
+    std::unordered_map<std::string, GpuTexture> own;
     for (const auto& t : p.textures) {
         if (shared_.count(t.name)) continue; // the library has it
         GpuTexture g;
         if (renderer_->CreateTexture(t, g)) {
-            own[t.name] = g.set;
+            own[t.name] = g;
             model.textures.push_back(g);
         }
     }
+    const auto texture = [&](const std::string& name) -> const GpuTexture* {
+        if (name.empty()) return nullptr;
+        if (auto it = own.find(name); it != own.end()) return &it->second;
+        if (auto it = shared_.find(name); it != shared_.end()) return &it->second;
+        return nullptr;
+    };
+    std::map<std::pair<std::string, std::string>, VkDescriptorSet> materials;
     if (!p.vertices.empty() && !renderer_->CreateModel(p.vertices, p.indices, model)) return false;
     if (&model != &low_ && !p.vertices.empty()) {
         std::fill(model.min, model.min + 3, 1e30f);
@@ -208,9 +278,20 @@ bool City::Upload(Pending& p, Model& model) {
         d.index_count = part.count;
         d.vertex_offset = part.offset;
         d.group = part.group;
-        if (!part.texture.empty()) {
-            if (auto it = own.find(part.texture); it != own.end()) d.texture = it->second;
-            else if (auto s = shared_.find(part.texture); s != shared_.end()) d.texture = s->second;
+        const GpuTexture* colour = texture(part.look.colour);
+        const GpuTexture* normal = texture(part.look.normal);
+        d.flags = part.look.flags;
+        if (!colour) d.flags &= ~(Material::Textured | Material::AlphaTest | Material::Decal);
+        if (!normal) d.flags &= ~Material::NormalMap;
+        if (colour || normal) {
+            const std::pair<std::string, std::string> key{colour ? part.look.colour : "", normal ? part.look.normal : ""};
+            auto it = materials.find(key);
+            if (it == materials.end()) {
+                const VkDescriptorSet set = renderer_->CreateMaterial(colour, normal);
+                if (set) model.materials.push_back(set);
+                it = materials.emplace(key, set).first;
+            }
+            d.material = it->second;
         }
         model.draws.push_back(d);
     }
@@ -240,7 +321,7 @@ bool City::Open(const std::filesystem::path& game, Renderer& renderer, std::stri
             for (const auto& t : textures) {
                 GpuTexture g;
                 if (renderer.CreateTexture(t, g)) {
-                    shared_[t.name] = g.set;
+                    shared_[t.name] = g;
                     library_.textures.push_back(g);
                 }
             }
@@ -250,6 +331,8 @@ bool City::Open(const std::filesystem::path& game, Renderer& renderer, std::stri
         }
         error.clear();
     }
+    Log("Loading the light rig ...\n");
+    LoadLightRig(location_ / "manhattan_tod.p3d.rz");
     Log("Loading the props ...\n");
     LoadProps(location_ / "props.p3d.rz");
     Log("Loading the low-detail city ...\n");

@@ -13,6 +13,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -23,6 +24,15 @@ namespace engine {
 
 class City {
 public:
+    /// What a part is drawn with: texture names and Material flags.
+    struct Look {
+        std::string colour, normal;
+        std::uint32_t flags = 0;
+        bool operator<(const Look& o) const {
+            return std::tie(colour, normal, flags) < std::tie(o.colour, o.normal, o.flags);
+        }
+    };
+
     City();
     ~City();
     /// `game`: the folder with eboot.bin (or its p1 folder). Loads the shared textures and the
@@ -38,6 +48,11 @@ public:
     void StartView(float position[3], float target[3]) const;
     /// "12 cells, 2 loading".
     std::string Status() const;
+    /// The city's light rig (manhattan_tod), or the defaults when it cannot be read.
+    const engine::Lighting& Lighting() const { return lighting_; }
+    /// The city's districts (Times Square, Central Park...), and the one nearest to a point.
+    const std::vector<p3d::District>& Districts() const { return districts_; }
+    std::string DistrictAt(const float position[3]) const;
     /// No cell is waiting to be loaded or uploaded.
     bool Idle() const;
 
@@ -55,7 +70,7 @@ private:
     struct PropPart {
         std::vector<p3d::Vertex> vertices;
         std::vector<std::uint32_t> indices;
-        std::string texture;
+        Look look;
     };
 
     void Worker();
@@ -64,6 +79,7 @@ private:
     std::unique_ptr<Pending> Build(const std::filesystem::path& file, int group_from_name,
                                    const std::filesystem::path& placements = {});
     void LoadProps(const std::filesystem::path& file);
+    void LoadLightRig(const std::filesystem::path& file);
     bool Upload(Pending& p, Model& model);
     float Distance(const Cell& cell, const float camera[3]) const;
 
@@ -72,10 +88,12 @@ private:
     std::map<int, Cell> cells_;
     Model library_;  ///< textures shared by the cells (textures.p3d.rz)
     Model low_;      ///< the low-detail city (midgeo.p3d.rz), grouped by cell
-    std::unordered_map<std::string, VkDescriptorSet> shared_;
+    std::unordered_map<std::string, GpuTexture> shared_;
     /// Props by name (props.p3d.rz: their intact shape), placed by the cells' _ft files.
     std::unordered_map<std::string, std::vector<PropPart>> props_;
     int max_index_ = 0;
+    engine::Lighting lighting_;
+    std::vector<p3d::District> districts_;
 
     std::thread worker_;
     mutable std::mutex mutex_;

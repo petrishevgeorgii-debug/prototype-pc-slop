@@ -22,7 +22,7 @@ constexpr std::uint32_t kShader = 0x00011015, kShaderTexture = 0x00011016;
 constexpr std::uint32_t kTexture = 0x00019000, kImageData = 0x00019002;
 
 constexpr std::uint32_t kPosition = 0x2c929929, kUv0 = 0x00364509, kNormal = 0xc206bce7,
-                        kColour0 = 0x3898fc04;
+                        kColour0 = 0x3898fc04, kUv1 = 0x0036450a, kTangent = 0xa4176245, kColour1 = 0x3898fc05;
 
 template <class T>
 T Get(const std::uint8_t* p) {
@@ -151,6 +151,9 @@ bool ReadPart(const Chunk& group, Part& part) {
     const Element* uv = find(kUv0);
     const Element* normal = find(kNormal);
     const Element* colour = find(kColour0);
+    const Element* uv1 = find(kUv1);
+    const Element* tangent = find(kTangent);
+    const Element* colour1 = find(kColour1);
     if (!position) {
         return false;
     }
@@ -170,6 +173,11 @@ bool ReadPart(const Chunk& group, Part& part) {
         if (normal && normal->offset + 12 <= stride) std::memcpy(out.normal, src + normal->offset, 12);
         else out.normal[0] = out.normal[1] = out.normal[2] = 0;
         out.colour = colour && colour->offset + 4 <= stride ? Get<std::uint32_t>(src + colour->offset) : 0xffffffffu;
+        if (uv1 && uv1->offset + 8 <= stride) std::memcpy(out.uv1, src + uv1->offset, 8);
+        else out.uv1[0] = out.uv1[1] = 0;
+        if (tangent && tangent->offset + 16 <= stride) std::memcpy(out.tangent, src + tangent->offset, 16);
+        else std::fill(out.tangent, out.tangent + 4, 0.0f);
+        out.colour1 = colour1 && colour1->offset + 4 <= stride ? Get<std::uint32_t>(src + colour1->offset) : 0u;
         Grow(part.min, part.max, out.position);
     }
     const std::uint32_t ib_size = std::min<std::uint32_t>(Get<std::uint32_t>(ib->data + 8),
@@ -393,10 +401,100 @@ void ReadPlacements(const File& file, std::vector<Placement>& placements) {
 }
 
 std::string ColourTexture(const Shader& shader) {
-    for (const char* param : {"color", "colour", "diffuse", "color_inards", "color_infection", "Diffuse"}) {
-        if (auto it = shader.textures.find(param); it != shader.textures.end()) return it->second;
+    for (const char* param : {"color", "colour", "diffuse", "color_inards", "color_infection", "Diffuse", "Color", "bottom"}) {
+        if (auto it = shader.textures.find(param); it != shader.textures.end() && !it->second.empty()) return it->second;
     }
     return {};
+}
+
+std::string NormalTexture(const Shader& shader) {
+    for (const char* param : {"normal", "normalMap", "normalmap", "normalbottom"}) {
+        if (auto it = shader.textures.find(param); it != shader.textures.end() && !it->second.empty()) return it->second;
+    }
+    return {};
+}
+
+namespace {
+
+bool Has(const std::string& s, const char* part) {
+    return s.find(part) != std::string::npos;
+}
+
+} // namespace
+
+Surface SurfaceOf(const std::string& effect) {
+    // Light cones and glows, particles, the interface: not surfaces.
+    if (Has(effect, "light_decal") || effect.rfind("fx_", 0) == 0 || effect.rfind("hud_", 0) == 0 ||
+        Has(effect, "_lights") || Has(effect, "bridgelights") || Has(effect, "lit_sign") || Has(effect, "PostProc")) {
+        return Surface::Skip;
+    }
+    if (Has(effect, "decal")) return Surface::Decal;
+    // The effects named by their inputs (1c1n1a: a colour, a normal and an alpha map) and the
+    // ones with "alpha" in the name are cut out.
+    if (Has(effect, "alpha") || Has(effect, "1a") || Has(effect, "tree") || Has(effect, "sign_alpha")) return Surface::AlphaTest;
+    return Surface::Opaque;
+}
+
+bool TintedByVertices(const std::string& effect) {
+    return effect.rfind("zCBV", 0) == 0 || Has(effect, "CBV") || Has(effect, "_vtx");
+}
+
+namespace {
+
+const std::uint8_t* Find(const std::uint8_t* begin, const std::uint8_t* end, const char* text) {
+    const std::size_t n = std::strlen(text);
+    for (const std::uint8_t* p = begin; p + n <= end; ++p) {
+        if (std::memcmp(p, text, n) == 0) return p;
+    }
+    return nullptr;
+}
+
+void RotateByQuaternion(const float q[4], const float v[3], float out[3]) {
+    const float t[3] = {2 * (q[1] * v[2] - q[2] * v[1]), 2 * (q[2] * v[0] - q[0] * v[2]), 2 * (q[0] * v[1] - q[1] * v[0])};
+    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
+    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
+    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
+}
+
+} // namespace
+
+void ReadLightRig(const File& file, std::vector<Light>& lights, std::vector<District>& districts) {
+    // The world's objects: "GameObject(1):name", attributes "META", then named attributes:
+    // transform (MatrixAttribute: u16, position, rotation quaternion x y z w) and behaviours.
+    for (const Chunk& c : file.chunks) {
+        if (c.id != 0x07f00000) continue;
+        Reader r{c.data, c.data + c.size};
+        const std::string full = r.Str();
+        const std::string prefix = "GameObject(1):";
+        if (full.compare(0, prefix.size(), prefix) != 0) continue;
+        const Chunk* a = c.First(0x07f00001);
+        if (!a) continue;
+        const std::uint8_t* end = a->data + a->size;
+        const std::uint8_t* m = Find(a->data, end, "MatrixAttribute");
+        if (!m || m + 15 + 2 + 28 > end) continue;
+        float transform[7];
+        std::memcpy(transform, m + 17, sizeof(transform));
+        const std::string name = full.substr(prefix.size());
+        if (const std::uint8_t* l = Find(m, end, "engine::LightBehaviour"); l && l + 22 + 16 + 16 <= end) {
+            Light light;
+            light.name = name;
+            const float forward[3] = {0, 0, 1};
+            RotateByQuaternion(transform + 3, forward, light.direction);
+            float rgba[4];
+            std::memcpy(rgba, l + 22 + 16, sizeof(rgba));
+            bool sane = true;
+            for (float v : rgba) sane = sane && v >= 0.0f && v < 16.0f;
+            if (!sane) continue;
+            std::copy(rgba, rgba + 3, light.colour);
+            light.intensity = rgba[3];
+            lights.push_back(light);
+        } else if (Find(m, end, "proto::DistrictBehaviour")) {
+            District d;
+            d.name = name;
+            std::copy(transform, transform + 3, d.position);
+            if (d.position[1] > -1000.0f) districts.push_back(d); // not district_default
+        }
+    }
 }
 
 } // namespace p3d
