@@ -21,6 +21,7 @@ constexpr float kSprint = 22.0f;   ///< Alex runs as fast as traffic
 constexpr float kJump = 13.0f;     ///< about 8 m up
 constexpr float kGravity = 28.0f;
 constexpr float kWallRun = 16.0f;  ///< up a wall while sprinting into it
+constexpr float kVault = 7.0f;     ///< over something low while sprinting into it
 
 } // namespace
 
@@ -105,9 +106,25 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
     // Running up walls: sprinting into one.
     wall_running = false;
     if (wall && in.sprint && wish[0] * -wall_normal[0] + wish[1] * -wall_normal[1] > 0.3f) {
-        velocity[1] = std::max(velocity[1], kWallRun);
-        wall_running = true;
+        // A wall taller than Alex is run up; a car or a fence is vaulted.
+        float probe[3] = {position[0] - wall_normal[0] * 0.25f, position[1] + 2.6f, position[2] - wall_normal[1] * 0.25f};
+        float push[3] = {0, 0, 0};
+        if (city.Push(probe, kRadius, push)) {
+            velocity[1] = std::max(velocity[1], kWallRun);
+            wall_running = true;
+            this->wall_normal[0] = wall_normal[0];
+            this->wall_normal[1] = wall_normal[1];
+        } else if (grounded || velocity[1] <= 0) {
+            velocity[1] = std::max(velocity[1], kVault);
+        }
     }
+    // The body turns to where it goes (quickly: Alex turns on the spot).
+    const float hs = std::sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);
+    float target = facing;
+    if (wall_running) target = std::atan2(-this->wall_normal[0], this->wall_normal[1]);
+    else if (hs > 0.5f) target = std::atan2(velocity[0], -velocity[2]);
+    float d = std::remainder(target - facing, 6.2831853f);
+    facing += d * std::min(1.0f, 14.0f * dt);
     if (grounded) {
         std::copy(position, position + 3, safe_);
         has_safe_ = true;

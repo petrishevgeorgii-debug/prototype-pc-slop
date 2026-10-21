@@ -105,9 +105,30 @@ layer.
 - The collision is the drawn geometry itself: each detailed cell's solid surfaces (not glass,
   decals or leaves) in a 4 m grid, built on the streaming thread with the cell; elsewhere, the
   low-detail city's.
-- It is first person until Alex is drawn (milestone 3, characters).
+- The camera is behind Alex (V: first person).
 - `--walk-test seconds` sprints straight ahead from `--at` / `--look` and logs the way (positions,
   on the ground, up a wall), then takes the screenshot.
+
+**Characters: Alex.** In.
+
+- `art/alex/alex.p3d.rz` holds Alex: skins (0x10001: a mesh bound to a skeleton), skeletons,
+  CompositeDrawables that put them together (`alex_reg_body`: head, hoodie, body;
+  `alex_reg_arms`), his textures and 634 animations. The engine draws `alex_reg_body` and
+  `alex_reg_arms`.
+- Skinned vertices have up to four joints (weights: three floats, the fourth is what is left;
+  joints: four bytes into the part's matrix palette, 0x1000d). The skins are bound to the
+  skeleton's rest pose.
+- Each frame the engine samples the animation, poses both skeletons and skins the 7,700
+  vertices on the CPU into a buffer the GPU reads (one per frame in flight).
+- Animations are the game's (see [formats/pure3d.md](formats/pure3d.md)):
+  - standing `alex_amb_stand`, walking `alex_loco_walk_n`, running `alex_loco_run_n`,
+    sprinting `alex_loco_run_sprint_n` (sped up with the body: the game's sprint is faster than
+    the clip's own 8 m/s), rising `alex_loco_amb_air`, falling `alex_loco_jump_fall_cycle`,
+    running up a wall `alex_wall_run_up`;
+  - a change of clip blends over 0.18 s; running into sprinting keeps the stride's phase;
+  - the clips' own root motion (`Motion_Root`) is left out: the engine moves the body.
+- Sprinting into something lower than about 2.6 m vaults it; taller, he runs up it.
+- `--anim alex_loco_jump_backflip [--anim-time frame]` plays one clip only, to look at it.
 
 ## Next milestones
 
@@ -117,7 +138,8 @@ layer.
    - the shader effects' parameters, the height map, the time of day's keyframes.
 2. **More of the look**: grime, glass and reflections, the night's lights, the hive's glow;
    ray-traced shadows and the like belong here, without the PS4's rendering in the way.
-3. **Characters**: skeletons, skinned meshes and animations (`art/alex`, `art/packages/pedestrians`).
+3. **Characters**: more of Alex's moves (jumps, landings, turns, attacks), then pedestrians and
+   soldiers (`art/packages/pedestrians`).
 4. **Playable**:
    - Alex on foot in the city: movement, parkour and camera, rebuilt from the game's behaviour
      and checked against the running game;

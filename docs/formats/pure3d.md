@@ -142,6 +142,32 @@ u32-length name, a u32-length type and the value.
 - `<name>_tod.p3d.rz` is big-endian ("ATEM"): `proto::ShaderPalette` lists the paint colours
   (`color_variation`: r g b and a fourth value).
 
+## Skins and animations (characters)
+
+- **Skin (0x10001):** name, u32, the skeleton's name; PrimGroups whose vertices come in two
+  streams (two VertexFormat / VertexBuffer pairs: position, normal, tangent, weights
+  `49570cfb` (3 floats), joints `73d5cba7` (4 bytes); then colour and uv) and a matrix palette
+  (0x1000d: u32 count, joint indices). Some parts use the older lists instead: PositionList
+  0x10005, NormalList 0x10006, UVList 0x10007, ColourList 0x10008, IndexList 0x1000a,
+  MatrixList 0x1000b, WeightList 0x1000c, TangentList 0x10028.
+- **Animation (0x121000):** u32 0, name, "PTRN", f32 frames, f32 frames per second, u32. Its
+  0x121002 child has one 0x121001 per joint (u32 0, the joint's name, u32 index, u32), each with
+  channels:
+  - header: u32, a four-letter kind ("ROT", "TRAN", "SCL"...), then the keys: u32 count,
+    u16 frame times, values;
+  - 0x121112: rotations, x y z as s16 / 32767 (w = the positive rest of the unit length);
+  - 0x121114: the same in s8 / 127;
+  - 0x121119: vectors as three half floats; 0x121104: three floats;
+  - 0x121102, 0x121103, 0x121118: one axis (u16) and a base vector before the count; keys
+    give one float, two floats or two halves for the other axes.
+  - Most animations keep their keys in one zlib block (0x2f00000: u32 0, "ZLIB", u32 size, u32
+    packed size, the data); a channel's 0x121120 child then gives its count and offset there,
+    with the frame times and the values each padded to 4 bytes.
+- Quaternions become row-vector matrices as
+  `[1-2(y²+z²), 2(xy+zw), 2(xz-yw); 2(xy-zw), 1-2(x²+z²), 2(yz+xw); 2(xz+yw), 2(yz-xw), 1-2(x²+y²)]`,
+  replacing the joint's rest rotation; translations replace its rest position.
+- 0x121401 children are foot and hand plant ranges (leg_left, leg_right, arm_left, arm_right).
+
 ## Tools
 
 ```

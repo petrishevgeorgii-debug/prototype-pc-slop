@@ -4,14 +4,15 @@
 //
 //   manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png]
 //             [--size WxH] [--exposure e] [--no-shadows] [--walk] [--walk-test seconds]
-//             [--validation] [--mirror]
+//             [--anim name [--anim-time frame]] [--validation] [--mirror]
 //
 // The game folder is the one with eboot.bin (THEORDER_GAME_DIR is used when none is given).
 // Controls: hold the right mouse button (or press Tab) to look around; W A S D to move, Space / C
 // up and down, Shift faster, the mouse wheel changes the speed; N / B the next / previous district,
 // L shadows on and off, [ and ] the exposure; Esc releases the mouse or quits.
 // F: on foot and back to flying. On foot: W A S D walk, Shift sprints (into a wall: up it), Space
-// jumps (also off a wall). --walk-test runs forward for that many seconds and logs the way.
+// jumps (also off a wall); V first or third person. --walk-test runs forward for that many
+// seconds and logs the way; --anim plays one of Alex's animations only.
 
 #define SDL_MAIN_HANDLED // a plain main(); SDL is told it is ready
 #include <SDL3/SDL.h>
@@ -26,6 +27,7 @@
 #include <filesystem>
 #include <string>
 
+#include "character.h"
 #include "city.h"
 #include "player.h"
 #include "renderer.h"
@@ -124,7 +126,8 @@ int main(int argc, char** argv) {
     std::string screenshot;
     std::string district;
     bool validation = false, mirror = false, at_given = false, look_given = false, shadows = true;
-    float exposure = 0.0f, walk_test = 0.0f;
+    float exposure = 0.0f, walk_test = 0.0f, anim_time = 0.0f;
+    std::string anim;
     bool walk = false;
     int width = 1600, height = 900;
     Camera camera;
@@ -141,6 +144,8 @@ int main(int argc, char** argv) {
         else if (a == "--exposure" && i + 1 < argc) exposure = std::strtof(argv[++i], nullptr);
         else if (a == "--no-shadows") shadows = false;
         else if (a == "--walk") walk = true;
+        else if (a == "--anim" && i + 1 < argc) anim = argv[++i];
+        else if (a == "--anim-time" && i + 1 < argc) anim_time = std::strtof(argv[++i], nullptr);
         else if (a == "--walk-test" && i + 1 < argc) walk_test = std::strtof(argv[++i], nullptr), walk = true;
         else if (a == "--help" || a == "-h") {
             std::puts("manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png] "
@@ -186,6 +191,17 @@ int main(int argc, char** argv) {
             SDL_Quit();
             return 1;
         }
+        // Alex: the game's model, skeletons and animations.
+        engine::Character alex;
+        bool has_alex = false;
+        {
+            std::string e;
+            Log("Loading Alex ...\n");
+            has_alex = alex.Load(city.ArtFolder() / "alex" / "alex.p3d.rz", {"alex_reg_body", "alex_reg_arms"}, renderer, e);
+            if (!has_alex) Log("  %s\n", e.c_str());
+            if (has_alex && !anim.empty() && !alex.Force(anim, anim_time)) Log("  no animation %s\n", anim.c_str());
+        }
+        bool third_person = true;
         float target[3];
         engine::Lighting lighting = city.Lighting();
         lighting.shadows = shadows;
@@ -251,6 +267,8 @@ int main(int argc, char** argv) {
                         go_to_district(district_index + 1);
                     } else if (ev.key.key == SDLK_B) {
                         go_to_district(district_index < 0 ? -1 : district_index - 1);
+                    } else if (ev.key.key == SDLK_V) {
+                        third_person = !third_person;
                     } else if (ev.key.key == SDLK_F) {
                         set_on_foot(!on_foot);
                     } else if (ev.key.key == SDLK_SPACE) {
@@ -315,6 +333,15 @@ int main(int argc, char** argv) {
                     player.Update(dt, in, city);
                 }
                 player.Eye(camera.position);
+                if (third_person && has_alex) {
+                    // Behind and above Alex, looking where the camera looks.
+                    float f[3];
+                    camera.Forward(f);
+                    const float distance = 4.5f;
+                    camera.position[0] = player.position[0] - f[0] * distance;
+                    camera.position[1] = player.position[1] + 1.7f - f[1] * distance;
+                    camera.position[2] = player.position[2] - f[2] * distance;
+                }
             } else {
                 float f[3], up[3] = {0, 1, 0}, r[3];
                 camera.Forward(f);
@@ -333,6 +360,20 @@ int main(int argc, char** argv) {
             std::vector<const engine::Model*> models;
             std::vector<bool> hidden;
             city.Models(models, hidden);
+            if (on_foot && has_alex && third_person) {
+                const float hs = std::sqrt(player.velocity[0] * player.velocity[0] + player.velocity[2] * player.velocity[2]);
+                alex.Animate(dt, {hs, player.velocity[1], player.grounded, player.wall_running});
+                // Alex's place: turned to where he faces. The game's wall-run clips are made
+                // against a wall in front, so on a wall he only faces it.
+                float fwd[3] = {std::sin(player.facing), 0, -std::cos(player.facing)}, upw[3] = {0, 1, 0};
+                const float pos[3] = {player.position[0], player.position[1], player.position[2]};
+                float right[3];
+                Cross(fwd, upw, right);
+                const float placement[16] = {right[0], right[1], right[2], 0, upw[0], upw[1], upw[2], 0,
+                                             -fwd[0], -fwd[1], -fwd[2], 0, pos[0], pos[1], pos[2], 1};
+                alex.Draw(renderer, placement);
+                models.push_back(&alex.GetModel());
+            }
             std::uint32_t w = 0, h = 0;
             renderer.Size(w, h);
             engine::FrameView view{};
@@ -370,6 +411,7 @@ int main(int argc, char** argv) {
                 frames = 0;
             }
         }
+        if (has_alex) alex.Destroy(renderer);
         city.Close();
     }
     renderer.Shutdown();

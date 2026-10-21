@@ -15,6 +15,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
   - Parked cars: the cells' parking places (`proto::ParkedCarSpawner`) get the vehicles their district spawns, by the district's weights, from `art/packages/vehicles`. Each car is put together from its skeleton's parts (body, doors, wheels) and painted with a colour from its own palette (`<car>_tod`). Car windows are glass that reflects the sky.
   - Fixed: the low-detail city's traffic strips covered the streets of the detailed cells.
   - On foot (F): walk, sprint at 22 m/s and jump through the city with collision against its buildings, cars and props. Sprinting into a wall runs up it, Alex's way, and over the top. `--walk-test seconds` checks it without a screen.
+  - Alex: the game's own model (body, head, hoodie, arms), skeletons and animations, read from `art/alex/alex.p3d.rz` (634 clips). On foot the camera is behind him; he stands, walks, runs, sprints, rises, falls and runs up walls with the game's clips, blended into each other, and vaults cars instead of running up them. V switches to first person; `--anim name` plays one clip.
 - `scripts/game_map.py` writes a map of the game's code to `out/game_map`. The map lists the 11,600 classes with their virtual functions, 73,000 functions with names where possible, and the engine's source files. It also writes a Ghidra symbol list.
 
 ## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))

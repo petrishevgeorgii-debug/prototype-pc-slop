@@ -804,6 +804,40 @@ bool Renderer::CreateModel(const std::vector<p3d::Vertex>& vertices, const std::
     return Upload(vertices.data(), vb, out.vertices.buffer) && Upload(indices.data(), ib, out.indices.buffer);
 }
 
+bool Renderer::CreateDynamicModel(std::size_t vertex_count, const std::vector<std::uint32_t>& indices, Model& out) {
+    static_assert(kFrames == 2, "Model::dynamic holds one buffer per frame in flight");
+    if (vertex_count == 0 || indices.empty()) return false;
+    for (int i = 0; i < kFrames; ++i) {
+        VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bi.size = vertex_count * sizeof(p3d::Vertex);
+        bi.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        VmaAllocationCreateInfo ai{};
+        ai.usage = VMA_MEMORY_USAGE_AUTO;
+        ai.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VmaAllocationInfo info{};
+        if (vmaCreateBuffer(allocator_, &bi, &ai, &out.dynamic[i].buffer, &out.dynamic[i].allocation, &info) != VK_SUCCESS) return false;
+        out.dynamic_mapped[i] = info.pMappedData;
+    }
+    out.dynamic_count = vertex_count;
+    VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    bi.size = indices.size() * 4;
+    bi.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateInfo ai{};
+    ai.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+    if (vmaCreateBuffer(allocator_, &bi, &ai, &out.indices.buffer, &out.indices.allocation, nullptr) != VK_SUCCESS) return false;
+    return Upload(indices.data(), indices.size() * 4, out.indices.buffer);
+}
+
+void Renderer::UpdateDynamicModel(Model& m, const std::vector<p3d::Vertex>& vertices) {
+    if (!m.dynamic_count) return;
+    // The copy the next frame reads; the frame that last read it is waited for.
+    Frame& f = frames_[frame_];
+    vkWaitForFences(device_, 1, &f.done, VK_TRUE, UINT64_MAX);
+    const std::size_t n = std::min(vertices.size(), m.dynamic_count);
+    std::memcpy(m.dynamic_mapped[frame_], vertices.data(), n * sizeof(p3d::Vertex));
+    vmaFlushAllocation(allocator_, m.dynamic[frame_].allocation, 0, VK_WHOLE_SIZE);
+}
+
 bool Renderer::CreateTexture(const p3d::Texture& t, GpuTexture& out) {
     if (t.levels.empty()) return false;
     VkImageCreateInfo ii{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
@@ -902,6 +936,9 @@ void Renderer::DestroyModel(Model& m) {
         if (t.image) vmaDestroyImage(allocator_, t.image, t.allocation);
     }
     if (m.vertices.buffer) vmaDestroyBuffer(allocator_, m.vertices.buffer, m.vertices.allocation);
+    for (auto& d : m.dynamic) {
+        if (d.buffer) vmaDestroyBuffer(allocator_, d.buffer, d.allocation);
+    }
     if (m.indices.buffer) vmaDestroyBuffer(allocator_, m.indices.buffer, m.indices.allocation);
     m = Model{};
 }
@@ -1020,7 +1057,8 @@ bool Renderer::DrawFrame(const FrameView& view, const std::vector<const Model*>&
             if (((d.flags & Material::Decal) != 0) != decals) continue;
             if (!buffers) {
                 VkDeviceSize offset = 0;
-                vkCmdBindVertexBuffers(f.cmd, 0, 1, &m.vertices.buffer, &offset);
+                const VkBuffer vb = m.dynamic_count ? m.dynamic[frame_].buffer : m.vertices.buffer;
+                vkCmdBindVertexBuffers(f.cmd, 0, 1, &vb, &offset);
                 vkCmdBindIndexBuffer(f.cmd, m.indices.buffer, 0, VK_INDEX_TYPE_UINT32);
                 buffers = true;
             }

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 
@@ -124,7 +125,79 @@ struct Element {
     std::uint8_t kind;
 };
 
-bool ReadPart(const Chunk& group, Part& part) {
+/// A skinned part's extra data: per vertex, up to four skeleton joints and their weights.
+struct SkinData {
+    std::vector<std::array<std::uint8_t, 4>>* joints = nullptr;
+    std::vector<std::array<float, 4>>* weights = nullptr;
+};
+
+constexpr std::uint32_t kWeights = 0x49570cfb, kJoints = 0x73d5cba7;
+constexpr std::uint32_t kMatrixPalette = 0x0001000d;
+
+/// The palette's joints: what a skinned vertex's joint numbers stand for.
+std::vector<std::uint32_t> Palette(const Chunk& group) {
+    std::vector<std::uint32_t> palette;
+    if (const Chunk* p = group.First(kMatrixPalette); p && p->size >= 4) {
+        const std::uint32_t n = Get<std::uint32_t>(p->data);
+        for (std::uint32_t i = 0; i < n && 4 + 4 * (i + 1) <= p->size; ++i) palette.push_back(Get<std::uint32_t>(p->data + 4 + 4 * i));
+    }
+    return palette;
+}
+
+void SetWeights(SkinData& skin, std::size_t i, const float w3[3], const std::uint8_t j4[4], const std::vector<std::uint32_t>& palette) {
+    if (!skin.joints) return;
+    std::array<float, 4> w = {w3[0], w3[1], w3[2], std::max(0.0f, 1.0f - w3[0] - w3[1] - w3[2])};
+    std::array<std::uint8_t, 4> j{};
+    for (int k = 0; k < 4; ++k) {
+        const std::uint32_t joint = j4[k] < palette.size() ? palette[j4[k]] : 0;
+        j[k] = static_cast<std::uint8_t>(std::min<std::uint32_t>(joint, 255));
+    }
+    (*skin.joints)[i] = j;
+    (*skin.weights)[i] = w;
+}
+
+/// The older layout: a list per attribute (PositionList, NormalList, UVList, ...).
+bool ReadListPart(const Chunk& group, Part& part, SkinData skin) {
+    const Chunk* positions = group.First(0x00010005);
+    const Chunk* indices = group.First(0x0001000a);
+    if (!positions || !indices || positions->size < 4 || indices->size < 4) return false;
+    const std::uint32_t count = std::min<std::uint32_t>(Get<std::uint32_t>(positions->data), static_cast<std::uint32_t>((positions->size - 4) / 12));
+    part.vertices.assign(count, Vertex{});
+    if (skin.joints) skin.joints->assign(count, {}), skin.weights->assign(count, {1, 0, 0, 0});
+    const auto list = [&](std::uint32_t id, std::size_t header, std::size_t element) -> const std::uint8_t* {
+        const Chunk* c = group.First(id);
+        if (!c || c->size < header + element * count) return nullptr;
+        return c->data + header;
+    };
+    const std::uint8_t* normals = list(0x00010006, 4, 12);
+    const std::uint8_t* uvs = list(0x00010007, 8, 8);
+    const std::uint8_t* colours = list(0x00010008, 4, 4);
+    const std::uint8_t* tangents = list(0x00010028, 4, 16);
+    const std::uint8_t* matrices = list(0x0001000b, 4, 4);
+    const std::uint8_t* weights = list(0x0001000c, 4, 12);
+    const auto palette = Palette(group);
+    std::fill(part.min, part.min + 3, FLT_MAX);
+    std::fill(part.max, part.max + 3, -FLT_MAX);
+    for (std::uint32_t i = 0; i < count; ++i) {
+        Vertex& v = part.vertices[i];
+        std::memcpy(v.position, positions->data + 4 + 12 * i, 12);
+        if (normals) std::memcpy(v.normal, normals + 12 * i, 12);
+        if (uvs) std::memcpy(v.uv, uvs + 8 * i, 8);
+        if (tangents) std::memcpy(v.tangent, tangents + 16 * i, 16);
+        v.colour = colours ? Get<std::uint32_t>(colours + 4 * i) : 0xffffffffu;
+        if (matrices && weights) SetWeights(skin, i, reinterpret_cast<const float*>(weights + 12 * i), matrices + 4 * i, palette);
+        Grow(part.min, part.max, v.position);
+    }
+    const std::uint32_t n = std::min<std::uint32_t>(Get<std::uint32_t>(indices->data), static_cast<std::uint32_t>((indices->size - 4) / 4)) / 3 * 3;
+    part.indices.resize(n);
+    for (std::uint32_t i = 0; i < n; ++i) {
+        const std::uint32_t idx = Get<std::uint32_t>(indices->data + 4 + 4 * i);
+        part.indices[i] = idx < count ? idx : 0;
+    }
+    return count > 0 && n > 0;
+}
+
+bool ReadPart(const Chunk& group, Part& part, SkinData skin = {}) {
     Reader r{group.data, group.data + group.size};
     r.U32();
     part.shader = r.Str();
@@ -132,67 +205,85 @@ bool ReadPart(const Chunk& group, Part& part) {
     r.U32();
     r.U32();
     const std::uint32_t index_count = r.U32();
-    const Chunk* format = group.First(kVertexFormat);
-    const Chunk* vb = group.First(kVertexBuffer);
+    if (!r.ok || kind != 0) return false;
+    // Vertex streams: each VertexFormat describes the VertexBuffer in the same place.
+    std::vector<const Chunk*> formats, buffers;
+    for (const Chunk& c : group.children) {
+        if (c.id == kVertexFormat) formats.push_back(&c);
+        if (c.id == kVertexBuffer) buffers.push_back(&c);
+    }
     const Chunk* ib = group.First(kIndexBuffer);
-    if (!r.ok || kind != 0 || !format || !vb || !ib || vb->size < 12 || ib->size < 12) {
-        return false;
-    }
-    Reader f{format->data, format->data + format->size};
-    f.U16(), f.U16(), f.U32(), f.U32();
-    const std::uint32_t element_bytes = f.U32();
-    std::vector<Element> elements;
-    for (std::uint32_t i = 0; i < element_bytes / 17 && f.ok; ++i) {
-        Element e{};
-        e.hash = f.U32();
-        e.packed = f.U32();
-        e.offset = f.U32();
-        e.stride = f.U16();
-        e.components = f.U16();
-        e.kind = f.U8();
-        elements.push_back(e);
-    }
-    if (!f.ok || elements.empty() || elements[0].stride == 0) {
-        return false;
-    }
-    const std::uint32_t stride = elements[0].stride;
-    const auto find = [&](std::uint32_t hash) -> const Element* {
-        for (const auto& e : elements) {
-            if (e.hash == hash) return &e;
-        }
-        return nullptr;
+    if (formats.empty()) return ReadListPart(group, part, skin);
+    if (buffers.size() < formats.size() || !ib || ib->size < 12) return false;
+    struct Stream {
+        const std::uint8_t* data;
+        std::uint32_t stride, count;
     };
-    const Element* position = find(kPosition);
-    const Element* uv = find(kUv0);
-    const Element* normal = find(kNormal);
-    const Element* colour = find(kColour0);
-    const Element* uv1 = find(kUv1);
-    const Element* tangent = find(kTangent);
-    const Element* colour1 = find(kColour1);
-    if (!position) {
-        return false;
+    struct Found {
+        const Element* e = nullptr;
+        int stream = -1;
+    };
+    std::vector<std::vector<Element>> elements(formats.size());
+    std::vector<Stream> streams;
+    std::uint32_t count = UINT32_MAX;
+    for (std::size_t s = 0; s < formats.size(); ++s) {
+        Reader f{formats[s]->data, formats[s]->data + formats[s]->size};
+        f.U16(), f.U16(), f.U32(), f.U32();
+        const std::uint32_t element_bytes = f.U32();
+        for (std::uint32_t i = 0; i < element_bytes / 17 && f.ok; ++i) {
+            Element e{};
+            e.hash = f.U32();
+            e.packed = f.U32();
+            e.offset = f.U32();
+            e.stride = f.U16();
+            e.components = f.U16();
+            e.kind = f.U8();
+            elements[s].push_back(e);
+        }
+        if (!f.ok || elements[s].empty() || elements[s][0].stride == 0 || buffers[s]->size < 12) return false;
+        const std::uint32_t stride = elements[s][0].stride;
+        const std::uint32_t size = std::min<std::uint32_t>(Get<std::uint32_t>(buffers[s]->data + 8),
+                                                           static_cast<std::uint32_t>(buffers[s]->size - 12));
+        streams.push_back({buffers[s]->data + 12, stride, size / stride});
+        count = std::min(count, size / stride);
     }
-    const std::uint32_t vb_size = std::min<std::uint32_t>(Get<std::uint32_t>(vb->data + 8),
-                                                          static_cast<std::uint32_t>(vb->size - 12));
-    const std::uint8_t* v = vb->data + 12;
-    const std::uint32_t count = vb_size / stride;
+    const auto find = [&](std::uint32_t hash, std::uint32_t bytes) {
+        for (std::size_t s = 0; s < elements.size(); ++s) {
+            for (const auto& e : elements[s]) {
+                if (e.hash == hash && e.offset + bytes <= streams[s].stride) return Found{&e, static_cast<int>(s)};
+            }
+        }
+        return Found{};
+    };
+    const Found position = find(kPosition, 12), uv = find(kUv0, 8), normal = find(kNormal, 12), colour = find(kColour0, 4),
+                uv1 = find(kUv1, 8), tangent = find(kTangent, 16), colour1 = find(kColour1, 4), weights = find(kWeights, 12),
+                joints = find(kJoints, 4);
+    if (!position.e || count == 0) return false;
+    const auto at = [&](const Found& f, std::uint32_t i) { return streams[f.stream].data + std::size_t(i) * streams[f.stream].stride + f.e->offset; };
+    const bool skinned = skin.joints && weights.e && joints.e;
+    if (skin.joints) skin.joints->assign(count, {}), skin.weights->assign(count, {1, 0, 0, 0});
+    const auto palette = skinned ? Palette(group) : std::vector<std::uint32_t>{};
     part.vertices.resize(count);
     std::fill(part.min, part.min + 3, FLT_MAX);
     std::fill(part.max, part.max + 3, -FLT_MAX);
     for (std::uint32_t i = 0; i < count; ++i) {
-        const std::uint8_t* src = v + std::size_t(i) * stride;
         Vertex& out = part.vertices[i];
-        std::memcpy(out.position, src + position->offset, 12);
-        if (uv && uv->offset + 8 <= stride) std::memcpy(out.uv, src + uv->offset, 8);
+        std::memcpy(out.position, at(position, i), 12);
+        if (uv.e) std::memcpy(out.uv, at(uv, i), 8);
         else out.uv[0] = out.uv[1] = 0;
-        if (normal && normal->offset + 12 <= stride) std::memcpy(out.normal, src + normal->offset, 12);
+        if (normal.e) std::memcpy(out.normal, at(normal, i), 12);
         else out.normal[0] = out.normal[1] = out.normal[2] = 0;
-        out.colour = colour && colour->offset + 4 <= stride ? Get<std::uint32_t>(src + colour->offset) : 0xffffffffu;
-        if (uv1 && uv1->offset + 8 <= stride) std::memcpy(out.uv1, src + uv1->offset, 8);
+        out.colour = colour.e ? Get<std::uint32_t>(at(colour, i)) : 0xffffffffu;
+        if (uv1.e) std::memcpy(out.uv1, at(uv1, i), 8);
         else out.uv1[0] = out.uv1[1] = 0;
-        if (tangent && tangent->offset + 16 <= stride) std::memcpy(out.tangent, src + tangent->offset, 16);
+        if (tangent.e) std::memcpy(out.tangent, at(tangent, i), 16);
         else std::fill(out.tangent, out.tangent + 4, 0.0f);
-        out.colour1 = colour1 && colour1->offset + 4 <= stride ? Get<std::uint32_t>(src + colour1->offset) : 0u;
+        out.colour1 = colour1.e ? Get<std::uint32_t>(at(colour1, i)) : 0u;
+        if (skinned) {
+            float w[3];
+            std::memcpy(w, at(weights, i), 12);
+            SetWeights(skin, i, w, at(joints, i), palette);
+        }
         Grow(part.min, part.max, out.position);
     }
     const std::uint32_t ib_size = std::min<std::uint32_t>(Get<std::uint32_t>(ib->data + 8),
@@ -204,7 +295,7 @@ bool ReadPart(const Chunk& group, Part& part) {
         const std::uint32_t idx = wide ? Get<std::uint32_t>(ib->data + 12 + 4 * i) : Get<std::uint16_t>(ib->data + 12 + 2 * i);
         part.indices[i] = idx < count ? idx : 0;
     }
-    return count > 0 && n > 0;
+    return n > 0;
 }
 
 /// Element order inside an 8 x 8 micro tile of a "thin" tile mode: x0 y0 x1 y1 x2 y2.
@@ -337,6 +428,163 @@ bool Load(const std::filesystem::path& path, File& file, std::string& error) {
         return false;
     }
     return true;
+}
+
+void ReadSkins(const File& file, std::vector<Skin>& skins) {
+    for (const Chunk& c : file.chunks) {
+        if (c.id != 0x00010001) continue;
+        Reader r{c.data, c.data + c.size};
+        Skin skin;
+        skin.name = r.Str();
+        r.U32();
+        skin.skeleton = r.Str();
+        for (const Chunk& g : c.children) {
+            if (g.id != kPrimGroup) continue;
+            SkinPart sp;
+            if (ReadPart(g, sp.part, SkinData{&sp.joints, &sp.weights})) skin.parts.push_back(std::move(sp));
+        }
+        if (!skin.parts.empty()) skins.push_back(std::move(skin));
+    }
+}
+
+namespace {
+
+float Half(std::uint16_t h) {
+    const std::uint32_t sign = (h >> 15) & 1, exponent = (h >> 10) & 0x1f, mantissa = h & 0x3ff;
+    float v;
+    if (exponent == 0) v = std::ldexp(float(mantissa), -24);
+    else if (exponent == 31) v = mantissa ? NAN : INFINITY;
+    else v = std::ldexp(float(mantissa | 0x400), int(exponent) - 25);
+    return sign ? -v : v;
+}
+
+std::array<float, 4> FromXyz(float x, float y, float z) {
+    const float w2 = 1.0f - (x * x + y * y + z * z);
+    return {x, y, z, w2 > 0 ? std::sqrt(w2) : 0.0f};
+}
+
+/// One channel's keys: frames, then values, from the chunk itself or (compressed animations)
+/// from the decompressed block at the offset its 0x121120 child gives, each run padded to 4.
+bool ReadChannel(const Chunk& k, const std::vector<std::uint8_t>& block, AnimationTrack& track) {
+    const std::uint8_t* d = k.data;
+    const std::uint8_t* end = k.data + k.size;
+    if (k.size < 8) return false;
+    const std::uint32_t id = k.id;
+    const bool reduced = id == 0x00121102 || id == 0x00121103 || id == 0x00121118; // one axis fixed or two
+    std::uint16_t axis = 0;
+    float base[3] = {0, 0, 0};
+    std::size_t at = 8;
+    if (reduced) {
+        if (k.size < 22) return false;
+        axis = Get<std::uint16_t>(d + 8);
+        std::memcpy(base, d + 10, 12);
+        at = 22;
+    }
+    const std::uint8_t* src = d;
+    const std::uint8_t* src_end = end;
+    std::uint32_t n = 0;
+    bool padded = false;
+    if (const Chunk* c = k.First(0x00121120); c && c->size >= 12) {
+        n = Get<std::uint32_t>(c->data + 4);
+        at = Get<std::uint32_t>(c->data + 8);
+        src = block.data();
+        src_end = block.data() + block.size();
+        padded = true;
+    } else {
+        if (d + at + 4 > end) return false;
+        n = Get<std::uint32_t>(d + at);
+        at += 4;
+    }
+    std::size_t value_bytes = 0;
+    switch (id) {
+    case 0x00121112: value_bytes = 6; break;  // quaternion: x y z as s16
+    case 0x00121114: value_bytes = 3; break;  // quaternion: x y z as s8
+    case 0x00121119: value_bytes = 6; break;  // vector: 3 halves
+    case 0x00121104: value_bytes = 12; break; // vector: 3 floats
+    case 0x00121102: value_bytes = 4; break;  // one float, the rest from the base
+    case 0x00121103: value_bytes = 8; break;  // two floats
+    case 0x00121118: value_bytes = 4; break;  // two halves
+    default: return false;
+    }
+    if (n == 0 || n > 100000 || !src) return false;
+    if (src + at + 2 * n > src_end) return false;
+    track.times.resize(n);
+    for (std::uint32_t i = 0; i < n; ++i) track.times[i] = Get<std::uint16_t>(src + at + 2 * i);
+    at += 2 * n;
+    if (padded) at = (at + 3) & ~std::size_t(3);
+    if (src + at + value_bytes * n > src_end) return false;
+    track.values.resize(n);
+    const std::uint8_t* v = src + at;
+    int other[2] = {axis == 0 ? 1 : 0, axis == 2 ? 1 : 2};
+    for (std::uint32_t i = 0; i < n; ++i) {
+        auto& out = track.values[i];
+        const std::uint8_t* p = v + value_bytes * i;
+        switch (id) {
+        case 0x00121112:
+            out = FromXyz(Get<std::int16_t>(p) / 32767.0f, Get<std::int16_t>(p + 2) / 32767.0f, Get<std::int16_t>(p + 4) / 32767.0f);
+            break;
+        case 0x00121114:
+            out = FromXyz(std::int8_t(p[0]) / 127.0f, std::int8_t(p[1]) / 127.0f, std::int8_t(p[2]) / 127.0f);
+            break;
+        case 0x00121119:
+            out = {Half(Get<std::uint16_t>(p)), Half(Get<std::uint16_t>(p + 2)), Half(Get<std::uint16_t>(p + 4)), 0};
+            break;
+        case 0x00121104: out = {Get<float>(p), Get<float>(p + 4), Get<float>(p + 8), 0}; break;
+        case 0x00121102:
+            out = {base[0], base[1], base[2], 0};
+            if (axis < 3) out[axis] = Get<float>(p);
+            break;
+        case 0x00121103:
+            out = {base[0], base[1], base[2], 0};
+            out[other[0]] = Get<float>(p), out[other[1]] = Get<float>(p + 4);
+            break;
+        case 0x00121118:
+            out = {base[0], base[1], base[2], 0};
+            out[other[0]] = Half(Get<std::uint16_t>(p)), out[other[1]] = Half(Get<std::uint16_t>(p + 2));
+            break;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+void ReadAnimations(const File& file, std::vector<Animation>& animations, const std::vector<std::string>* only) {
+    for (const Chunk& c : file.chunks) {
+        if (c.id != 0x00121000 || c.size < 8) continue;
+        Reader r{c.data + 4, c.data + c.size};
+        Animation a;
+        a.name = r.Str();
+        if (only && std::find(only->begin(), only->end(), a.name) == only->end()) continue;
+        r.U32(); // "PTRN"
+        a.frames = r.F32();
+        a.fps = r.F32();
+        if (!r.ok || a.fps <= 0) continue;
+        std::vector<std::uint8_t> block;
+        if (const Chunk* z = c.First(0x02f00000); z && z->size > 16 && std::memcmp(z->data + 4, "ZLIB", 4) == 0) {
+            mz_ulong size = Get<std::uint32_t>(z->data + 8);
+            block.resize(size);
+            if (mz_uncompress(block.data(), &size, z->data + 16, static_cast<mz_ulong>(z->size - 16)) != MZ_OK) continue;
+            block.resize(size);
+        }
+        const Chunk* groups = c.First(0x00121002);
+        if (!groups) continue;
+        for (const Chunk& g : groups->children) {
+            if (g.id != 0x00121001) continue;
+            Reader gr{g.data + 4, g.data + g.size};
+            const std::string joint = gr.Str();
+            for (const Chunk& k : g.children) {
+                if (k.size < 8) continue;
+                AnimationTrack t;
+                t.joint = joint;
+                if (std::memcmp(k.data + 4, "ROT", 3) == 0) t.kind = AnimationTrack::Kind::Rotation;
+                else if (std::memcmp(k.data + 4, "TRAN", 4) == 0) t.kind = AnimationTrack::Kind::Translation;
+                else continue;
+                if (ReadChannel(k, block, t)) a.tracks.push_back(std::move(t));
+            }
+        }
+        animations.push_back(std::move(a));
+    }
 }
 
 void ReadMeshes(const File& file, std::vector<Mesh>& meshes) {

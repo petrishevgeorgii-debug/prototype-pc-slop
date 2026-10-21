@@ -148,6 +148,33 @@ struct Composite {
 };
 void ReadComposites(const File& file, std::vector<Composite>& composites);
 
+/// A skinned mesh (characters): parts whose vertices follow up to four joints of a skeleton.
+struct SkinPart {
+    Part part; ///< in the skeleton's rest pose
+    std::vector<std::array<std::uint8_t, 4>> joints; ///< skeleton joint indices, per vertex
+    std::vector<std::array<float, 4>> weights;
+};
+struct Skin {
+    std::string name, skeleton;
+    std::vector<SkinPart> parts;
+};
+void ReadSkins(const File& file, std::vector<Skin>& skins);
+
+/// An animation (Pure3D 0x121000, "PTRN"): key frames per joint, at `fps`.
+struct AnimationTrack {
+    std::string joint;
+    enum class Kind { Rotation, Translation } kind = Kind::Rotation;
+    std::vector<float> times;                   ///< in frames
+    std::vector<std::array<float, 4>> values;   ///< quaternion x y z w, or x y z
+};
+struct Animation {
+    std::string name;
+    float frames = 0, fps = 30;
+    std::vector<AnimationTrack> tracks;
+};
+/// The animations of a file; `only`, when given, decodes just those names.
+void ReadAnimations(const File& file, std::vector<Animation>& animations, const std::vector<std::string>* only = nullptr);
+
 /// A vehicle's paint colours (its _tod file's proto::ShaderPalette, color_variation).
 void ReadPalette(const File& file, std::vector<std::array<float, 3>>& colours);
 

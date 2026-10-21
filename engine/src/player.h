@@ -25,6 +25,8 @@ public:
     float position[3] = {0, 0, 0}; ///< the feet
     float velocity[3] = {0, 0, 0};
     bool grounded = false, wall_running = false;
+    float facing = 0;                ///< where the body faces (yaw, radians; 0: -z)
+    float wall_normal[2] = {0, 1};   ///< x z, away from the wall it runs up
 
 private:
     float safe_[3] = {0, 0, 0}; ///< the last place it stood, to come back to after a fall out of the city

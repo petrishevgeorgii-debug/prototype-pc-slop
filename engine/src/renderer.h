@@ -50,6 +50,10 @@ struct Model {
     std::vector<Draw> draws;
     std::vector<GpuTexture> textures;       ///< owned by this model
     std::vector<VkDescriptorSet> materials; ///< owned by this model
+    /// A model whose vertices change every frame (characters): one copy per frame in flight.
+    GpuBuffer dynamic[2];
+    void* dynamic_mapped[2] = {nullptr, nullptr};
+    std::size_t dynamic_count = 0;
     float min[3] = {-1e30f, -1e30f, -1e30f}, max[3] = {1e30f, 1e30f, 1e30f}; ///< world bounds, for culling
 };
 
@@ -86,6 +90,10 @@ public:
     VkDescriptorSet CreateMaterial(const GpuTexture* colour, const GpuTexture* normal, const GpuTexture* mask = nullptr);
     /// Uploads geometry; `draws` index into it.
     bool CreateModel(const std::vector<p3d::Vertex>& vertices, const std::vector<std::uint32_t>& indices, Model& out);
+    /// A model with vertices written by the CPU each frame (UpdateDynamicModel).
+    bool CreateDynamicModel(std::size_t vertex_count, const std::vector<std::uint32_t>& indices, Model& out);
+    /// The vertices the next frame draws.
+    void UpdateDynamicModel(Model& model, const std::vector<p3d::Vertex>& vertices);
     /// Frees a model and its textures (waits for the GPU).
     void DestroyModel(Model& model);
 

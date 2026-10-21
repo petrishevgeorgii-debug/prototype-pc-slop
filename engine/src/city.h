@@ -46,6 +46,8 @@ public:
     void Update(const float camera[3]);
     void Models(std::vector<const Model*>& models, std::vector<bool>& hidden) const;
 
+    /// The game's art folder (p1/art), where the characters are.
+    std::filesystem::path ArtFolder() const { return location_.parent_path().parent_path(); }
     /// Where to start: above Columbia University (cell 100), looking at it.
     void StartView(float position[3], float target[3]) const;
     /// "12 cells, 2 loading".
