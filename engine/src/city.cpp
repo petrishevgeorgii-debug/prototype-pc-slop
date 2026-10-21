@@ -48,6 +48,7 @@ struct City::Pending {
     };
     std::vector<Part> parts;
     std::vector<p3d::Texture> textures;
+    std::unique_ptr<CollisionMesh> collision;
     std::string error;
 };
 
@@ -90,6 +91,15 @@ std::optional<City::Look> LookOf(const p3d::Shader& s, bool tint) {
     if (surface == p3d::Surface::AlphaTest) look.flags |= Material::AlphaTest;
     if (surface == p3d::Surface::Decal) look.flags |= Material::Decal;
     if (tint && p3d::TintedByVertices(s.effect)) look.flags |= Material::Tint;
+    // Cut-out walls and roofs are solid; leaves, branches and flowers are not.
+    look.solid = !(look.flags & (Material::Decal | Material::Glass));
+    if (look.flags & Material::AlphaTest) {
+        std::string name = s.effect + " " + look.colour;
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+        for (const char* soft : {"tree", "foliage", "branch", "leaves", "leaf", "grass", "flower", "plant", "hedge", "bush", "ivy", "vine"}) {
+            if (name.find(soft) != std::string::npos) look.solid = false;
+        }
+    }
     return look;
 }
 
@@ -438,6 +448,13 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
         p->indices.insert(p->indices.end(), indices.begin(), indices.end());
         p->parts.push_back(std::move(d));
     }
+    // What can be stood on and walked into: the solid surfaces (not glass, decals or leaves).
+    p->collision = std::make_unique<CollisionMesh>();
+    for (const auto& part : p->parts) {
+        if (!part.look.solid) continue;
+        p->collision->Add(p->vertices, p->indices.data() + part.first, part.count, part.group);
+    }
+    p->collision->Build();
     return p;
 }
 
@@ -547,6 +564,7 @@ bool City::Open(const std::filesystem::path& game, Renderer& renderer, std::stri
         error = "cannot upload the low-detail city";
         return false;
     }
+    low_collision_ = std::move(low->collision);
     // The cells' bounds: the low-detail city's mesh for each.
     {
         p3d::File f;
@@ -587,7 +605,8 @@ void City::Close() {
     wake_.notify_all();
     if (worker_.joinable()) worker_.join();
     if (!renderer_) return;
-    for (auto& [n, c] : cells_) renderer_->DestroyModel(c.model);
+    for (auto& [n, c] : cells_) renderer_->DestroyModel(c.model), c.collision.reset();
+    low_collision_.reset();
     renderer_->DestroyModel(low_);
     renderer_->DestroyModel(library_);
     cells_.clear();
@@ -673,15 +692,24 @@ void City::Update(const float camera[3]) {
             c.state = Cell::State::Unloaded;
             continue;
         }
-        if (Upload(*p, c.model)) c.state = Cell::State::Ready;
-        else renderer_->DestroyModel(c.model), c.state = Cell::State::Unloaded;
+        if (Upload(*p, c.model)) {
+            c.state = Cell::State::Ready;
+            c.collision = std::move(p->collision);
+        } else {
+            renderer_->DestroyModel(c.model), c.state = Cell::State::Unloaded;
+        }
     }
     // Far cells go.
     for (auto& [n, c] : cells_) {
         if (c.state == Cell::State::Ready && Distance(c, camera) > kUnloadRadius) {
             renderer_->DestroyModel(c.model);
+            c.collision.reset();
             c.state = Cell::State::Unloaded;
         }
+    }
+    low_hidden_.assign(static_cast<std::size_t>(max_index_) + 1, false);
+    for (const auto& [n, c] : cells_) {
+        if (c.state == Cell::State::Ready && !c.model.draws.empty()) low_hidden_[n] = true;
     }
 }
 
@@ -711,6 +739,37 @@ void City::StartView(float position[3], float target[3]) const {
     position[0] = centre[0] - 140.0f;
     position[1] = height + 60.0f;
     position[2] = centre[2] - 160.0f;
+}
+
+bool City::Ground(float x, float z, float top, float bottom, float& y) const {
+    bool found = false;
+    const auto take = [&](const CollisionMesh& m, const std::vector<bool>* skip) {
+        float h = 0;
+        if (m.Ground(x, z, top, bottom, 0.5f, h, skip) && (!found || h > y)) y = h, found = true;
+    };
+    for (const auto& [n, c] : cells_) {
+        if (c.state == Cell::State::Ready && c.collision && x >= c.collision->min[0] - 1 && x <= c.collision->max[0] + 1 &&
+            z >= c.collision->min[2] - 1 && z <= c.collision->max[2] + 1) {
+            take(*c.collision, nullptr);
+        }
+    }
+    if (low_collision_) take(*low_collision_, &low_hidden_);
+    return found;
+}
+
+int City::Push(float centre[3], float radius, float push[3]) const {
+    int contacts = 0;
+    for (const auto& [n, c] : cells_) {
+        if (c.state != Cell::State::Ready || !c.collision) continue;
+        const auto& m = *c.collision;
+        if (centre[0] + radius < m.min[0] || centre[0] - radius > m.max[0] || centre[2] + radius < m.min[2] ||
+            centre[2] - radius > m.max[2]) {
+            continue;
+        }
+        contacts += m.PushSphere(centre, radius, push);
+    }
+    if (low_collision_) contacts += low_collision_->PushSphere(centre, radius, push, &low_hidden_);
+    return contacts;
 }
 
 std::string City::Status() const {

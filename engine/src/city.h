@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "collision.h"
 #include "p3d.h"
 #include "renderer.h"
 
@@ -28,8 +29,9 @@ public:
     struct Look {
         std::string colour, normal, mask;
         std::uint32_t flags = 0;
+        bool solid = true; ///< walked on and into (not glass, decals, leaves)
         bool operator<(const Look& o) const {
-            return std::tie(colour, normal, mask, flags) < std::tie(o.colour, o.normal, o.mask, o.flags);
+            return std::tie(colour, normal, mask, flags, solid) < std::tie(o.colour, o.normal, o.mask, o.flags, o.solid);
         }
     };
 
@@ -53,6 +55,12 @@ public:
     /// The city's districts (Times Square, Central Park...), and the one nearest to a point.
     const std::vector<p3d::District>& Districts() const { return districts_; }
     std::string DistrictAt(const float position[3]) const;
+
+    /// Collision with what is loaded: the detailed cells, else the low-detail city.
+    /// The highest surface to stand on at (x, z) between `top` and `bottom`.
+    bool Ground(float x, float z, float top, float bottom, float& y) const;
+    /// Moves a sphere out of the city; adds the push's normals to `push`; the triangles touched.
+    int Push(float centre[3], float radius, float push[3]) const;
     /// No cell is waiting to be loaded or uploaded.
     bool Idle() const;
 
@@ -64,6 +72,7 @@ private:
         bool bounded = false;
         enum class State { Unloaded, Queued, Loading, Ready } state = State::Unloaded;
         Model model;
+        std::unique_ptr<CollisionMesh> collision;
     };
     struct Pending; // CPU data of a loaded cell, waiting for upload
 
@@ -94,6 +103,8 @@ private:
     std::map<int, Cell> cells_;
     Model library_;  ///< textures shared by the cells (textures.p3d.rz)
     Model low_;      ///< the low-detail city (midgeo.p3d.rz), grouped by cell
+    std::unique_ptr<CollisionMesh> low_collision_;
+    std::vector<bool> low_hidden_; ///< the low-detail groups whose detailed cell is in
     std::unordered_map<std::string, GpuTexture> shared_;
     /// Props by name (props.p3d.rz: their intact shape), placed by the cells' _ft files.
     std::unordered_map<std::string, std::vector<PropPart>> props_;

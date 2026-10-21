@@ -18,7 +18,7 @@ foreach(shader world.vert world.frag sky.vert sky.frag shadow.vert shadow.frag)
 endforeach()
 
 add_executable(manhattan EXCLUDE_FROM_ALL
-    src/main.cpp src/p3d.cpp src/city.cpp src/renderer.cpp src/vma.cpp ${ENGINE_SHADERS})
+    src/main.cpp src/p3d.cpp src/city.cpp src/collision.cpp src/player.cpp src/renderer.cpp src/vma.cpp ${ENGINE_SHADERS})
 set_target_properties(manhattan PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON INTERPROCEDURAL_OPTIMIZATION OFF)
 target_include_directories(manhattan PRIVATE src ${ENGINE_SHADER_DIR})
 target_compile_options(manhattan PRIVATE -Wall -Wextra -Wno-missing-field-initializers)

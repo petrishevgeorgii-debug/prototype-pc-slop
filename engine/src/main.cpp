@@ -3,12 +3,15 @@
 // Milestone 2: the city lit by its own light rig, with the sun's shadows.
 //
 //   manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png]
-//             [--size WxH] [--exposure e] [--no-shadows] [--validation] [--mirror]
+//             [--size WxH] [--exposure e] [--no-shadows] [--walk] [--walk-test seconds]
+//             [--validation] [--mirror]
 //
 // The game folder is the one with eboot.bin (THEORDER_GAME_DIR is used when none is given).
 // Controls: hold the right mouse button (or press Tab) to look around; W A S D to move, Space / C
 // up and down, Shift faster, the mouse wheel changes the speed; N / B the next / previous district,
 // L shadows on and off, [ and ] the exposure; Esc releases the mouse or quits.
+// F: on foot and back to flying. On foot: W A S D walk, Shift sprints (into a wall: up it), Space
+// jumps (also off a wall). --walk-test runs forward for that many seconds and logs the way.
 
 #define SDL_MAIN_HANDLED // a plain main(); SDL is told it is ready
 #include <SDL3/SDL.h>
@@ -24,6 +27,7 @@
 #include <string>
 
 #include "city.h"
+#include "player.h"
 #include "renderer.h"
 #include "log.h"
 
@@ -120,7 +124,8 @@ int main(int argc, char** argv) {
     std::string screenshot;
     std::string district;
     bool validation = false, mirror = false, at_given = false, look_given = false, shadows = true;
-    float exposure = 0.0f;
+    float exposure = 0.0f, walk_test = 0.0f;
+    bool walk = false;
     int width = 1600, height = 900;
     Camera camera;
     float look[2] = {0, 0};
@@ -135,9 +140,11 @@ int main(int argc, char** argv) {
         else if (a == "--district" && i + 1 < argc) district = argv[++i];
         else if (a == "--exposure" && i + 1 < argc) exposure = std::strtof(argv[++i], nullptr);
         else if (a == "--no-shadows") shadows = false;
+        else if (a == "--walk") walk = true;
+        else if (a == "--walk-test" && i + 1 < argc) walk_test = std::strtof(argv[++i], nullptr), walk = true;
         else if (a == "--help" || a == "-h") {
             std::puts("manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png] "
-                      "[--size WxH] [--exposure e] [--no-shadows] [--validation] [--mirror]");
+                      "[--size WxH] [--exposure e] [--no-shadows] [--walk] [--walk-test seconds] [--validation] [--mirror]");
             return 0;
         } else game = a;
     }
@@ -215,6 +222,17 @@ int main(int argc, char** argv) {
             camera.pitch = look[1] * 3.14159265f / 180.0f;
         }
         bool running = true, looking = false;
+        engine::Player player;
+        bool on_foot = false, jump_pressed = false;
+        float walk_time = 0.0f, walk_log = 0.0f;
+        const auto set_on_foot = [&](bool foot) {
+            on_foot = foot;
+            if (foot) {
+                const float feet[3] = {camera.position[0], camera.position[1] - 1.7f, camera.position[2]};
+                player.Place(feet);
+                Log("On foot at %.1f, %.1f, %.1f\n", feet[0], feet[1], feet[2]);
+            }
+        };
         auto last = std::chrono::steady_clock::now();
         auto title_time = last;
         int frames = 0, drawn = 0, idle_frames = 0, total_frames = 0;
@@ -233,6 +251,10 @@ int main(int argc, char** argv) {
                         go_to_district(district_index + 1);
                     } else if (ev.key.key == SDLK_B) {
                         go_to_district(district_index < 0 ? -1 : district_index - 1);
+                    } else if (ev.key.key == SDLK_F) {
+                        set_on_foot(!on_foot);
+                    } else if (ev.key.key == SDLK_SPACE) {
+                        jump_pressed = true;
                     } else if (ev.key.key == SDLK_L) {
                         lighting.shadows = !lighting.shadows;
                     } else if (ev.key.key == SDLK_RIGHTBRACKET) {
@@ -267,17 +289,45 @@ int main(int argc, char** argv) {
             const float dt = std::min(0.1f, std::chrono::duration<float>(now - last).count());
             last = now;
             const bool* keys = SDL_GetKeyboardState(nullptr);
-            float f[3], up[3] = {0, 1, 0}, r[3];
-            camera.Forward(f);
-            Cross(f, up, r);
-            Normalize(r);
-            const float speed = camera.speed * dt * (keys[SDL_SCANCODE_LSHIFT] ? 6.0f : 1.0f);
             const float side = mirror ? -1.0f : 1.0f;
-            for (int k = 0; k < 3; ++k) {
-                camera.position[k] += f[k] * speed * ((keys[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_S] ? 1.0f : 0.0f));
-                camera.position[k] += r[k] * speed * side * ((keys[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_A] ? 1.0f : 0.0f));
+            if (walk && !on_foot && city.Idle() && total_frames > 2) set_on_foot(true), walk = false;
+            if (on_foot) {
+                engine::PlayerInput in;
+                in.forward = (keys[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_S] ? 1.0f : 0.0f);
+                in.right = side * ((keys[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_A] ? 1.0f : 0.0f));
+                in.sprint = keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT];
+                in.jump = jump_pressed;
+                in.yaw = camera.yaw;
+                if (walk_test > 0.0f) {
+                    // Headless check: sprint straight ahead in fixed steps, several per frame.
+                    in.forward = 1.0f;
+                    in.sprint = true;
+                    for (int i = 0; i < 15 && walk_time < walk_test; ++i) {
+                        walk_time += 1.0f / 60.0f;
+                        player.Update(1.0f / 60.0f, in, city);
+                        if (walk_time >= walk_log) {
+                            Log("Walk %.2f s: %.1f, %.1f, %.1f%s%s\n", walk_time, player.position[0], player.position[1],
+                                player.position[2], player.grounded ? " (ground)" : "", player.wall_running ? " (up a wall)" : "");
+                            walk_log += 0.25f;
+                        }
+                    }
+                } else {
+                    player.Update(dt, in, city);
+                }
+                player.Eye(camera.position);
+            } else {
+                float f[3], up[3] = {0, 1, 0}, r[3];
+                camera.Forward(f);
+                Cross(f, up, r);
+                Normalize(r);
+                const float speed = camera.speed * dt * (keys[SDL_SCANCODE_LSHIFT] ? 6.0f : 1.0f);
+                for (int k = 0; k < 3; ++k) {
+                    camera.position[k] += f[k] * speed * ((keys[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_S] ? 1.0f : 0.0f));
+                    camera.position[k] += r[k] * speed * side * ((keys[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_A] ? 1.0f : 0.0f));
+                }
+                camera.position[1] += speed * ((keys[SDL_SCANCODE_SPACE] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_C] ? 1.0f : 0.0f));
             }
-            camera.position[1] += speed * ((keys[SDL_SCANCODE_SPACE] ? 1.0f : 0.0f) - (keys[SDL_SCANCODE_C] ? 1.0f : 0.0f));
+            jump_pressed = false;
 
             city.Update(camera.position);
             std::vector<const engine::Model*> models;
@@ -295,7 +345,8 @@ int main(int argc, char** argv) {
             if (!screenshot.empty()) {
                 // Headless check: once everything around the camera is in, save and stop.
                 idle_frames = city.Idle() ? idle_frames + 1 : 0;
-                if ((idle_frames > 5 && drawn > 3) || total_frames > 20000) {
+                const bool walked = walk_test <= 0.0f || walk_time >= walk_test;
+                if ((idle_frames > 5 && drawn > 3 && walked) || total_frames > 20000) {
                     if (!renderer.SaveScreenshot(screenshot, error)) {
                         Log("Screenshot: %s\n", error.c_str());
                         status = 1;
@@ -308,9 +359,12 @@ int main(int argc, char** argv) {
             if (std::chrono::duration<float>(now - title_time).count() > 0.5f) {
                 const float fps = frames / std::chrono::duration<float>(now - title_time).count();
                 char title[256];
-                std::snprintf(title, sizeof(title), "Manhattan Engine  |  %.0f fps  |  %s  |  %s  |  %.0f, %.0f, %.0f  |  %.0f m/s",
+                char mode[32];
+                if (on_foot) std::snprintf(mode, sizeof(mode), "on foot");
+                else std::snprintf(mode, sizeof(mode), "flying %.0f m/s", camera.speed);
+                std::snprintf(title, sizeof(title), "Manhattan Engine  |  %.0f fps  |  %s  |  %s  |  %.0f, %.0f, %.0f  |  %s",
                               fps, city.Status().c_str(), city.DistrictAt(camera.position).c_str(), camera.position[0],
-                              camera.position[1], camera.position[2], camera.speed);
+                              camera.position[1], camera.position[2], mode);
                 SDL_SetWindowTitle(window, title);
                 title_time = now;
                 frames = 0;

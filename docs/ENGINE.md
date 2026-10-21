@@ -93,6 +93,22 @@ layer.
 - Glass (`env_vehicle_glass_fade`): dark, see-through and reflecting the sky, more at grazing
   angles.
 
+**On foot.** In: the first step of milestone 4.
+
+- F switches between flying and on foot. On foot: W A S D walk (6 m/s), Shift sprints (22
+  m/s), Space jumps (about 8 m up, also off a wall). Sprinting into a wall runs up it at 16 m/s
+  and over the top; falling past a wall slides down it. A fall out of the city (the river) puts
+  you back where you last stood.
+- The body is two spheres (feet and head) and a step height of 0.55 m for kerbs and stairs,
+  pushed out of the city's triangles; the ground is the highest surface under the feet that is
+  flat enough to stand on.
+- The collision is the drawn geometry itself: each detailed cell's solid surfaces (not glass,
+  decals or leaves) in a 4 m grid, built on the streaming thread with the cell; elsewhere, the
+  low-detail city's.
+- It is first person until Alex is drawn (milestone 3, characters).
+- `--walk-test seconds` sprints straight ahead from `--at` / `--look` and logs the way (positions,
+  on the ground, up a wall), then takes the screenshot.
+
 ## Next milestones
 
 1. **The rest of the city's data:**
