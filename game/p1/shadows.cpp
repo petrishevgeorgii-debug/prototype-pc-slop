@@ -122,11 +122,16 @@ GUEST_ABI std::uint64_t ShadowUpdate(void* shadow, void* a, void* b, void* c) {
         Apply(shadow, distance);
         if (distance != g_logged_distance) {
             g_logged_distance = distance;
-            if (distance > 0) {
-                std::printf("Native shadows: sun shadows out to %d m\n", distance);
-            } else {
-                std::printf("Native shadows: the game's own shadow distance\n");
-            }
+            // What the shadow holds now, to check the layout against a running game.
+            std::printf("Native shadows: %s %d m; shadow %p: cascades %u, extents %.2f %.2f %.2f %.2f %.2f, "
+                        "divisor %.2f, scale %.2f, range %.1f, global %.1f, check %.1f\n",
+                        distance > 0 ? "out to" : "the game's own,", distance, shadow,
+                        Field<std::uint32_t>(shadow, kCascadeCount), Field<float>(shadow, kCascadeExtents),
+                        Field<float>(shadow, kCascadeExtents + 4), Field<float>(shadow, kCascadeExtents + 8),
+                        Field<float>(shadow, kCascadeExtents + 12), Field<float>(shadow, kCascadeExtents + 16),
+                        Field<float>(shadow, kUnitDivisor), Field<float>(shadow, kUnitScale),
+                        Field<float>(shadow, 0x338), Guest::At<float>(kGlobalRange), *g_range_check);
+            std::fflush(stdout);
         }
     }
     return Guest::Call<std::uint64_t>(g_update, shadow, a, b, c);
