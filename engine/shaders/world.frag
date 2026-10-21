@@ -14,6 +14,7 @@ layout(location = 4) in vec4 v_colour;
 
 layout(set = 0, binding = 0) uniform sampler2D colour_texture;
 layout(set = 0, binding = 1) uniform sampler2D normal_texture;
+layout(set = 0, binding = 2) uniform sampler2D mask_texture;
 layout(set = 1, binding = 1) uniform sampler2DShadow shadow_map;
 
 layout(location = 0) out vec4 out_colour;
@@ -48,6 +49,14 @@ void main() {
     if ((flags & kAlphaTest) != 0u && albedo.a < 0.5) discard;
     // The city's "CBV" effects darken and colour each building by its vertices (black: none).
     if ((flags & kTint) != 0u && max(v_colour.r, max(v_colour.g, v_colour.b)) > 0.01) albedo.rgb *= v_colour.rgb;
+    // Vehicles: their paint (one of the palette's colours, in colour0) where the mask is black.
+    // The colour map is almost black there and adds its details (seams, dirt) to the paint.
+    if ((flags & kPaint) != 0u) {
+        float painted = 1.0 - texture(mask_texture, v_uv).r;
+        albedo.rgb = mix(albedo.rgb, v_colour.rgb * 1.2 + albedo.rgb, painted);
+    }
+    bool glass = (flags & kGlass) != 0u;
+    if (glass) albedo = vec4(0.012, 0.014, 0.016, 1.0);
 
     // The surface's normal: the vertex's (else the face's), turned to the camera, then the map's.
     vec3 to_camera = frame.camera_position.xyz - v_world;
@@ -73,7 +82,18 @@ void main() {
     for (int k = 0; k < 2; ++k) light += frame.fill_colour[k].rgb * max(dot(n, frame.fill_direction[k].xyz), 0.0) * 0.3;
 
     vec3 lit = albedo.rgb * light;
-    lit = Fog(lit, v_world);
     float alpha = (flags & kDecal) != 0u ? albedo.a : 1.0;
+    if (glass) {
+        // The sky (and a glint of the sun) mirrored, more at grazing angles.
+        vec3 v = normalize(v_world - frame.camera_position.xyz);
+        float facing = max(dot(-v, n), 0.0);
+        float fresnel = 0.04 + 0.96 * pow(1.0 - facing, 5.0);
+        vec3 r = reflect(v, n);
+        vec3 mirrored = SkyColour(r) * mix(0.35, 1.0, clamp(r.y * 2.0 + 0.5, 0.0, 1.0));
+        mirrored += frame.sun_colour.rgb * pow(max(dot(r, l), 0.0), 400.0) * 8.0 * (sun > 0.0 ? 1.0 : 0.0);
+        lit = mix(lit, mirrored, max(fresnel, 0.12));
+        alpha = mix(0.55, 1.0, fresnel);
+    }
+    lit = Fog(lit, v_world);
     out_colour = vec4(ToneMap(lit), alpha);
 }

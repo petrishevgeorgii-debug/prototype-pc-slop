@@ -12,6 +12,8 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
   - The tools can draw the whole of Manhattan and a textured city block, and export cells to OBJ for Blender.
   - Milestone 1: `manhattan.exe` (launcher: **Manhattan Engine**) flies through PROTOTYPE's city in its own Vulkan renderer. It shows the low-detail city, with the detailed cells and their textures streamed in around the camera.
   - Milestone 2, the look: the city's own light rig from `manhattan_tod` (the sun, the sky light and two fill lights), the sun's shadows in four cascades, normal maps, the vertex tint the game colours its buildings with, cut-out leaves and fences, blended decals (the hive infection), a sky, haze and tone mapping. Light cones and particles are left out for now. N and B fly to the city's 14 districts; L turns shadows off; [ and ] change the exposure.
+  - Parked cars: the cells' parking places (`proto::ParkedCarSpawner`) get the vehicles their district spawns, by the district's weights, from `art/packages/vehicles`. Each car is put together from its skeleton's parts (body, doors, wheels) and painted with a colour from its own palette (`<car>_tod`). Car windows are glass that reflects the sky.
+  - Fixed: the low-detail city's traffic strips covered the streets of the detailed cells.
 - `scripts/game_map.py` writes a map of the game's code to `out/game_map`. The map lists the 11,600 classes with their virtual functions, 73,000 functions with names where possible, and the engine's source files. It also writes a Ghidra symbol list.
 
 ## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))

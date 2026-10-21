@@ -24,7 +24,7 @@ layout(push_constant) uniform Push {
     uvec4 material; // x: flags (renderer.h, Material)
 } pc;
 
-const uint kTextured = 1u, kNormalMap = 2u, kTint = 4u, kAlphaTest = 8u, kDecal = 16u;
+const uint kTextured = 1u, kNormalMap = 2u, kTint = 4u, kAlphaTest = 8u, kDecal = 16u, kGlass = 32u, kPaint = 64u;
 
 vec3 SkyColour(vec3 dir) {
     float up = clamp(dir.y, -1.0, 1.0);

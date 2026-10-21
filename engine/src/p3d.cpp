@@ -56,6 +56,12 @@ struct Reader {
         p += 4;
         return v;
     }
+    float F32() {
+        if (!Need(4)) return 0;
+        auto v = Get<float>(p);
+        p += 4;
+        return v;
+    }
     /// A string: length byte, then that many bytes, zero-padded.
     std::string Str() {
         const std::size_t n = U8();
@@ -86,6 +92,15 @@ bool Parse(const std::uint8_t* base, std::size_t offset, std::size_t end, std::v
         offset += total;
     }
     return true;
+}
+
+/// The first `text` in [begin, end), or null.
+const std::uint8_t* Find(const std::uint8_t* begin, const std::uint8_t* end, const char* text) {
+    const std::size_t n = std::strlen(text);
+    for (const std::uint8_t* p = begin; p + n <= end; ++p) {
+        if (std::memcmp(p, text, n) == 0) return p;
+    }
+    return nullptr;
 }
 
 template <class F>
@@ -400,6 +415,82 @@ void ReadPlacements(const File& file, std::vector<Placement>& placements) {
     });
 }
 
+namespace {
+
+/// Chunk data that starts with zero words before its name (the newer chunks: 4 or 8 bytes).
+Reader AfterZeros(const Chunk& c, std::size_t words) {
+    std::size_t skip = 0;
+    while (skip < words * 4 && skip + 4 <= c.size && Get<std::uint32_t>(c.data + skip) == 0) skip += 4;
+    return Reader{c.data + skip, c.data + c.size};
+}
+
+} // namespace
+
+void ReadSkeletons(const File& file, std::vector<Skeleton>& skeletons) {
+    for (const Chunk& c : file.chunks) {
+        if (c.id != 0x00023000) continue;
+        Skeleton s;
+        Reader r{c.data, c.data + c.size};
+        s.name = r.Str();
+        for (const Chunk& j : c.children) {
+            if (j.id != 0x00023001) continue;
+            Reader jr{j.data, j.data + j.size};
+            Joint joint;
+            joint.name = jr.Str();
+            joint.parent = jr.U32();
+            for (float& f : joint.matrix) f = jr.F32();
+            if (!jr.ok) break;
+            s.joints.push_back(std::move(joint));
+        }
+        skeletons.push_back(std::move(s));
+    }
+}
+
+void ReadComposites(const File& file, std::vector<Composite>& composites) {
+    for (const Chunk& c : file.chunks) {
+        if (c.id != 0x00123000) continue;
+        Composite composite;
+        Reader r = AfterZeros(c, 1);
+        composite.name = r.Str();
+        composite.skeleton = r.Str();
+        for (const Chunk& p : c.children) {
+            if (p.id != 0x00123001) continue;
+            Reader pr = AfterZeros(p, 2);
+            Composite::Prop prop;
+            prop.mesh = pr.Str();
+            pr.U32(); // translucent
+            prop.joint = pr.U32();
+            if (pr.ok) composite.props.push_back(std::move(prop));
+        }
+        composites.push_back(std::move(composite));
+    }
+}
+
+void ReadPalette(const File& file, std::vector<std::array<float, 3>>& colours) {
+    // Big-endian attributes ("ATEM"): "color_variation", u32 count, then each entry: u32,
+    // "color_variation", r g b and a fourth float.
+    const auto be = [](const std::uint8_t* p) {
+        const std::uint32_t u = std::uint32_t(p[0]) << 24 | std::uint32_t(p[1]) << 16 | std::uint32_t(p[2]) << 8 | p[3];
+        float f;
+        std::memcpy(&f, &u, 4);
+        return f;
+    };
+    Walk(file.chunks, [&](const Chunk& c) {
+        if (c.id != 0x07f00001) return;
+        const std::uint8_t* end = c.data + c.size;
+        const std::uint8_t* p = Find(c.data, end, "color_variation");
+        if (!p) return;
+        p += 15; // the list's own name; its entries follow
+        while ((p = Find(p, end, "color_variation")) && p + 15 + 12 <= end) {
+            p += 15;
+            const std::array<float, 3> rgb = {be(p), be(p + 4), be(p + 8)};
+            bool sane = true;
+            for (float v : rgb) sane = sane && v >= 0.0f && v <= 2.0f;
+            if (sane) colours.push_back(rgb);
+        }
+    });
+}
+
 std::string ColourTexture(const Shader& shader) {
     for (const char* param : {"color", "colour", "diffuse", "color_inards", "color_infection", "Diffuse", "Color", "bottom"}) {
         if (auto it = shader.textures.find(param); it != shader.textures.end() && !it->second.empty()) return it->second;
@@ -425,7 +516,7 @@ bool Has(const std::string& s, const char* part) {
 Surface SurfaceOf(const std::string& effect) {
     // Light cones and glows, particles, the interface: not surfaces.
     if (Has(effect, "light_decal") || effect.rfind("fx_", 0) == 0 || effect.rfind("hud_", 0) == 0 ||
-        Has(effect, "_lights") || Has(effect, "bridgelights") || Has(effect, "lit_sign") || Has(effect, "PostProc")) {
+        Has(effect, "_lights") || Has(effect, "_traffic") || Has(effect, "bridgelights") || Has(effect, "lit_sign") || Has(effect, "PostProc")) {
         return Surface::Skip;
     }
     if (Has(effect, "decal")) return Surface::Decal;
@@ -435,19 +526,19 @@ Surface SurfaceOf(const std::string& effect) {
     return Surface::Opaque;
 }
 
+bool IsGlass(const std::string& effect) {
+    return Has(effect, "vehicle_glass");
+}
+
+bool IsPainted(const std::string& effect) {
+    return Has(effect, "colorvar");
+}
+
 bool TintedByVertices(const std::string& effect) {
     return effect.rfind("zCBV", 0) == 0 || Has(effect, "CBV") || Has(effect, "_vtx");
 }
 
 namespace {
-
-const std::uint8_t* Find(const std::uint8_t* begin, const std::uint8_t* end, const char* text) {
-    const std::size_t n = std::strlen(text);
-    for (const std::uint8_t* p = begin; p + n <= end; ++p) {
-        if (std::memcmp(p, text, n) == 0) return p;
-    }
-    return nullptr;
-}
 
 void RotateByQuaternion(const float q[4], const float v[3], float out[3]) {
     const float t[3] = {2 * (q[1] * v[2] - q[2] * v[1]), 2 * (q[2] * v[0] - q[0] * v[2]), 2 * (q[0] * v[1] - q[1] * v[0])};
@@ -492,6 +583,23 @@ void ReadLightRig(const File& file, std::vector<Light>& lights, std::vector<Dist
             District d;
             d.name = name;
             std::copy(transform, transform + 3, d.position);
+            // The vehicles it spawns: "|name", u32 0, u32 count, then each: u32-length name,
+            // f32 weight, 4 u32.
+            if (const std::uint8_t* list = Find(m, end, ("|" + name).c_str())) {
+                const std::uint8_t* p = list + 1 + name.size() + 4;
+                std::uint32_t count = 0;
+                if (p + 4 <= end) std::memcpy(&count, p, 4), p += 4;
+                for (std::uint32_t i = 0; i < count && i < 64 && p + 4 <= end; ++i) {
+                    std::uint32_t n = 0;
+                    std::memcpy(&n, p, 4);
+                    if (n == 0 || n > 64 || p + 4 + n + 20 > end) break;
+                    std::string vehicle(reinterpret_cast<const char*>(p + 4), n);
+                    float weight = 0;
+                    std::memcpy(&weight, p + 4 + n, 4);
+                    p += 4 + n + 20;
+                    if (weight > 0 && weight < 1000) d.vehicles.emplace_back(vehicle, weight);
+                }
+            }
             if (d.position[1] > -1000.0f) districts.push_back(d); // not district_default
         }
     }

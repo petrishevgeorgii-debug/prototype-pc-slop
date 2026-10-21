@@ -130,6 +130,18 @@ u32-length name, a u32-length type and the value.
 - `proto::TimeOfDayVarGroup` objects (`default[0]`, `Times Square`, `Infected`...) hold each
   light's keyframes over the day; not read yet.
 
+## Skeletons and composite drawables (vehicles)
+
+- **Skeleton (0x23000):** name, u32, u32 joint count; children SkeletonJoint (0x23001): name,
+  u32 parent index, then a 4 × 4 matrix relative to the parent (row vectors: the translation is
+  the last row). The first joint is the root.
+- **CompositeDrawable (0x123000):** u32 0, name, the skeleton's name, u32 count; children
+  (0x123001): two u32 0, the mesh's name, u32 (translucent), u32 joint index.
+- A vehicle file has the whole vehicle (named after it), `_crushed`, `_med_lod` and `_low_lod`
+  forms, each with its own skeleton.
+- `<name>_tod.p3d.rz` is big-endian ("ATEM"): `proto::ShaderPalette` lists the paint colours
+  (`color_variation`: r g b and a fourth value).
+
 ## Tools
 
 ```

@@ -585,18 +585,19 @@ void Renderer::DestroySwapchain() {
 }
 
 bool Renderer::CreatePipeline(std::string& error) {
-    // Set 0: a material (colour, normal map). Set 1: the frame (uniforms, the shadow map).
-    VkDescriptorSetLayoutBinding material[2]{};
-    for (std::uint32_t i = 0; i < 2; ++i) {
+    // Set 0: a material (colour, normal map, mask). Set 1: the frame (uniforms, the shadow map).
+    VkDescriptorSetLayoutBinding material[3]{};
+    for (std::uint32_t i = 0; i < 3; ++i) {
         material[i].binding = i;
         material[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         material[i].descriptorCount = 1;
         material[i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     }
     VkDescriptorSetLayoutCreateInfo li{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-    li.bindingCount = 2;
+    li.bindingCount = 3;
     li.pBindings = material;
     vkCreateDescriptorSetLayout(device_, &li, nullptr, &set_layout_);
+    li.bindingCount = 2;
     VkDescriptorSetLayoutBinding frame[2]{};
     frame[0].binding = 0;
     frame[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -617,7 +618,7 @@ bool Renderer::CreatePipeline(std::string& error) {
     pli.pPushConstantRanges = &range;
     vkCreatePipelineLayout(device_, &pli, nullptr, &pipeline_layout_);
 
-    VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * kMaxTextures + kFrames},
+    VkDescriptorPoolSize ps[2] = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * kMaxTextures + kFrames},
                                   {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, kFrames}};
     VkDescriptorPoolCreateInfo pi{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
     pi.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -865,19 +866,20 @@ bool Renderer::CreateTexture(const p3d::Texture& t, GpuTexture& out) {
     return out.view && out.linear;
 }
 
-VkDescriptorSet Renderer::CreateMaterial(const GpuTexture* colour, const GpuTexture* normal) {
+VkDescriptorSet Renderer::CreateMaterial(const GpuTexture* colour, const GpuTexture* normal, const GpuTexture* mask) {
     VkDescriptorSet set = VK_NULL_HANDLE;
     VkDescriptorSetAllocateInfo dai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
     dai.descriptorPool = pool_;
     dai.descriptorSetCount = 1;
     dai.pSetLayouts = &set_layout_;
     if (vkAllocateDescriptorSets(device_, &dai, &set) != VK_SUCCESS) return VK_NULL_HANDLE;
-    VkDescriptorImageInfo images[2] = {
+    VkDescriptorImageInfo images[3] = {
         {sampler_, colour && colour->view ? colour->view : white_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
         {sampler_, normal && normal->linear ? normal->linear : flat_normal_.linear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        {sampler_, mask && mask->linear ? mask->linear : white_.linear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
     };
-    VkWriteDescriptorSet w[2]{};
-    for (std::uint32_t i = 0; i < 2; ++i) {
+    VkWriteDescriptorSet w[3]{};
+    for (std::uint32_t i = 0; i < 3; ++i) {
         w[i] = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w[i].dstSet = set;
         w[i].dstBinding = i;
@@ -885,7 +887,7 @@ VkDescriptorSet Renderer::CreateMaterial(const GpuTexture* colour, const GpuText
         w[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w[i].pImageInfo = &images[i];
     }
-    vkUpdateDescriptorSets(device_, 2, w, 0, nullptr);
+    vkUpdateDescriptorSets(device_, 3, w, 0, nullptr);
     return set;
 }
 

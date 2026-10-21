@@ -77,11 +77,27 @@ layer.
   colour (light baked near the street), reflections and glass, the time of day's keyframes
   (`TimeOfDayVarGroup`, in `default[0]`).
 
+**Parked cars.** In.
+
+- Each cell's `_ft` file has its parking places (`proto::ParkedCarSpawner`, all named
+  `generic_taxi`: the name is a stand-in). The engine gives each one a vehicle from the list of
+  the district it is in (each district names its vehicles with weights, e.g. University_Poor:
+  sedanOS003, sedanOS001, suvOS001, carOS005...). Buses, tankers and emergency vehicles are not
+  parked. The choice comes from the place's name, so it is the same every time.
+- A vehicle (`art/packages/vehicles/<name>/<name>.p3d.rz`) is a CompositeDrawable: meshes
+  (body, doors, wheels) on the joints of a Skeleton. The engine puts them together at the
+  skeleton's rest pose; the driver and the headlights' glow are left out.
+- Paint: `env_vehicle_colorvar` paints the body where its `color_variation_mask` is black. The
+  colours are the vehicle's own palette (`<name>_tod.p3d.rz`, `proto::ShaderPalette`; that file
+  is big-endian), one per car.
+- Glass (`env_vehicle_glass_fade`): dark, see-through and reflecting the sky, more at grazing
+  angles.
+
 ## Next milestones
 
 1. **The rest of the city's data:**
    - instances (CompositeDrawable, locators, `_ft` game objects), which place props, flares
-     and decals; parked cars;
+     and decals; props with joints of their own;
    - the shader effects' parameters, the height map, the time of day's keyframes.
 2. **More of the look**: grime, glass and reflections, the night's lights, the hive's glow;
    ray-traced shadows and the like belong here, without the PS4's rendering in the way.

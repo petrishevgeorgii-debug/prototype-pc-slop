@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <array>
+#include <cctype>
 #include <optional>
 
 namespace engine {
@@ -29,6 +31,11 @@ int CellNumber(const std::string& name) {
 }
 
 } // namespace
+
+struct City::Vehicle {
+    std::vector<PropPart> parts; ///< in the vehicle's space: x across, y up, -z forward
+    std::vector<std::array<float, 3>> palette;
+};
 
 struct City::Pending {
     std::vector<p3d::Vertex> vertices;
@@ -67,6 +74,17 @@ std::optional<City::Look> LookOf(const p3d::Shader& s, bool tint) {
     City::Look look;
     look.colour = p3d::ColourTexture(s);
     look.normal = p3d::NormalTexture(s);
+    if (p3d::IsPainted(s.effect)) {
+        if (auto it = s.textures.find("color_variation_mask"); it != s.textures.end() && !it->second.empty()) {
+            look.mask = it->second;
+            look.flags |= Material::Paint;
+        }
+    }
+    if (p3d::IsGlass(s.effect)) {
+        look.colour.clear();
+        look.normal.clear();
+        look.flags |= Material::Glass | Material::Decal;
+    }
     if (!look.colour.empty()) look.flags |= Material::Textured;
     if (!look.normal.empty()) look.flags |= Material::NormalMap;
     if (surface == p3d::Surface::AlphaTest) look.flags |= Material::AlphaTest;
@@ -105,6 +123,182 @@ void City::LoadLightRig(const std::filesystem::path& file) {
     Log("  %zu lights, %zu districts\n", lights.size(), districts_.size());
 }
 
+namespace {
+
+/// FNV-1a: the same choice for the same name on every run and every PC.
+std::uint32_t Hash(const std::string& s, std::uint32_t seed = 2166136261u) {
+    std::uint32_t h = seed;
+    for (unsigned char c : s) h = (h ^ c) * 16777619u;
+    return h;
+}
+
+/// a * b for row-vector matrices (Pure3D's).
+void MultiplyRows(const float a[16], const float b[16], float out[16]) {
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            float s = 0;
+            for (int k = 0; k < 4; ++k) s += a[r * 4 + k] * b[k * 4 + c];
+            out[r * 4 + c] = s;
+        }
+    }
+}
+
+} // namespace
+
+void City::LoadTextures(const p3d::File& f) {
+    std::vector<p3d::Texture> textures;
+    p3d::ReadTextures(f, textures);
+    for (const auto& t : textures) {
+        if (shared_.count(t.name)) continue;
+        GpuTexture g;
+        if (renderer_->CreateTexture(t, g)) {
+            shared_[t.name] = g;
+            library_.textures.push_back(g);
+        }
+    }
+}
+
+void City::LoadVehicles(const std::filesystem::path& folder) {
+    std::error_code ec;
+    if (!std::filesystem::is_directory(folder, ec)) {
+        Log("  no %s\n", folder.string().c_str());
+        return;
+    }
+    {
+        p3d::File shared;
+        std::string error;
+        if (p3d::Load(folder / "shared.p3d.rz", shared, error)) LoadTextures(shared);
+    }
+    std::vector<std::string> names;
+    for (const auto& d : districts_) {
+        for (const auto& [name, weight] : d.vehicles) {
+            if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+        }
+    }
+    for (const auto& name : names) {
+        p3d::File f;
+        std::string error;
+        if (!p3d::Load(folder / name / (name + ".p3d.rz"), f, error)) continue;
+        LoadTextures(f);
+        std::vector<p3d::Shader> shaders;
+        std::vector<p3d::Mesh> meshes;
+        std::vector<p3d::Skeleton> skeletons;
+        std::vector<p3d::Composite> composites;
+        p3d::ReadShaders(f, shaders);
+        p3d::ReadMeshes(f, meshes);
+        p3d::ReadSkeletons(f, skeletons);
+        p3d::ReadComposites(f, composites);
+        // The whole vehicle (the composite named after it), not its damaged or distant forms.
+        const p3d::Composite* composite = nullptr;
+        for (const auto& c : composites) {
+            if (c.name == name || (!composite && c.name.find("lod") == std::string::npos && c.name.find("crushed") == std::string::npos)) {
+                composite = &c;
+            }
+        }
+        const p3d::Skeleton* skeleton = nullptr;
+        for (const auto& s : skeletons) {
+            if (composite && s.name == composite->skeleton) skeleton = &s;
+        }
+        if (!composite || !skeleton || skeleton->joints.empty()) continue;
+        // Each joint's place in the vehicle: its own, then its parents'.
+        std::vector<std::array<float, 16>> world(skeleton->joints.size());
+        for (std::size_t j = 0; j < skeleton->joints.size(); ++j) {
+            const auto& joint = skeleton->joints[j];
+            if (j == 0 || joint.parent >= j) std::copy(joint.matrix, joint.matrix + 16, world[j].begin());
+            else MultiplyRows(joint.matrix, world[joint.parent].data(), world[j].data());
+        }
+        std::unordered_map<std::string, std::optional<Look>> looks;
+        for (const auto& s : shaders) looks[s.name] = LookOf(s, false);
+        auto vehicle = std::make_unique<Vehicle>();
+        for (const auto& prop : composite->props) {
+            // Parked: nobody at the wheel; the headlights' glow is not geometry.
+            std::string lower = prop.mesh;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+            if (lower.find("driver") != std::string::npos || lower.find("shadow") != std::string::npos ||
+                lower.find("headlight") != std::string::npos || prop.joint >= world.size()) {
+                continue;
+            }
+            const float* m = world[prop.joint].data();
+            for (auto& mesh : meshes) {
+                if (mesh.name != prop.mesh) continue;
+                for (auto& part : mesh.parts) {
+                    PropPart pp;
+                    if (auto it = looks.find(part.shader); it != looks.end()) {
+                        if (!it->second) continue;
+                        pp.look = *it->second;
+                    }
+                    for (auto v : part.vertices) {
+                        const float p[3] = {v.position[0], v.position[1], v.position[2]};
+                        const float n[3] = {v.normal[0], v.normal[1], v.normal[2]};
+                        const float t[3] = {v.tangent[0], v.tangent[1], v.tangent[2]};
+                        for (int k = 0; k < 3; ++k) {
+                            v.position[k] = p[0] * m[k] + p[1] * m[4 + k] + p[2] * m[8 + k] + m[12 + k];
+                            v.normal[k] = n[0] * m[k] + n[1] * m[4 + k] + n[2] * m[8 + k];
+                            v.tangent[k] = t[0] * m[k] + t[1] * m[4 + k] + t[2] * m[8 + k];
+                        }
+                        pp.vertices.push_back(v);
+                    }
+                    pp.indices = part.indices;
+                    vehicle->parts.push_back(std::move(pp));
+                }
+            }
+        }
+        p3d::File tod;
+        if (p3d::Load(folder / name / (name + "_tod.p3d.rz"), tod, error)) p3d::ReadPalette(tod, vehicle->palette);
+        if (!vehicle->parts.empty()) vehicles_[name] = std::move(vehicle);
+    }
+    Log("  %zu of the districts' %zu vehicles\n", vehicles_.size(), names.size());
+}
+
+const City::Vehicle* City::PickVehicle(const p3d::Placement& place, std::uint32_t& paint) const {
+    if (vehicles_.empty()) return nullptr;
+    // The district's vehicles, by their weights; parking places are for cars, not buses.
+    const p3d::District* district = nullptr;
+    float best = 1e30f;
+    for (const auto& d : districts_) {
+        const float dx = d.position[0] - place.position[0], dz = d.position[2] - place.position[2];
+        if (!d.vehicles.empty() && dx * dx + dz * dz < best) best = dx * dx + dz * dz, district = &d;
+    }
+    const auto parkable = [](const std::string& n) {
+        for (const char* big : {"bus", "Bus", "tanker", "transport", "humvee", "ambulance", "police"}) {
+            if (n.find(big) != std::string::npos) return false;
+        }
+        return true;
+    };
+    std::vector<std::pair<const Vehicle*, float>> choices;
+    float total = 0;
+    if (district) {
+        for (const auto& [name, weight] : district->vehicles) {
+            auto it = vehicles_.find(name);
+            if (it == vehicles_.end() || !parkable(name)) continue;
+            choices.emplace_back(it->second.get(), weight);
+            total += weight;
+        }
+    }
+    if (choices.empty()) {
+        for (const auto& [name, v] : vehicles_) {
+            if (parkable(name)) choices.emplace_back(v.get(), 1.0f), total += 1.0f;
+        }
+    }
+    if (choices.empty()) return nullptr;
+    const std::uint32_t h = Hash(place.name);
+    float x = float(h % 10007u) / 10007.0f * total;
+    const Vehicle* v = choices.back().first;
+    for (const auto& [c, w] : choices) {
+        if (x < w) {
+            v = c;
+            break;
+        }
+        x -= w;
+    }
+    // The paint: one of its palette's, else a grey.
+    std::array<float, 3> rgb = {0.2f, 0.2f, 0.21f};
+    if (!v->palette.empty()) rgb = v->palette[Hash(place.name, 0x9e3779b9u) % v->palette.size()];
+    paint = 0xff000000u;
+    for (int k = 0; k < 3; ++k) paint |= std::uint32_t(std::clamp(rgb[k], 0.0f, 1.0f) * 255.0f + 0.5f) << (8 * k);
+    return v;
+}
+
 std::string City::DistrictAt(const float p[3]) const {
     const p3d::District* best = nullptr;
     float best_d = 1e30f;
@@ -128,14 +322,7 @@ void City::LoadProps(const std::filesystem::path& file) {
     p3d::ReadTextures(f, textures);
     p3d::ReadShaders(f, shaders);
     p3d::ReadMeshes(f, meshes);
-    for (const auto& t : textures) {
-        if (shared_.count(t.name)) continue;
-        GpuTexture g;
-        if (renderer_->CreateTexture(t, g)) {
-            shared_[t.name] = g;
-            library_.textures.push_back(g);
-        }
-    }
+    LoadTextures(f);
     std::unordered_map<std::string, std::optional<Look>> looks;
     for (const auto& s : shaders) looks[s.name] = LookOf(s, true);
     const std::string suffix = "InitialShape";
@@ -199,11 +386,20 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
         std::vector<p3d::Placement> objects;
         if (p3d::Load(placements, ft, error)) p3d::ReadPlacements(ft, objects);
         for (const auto& o : objects) {
-            // Collectibles are the game's pick-ups, not the city's props.
-            if (o.prop.empty() || o.prop.rfind("Collectible", 0) == 0) continue;
-            auto it = props_.find(o.prop);
-            if (it == props_.end()) continue;
-            for (const auto& part : it->second) {
+            const std::vector<PropPart>* parts = nullptr;
+            std::uint32_t paint = 0;
+            if (o.type == "proto::ParkedCarSpawner") {
+                const Vehicle* v = PickVehicle(o, paint);
+                if (!v) continue;
+                parts = &v->parts;
+            } else {
+                // Collectibles are the game's pick-ups, not the city's props.
+                if (o.prop.empty() || o.prop.rfind("Collectible", 0) == 0) continue;
+                auto it = props_.find(o.prop);
+                if (it == props_.end()) continue;
+                parts = &it->second;
+            }
+            for (const auto& part : *parts) {
                 Pending::Part d;
                 d.first = static_cast<std::uint32_t>(p->indices.size());
                 d.count = static_cast<std::uint32_t>(part.indices.size());
@@ -217,6 +413,7 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
                     std::copy(r, r + 3, v.normal);
                     Rotate(o.rotation, v.tangent, r);
                     std::copy(r, r + 3, v.tangent);
+                    if (part.look.flags & Material::Paint) v.colour = paint;
                     p->vertices.push_back(v);
                 }
                 p->indices.insert(p->indices.end(), part.indices.begin(), part.indices.end());
@@ -260,7 +457,7 @@ bool City::Upload(Pending& p, Model& model) {
         if (auto it = shared_.find(name); it != shared_.end()) return &it->second;
         return nullptr;
     };
-    std::map<std::pair<std::string, std::string>, VkDescriptorSet> materials;
+    std::map<std::tuple<std::string, std::string, std::string>, VkDescriptorSet> materials;
     if (!p.vertices.empty() && !renderer_->CreateModel(p.vertices, p.indices, model)) return false;
     if (&model != &low_ && !p.vertices.empty()) {
         std::fill(model.min, model.min + 3, 1e30f);
@@ -280,14 +477,17 @@ bool City::Upload(Pending& p, Model& model) {
         d.group = part.group;
         const GpuTexture* colour = texture(part.look.colour);
         const GpuTexture* normal = texture(part.look.normal);
+        const GpuTexture* mask = texture(part.look.mask);
         d.flags = part.look.flags;
-        if (!colour) d.flags &= ~(Material::Textured | Material::AlphaTest | Material::Decal);
+        if (!colour && !(d.flags & Material::Glass)) d.flags &= ~(Material::Textured | Material::AlphaTest | Material::Decal);
         if (!normal) d.flags &= ~Material::NormalMap;
-        if (colour || normal) {
-            const std::pair<std::string, std::string> key{colour ? part.look.colour : "", normal ? part.look.normal : ""};
+        if (!mask) d.flags &= ~Material::Paint;
+        if (colour || normal || mask) {
+            const std::tuple<std::string, std::string, std::string> key{colour ? part.look.colour : "", normal ? part.look.normal : "",
+                                                                        mask ? part.look.mask : ""};
             auto it = materials.find(key);
             if (it == materials.end()) {
-                const VkDescriptorSet set = renderer_->CreateMaterial(colour, normal);
+                const VkDescriptorSet set = renderer_->CreateMaterial(colour, normal, mask);
                 if (set) model.materials.push_back(set);
                 it = materials.emplace(key, set).first;
             }
@@ -333,6 +533,8 @@ bool City::Open(const std::filesystem::path& game, Renderer& renderer, std::stri
     }
     Log("Loading the light rig ...\n");
     LoadLightRig(location_ / "manhattan_tod.p3d.rz");
+    Log("Loading the vehicles ...\n");
+    LoadVehicles(location_.parent_path().parent_path() / "packages" / "vehicles");
     Log("Loading the props ...\n");
     LoadProps(location_ / "props.p3d.rz");
     Log("Loading the low-detail city ...\n");

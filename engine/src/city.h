@@ -26,10 +26,10 @@ class City {
 public:
     /// What a part is drawn with: texture names and Material flags.
     struct Look {
-        std::string colour, normal;
+        std::string colour, normal, mask;
         std::uint32_t flags = 0;
         bool operator<(const Look& o) const {
-            return std::tie(colour, normal, flags) < std::tie(o.colour, o.normal, o.flags);
+            return std::tie(colour, normal, mask, flags) < std::tie(o.colour, o.normal, o.mask, o.flags);
         }
     };
 
@@ -80,6 +80,12 @@ private:
                                    const std::filesystem::path& placements = {});
     void LoadProps(const std::filesystem::path& file);
     void LoadLightRig(const std::filesystem::path& file);
+    /// The vehicles the districts spawn (art/packages/vehicles), for the parked cars.
+    void LoadVehicles(const std::filesystem::path& folder);
+    void LoadTextures(const p3d::File& file);
+    struct Vehicle;
+    /// The vehicle a parking place gets (by its district and name), or null; `paint` its colour.
+    const Vehicle* PickVehicle(const p3d::Placement& place, std::uint32_t& paint) const;
     bool Upload(Pending& p, Model& model);
     float Distance(const Cell& cell, const float camera[3]) const;
 
@@ -94,6 +100,7 @@ private:
     int max_index_ = 0;
     engine::Lighting lighting_;
     std::vector<p3d::District> districts_;
+    std::map<std::string, std::unique_ptr<Vehicle>> vehicles_;
 
     std::thread worker_;
     mutable std::mutex mutex_;

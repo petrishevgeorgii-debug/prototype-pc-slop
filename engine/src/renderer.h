@@ -32,7 +32,7 @@ struct GpuTexture {
 
 /// How a draw's surface is shaded (world.frag): bits.
 namespace Material {
-constexpr std::uint32_t Textured = 1, NormalMap = 2, Tint = 4, AlphaTest = 8, Decal = 16;
+constexpr std::uint32_t Textured = 1, NormalMap = 2, Tint = 4, AlphaTest = 8, Decal = 16, Glass = 32, Paint = 64;
 }
 
 /// One draw: a range of a model's index buffer with one material.
@@ -81,9 +81,9 @@ public:
 
     /// Uploads a texture (all its levels).
     bool CreateTexture(const p3d::Texture& texture, GpuTexture& out);
-    /// A material's descriptor set: its colour texture and normal map (either may be null).
-    /// Freed with the model that lists it in `materials`.
-    VkDescriptorSet CreateMaterial(const GpuTexture* colour, const GpuTexture* normal);
+    /// A material's descriptor set: its colour texture, normal map and mask (the paint's, for
+    /// vehicles); any may be null. Freed with the model that lists it in `materials`.
+    VkDescriptorSet CreateMaterial(const GpuTexture* colour, const GpuTexture* normal, const GpuTexture* mask = nullptr);
     /// Uploads geometry; `draws` index into it.
     bool CreateModel(const std::vector<p3d::Vertex>& vertices, const std::vector<std::uint32_t>& indices, Model& out);
     /// Frees a model and its textures (waits for the GPU).

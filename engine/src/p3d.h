@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -91,6 +92,11 @@ enum class Surface {
     Skip,      ///< drawn by systems the engine does not have yet (light cones, particles, HUD)
 };
 Surface SurfaceOf(const std::string& effect);
+/// Glass (vehicles' windows): dark, reflecting the sky, see-through.
+bool IsGlass(const std::string& effect);
+/// The effect paints the surface (vehicles: env_vehicle_colorvar), where its
+/// color_variation_mask is white.
+bool IsPainted(const std::string& effect);
 /// The effect colours the surface by the vertices' colour0 (the city's "CBV" effects).
 bool TintedByVertices(const std::string& effect);
 
@@ -115,7 +121,34 @@ struct Light {
 struct District {
     std::string name;
     float position[3];
+    std::vector<std::pair<std::string, float>> vehicles; ///< what it spawns, with weights
 };
 void ReadLightRig(const File& file, std::vector<Light>& lights, std::vector<District>& districts);
+
+/// A skeleton: its joints, each placed relative to its parent (the first is the root).
+struct Joint {
+    std::string name;
+    std::uint32_t parent = 0;
+    float matrix[16]; ///< row vectors: rotation rows, then the translation (12..14)
+};
+struct Skeleton {
+    std::string name;
+    std::vector<Joint> joints;
+};
+void ReadSkeletons(const File& file, std::vector<Skeleton>& skeletons);
+
+/// A model made of meshes, each on a joint of a skeleton (vehicles: body, doors, wheels).
+struct Composite {
+    std::string name, skeleton;
+    struct Prop {
+        std::string mesh;
+        std::uint32_t joint = 0;
+    };
+    std::vector<Prop> props;
+};
+void ReadComposites(const File& file, std::vector<Composite>& composites);
+
+/// A vehicle's paint colours (its _tod file's proto::ShaderPalette, color_variation).
+void ReadPalette(const File& file, std::vector<std::array<float, 3>>& colours);
 
 } // namespace p3d
