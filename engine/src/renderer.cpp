@@ -701,7 +701,30 @@ bool Renderer::DrawFrame(const FrameView& view, const std::vector<const Model*>&
     pc.sun[1] = view.sun[1];
     pc.sun[2] = view.sun[2];
     vkCmdPushConstants(f.cmd, pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+    // A model whose bounds are wholly outside one side of the view is left out.
+    const auto visible = [&](const Model& m) {
+        if (m.max[0] - m.min[0] > 1e29f) return true;
+        int outside[5] = {0, 0, 0, 0, 0};
+        for (int corner = 0; corner < 8; ++corner) {
+            const float p[3] = {corner & 1 ? m.max[0] : m.min[0], corner & 2 ? m.max[1] : m.min[1], corner & 4 ? m.max[2] : m.min[2]};
+            float c[4];
+            for (int r = 0; r < 4; ++r) {
+                c[r] = view.view_projection[r] * p[0] + view.view_projection[4 + r] * p[1] + view.view_projection[8 + r] * p[2] +
+                       view.view_projection[12 + r];
+            }
+            outside[0] += c[0] < -c[3];
+            outside[1] += c[0] > c[3];
+            outside[2] += c[1] < -c[3];
+            outside[3] += c[1] > c[3];
+            outside[4] += c[3] <= 0.0f; // behind the camera
+        }
+        for (int k : outside) {
+            if (k == 8) return false;
+        }
+        return true;
+    };
     for (const Model* m : models) {
+        if (!visible(*m)) continue;
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(f.cmd, 0, 1, &m->vertices.buffer, &offset);
         vkCmdBindIndexBuffer(f.cmd, m->indices.buffer, 0, VK_INDEX_TYPE_UINT32);

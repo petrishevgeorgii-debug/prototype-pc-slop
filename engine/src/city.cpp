@@ -14,7 +14,7 @@ namespace {
 
 constexpr float kLoadRadius = 450.0f;   ///< metres from the camera to a cell's bounds
 constexpr float kUnloadRadius = 650.0f;
-constexpr std::size_t kMaxCells = 48;
+constexpr std::size_t kMaxCells = 32;
 
 /// "Cell_100" -> 100, else -1.
 int CellNumber(const std::string& name) {
@@ -49,7 +49,58 @@ City::~City() {
     Close();
 }
 
-std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, int group_from_name) {
+namespace {
+
+/// v rotated by the unit quaternion q (x y z w).
+void Rotate(const float q[4], const float v[3], float out[3]) {
+    const float t[3] = {2 * (q[1] * v[2] - q[2] * v[1]), 2 * (q[2] * v[0] - q[0] * v[2]), 2 * (q[0] * v[1] - q[1] * v[0])};
+    out[0] = v[0] + q[3] * t[0] + (q[1] * t[2] - q[2] * t[1]);
+    out[1] = v[1] + q[3] * t[1] + (q[2] * t[0] - q[0] * t[2]);
+    out[2] = v[2] + q[3] * t[2] + (q[0] * t[1] - q[1] * t[0]);
+}
+
+} // namespace
+
+void City::LoadProps(const std::filesystem::path& file) {
+    p3d::File f;
+    std::string error;
+    if (!p3d::Load(file, f, error)) {
+        Log("  props: %s\n", error.c_str());
+        return;
+    }
+    std::vector<p3d::Texture> textures;
+    std::vector<p3d::Shader> shaders;
+    std::vector<p3d::Mesh> meshes;
+    p3d::ReadTextures(f, textures);
+    p3d::ReadShaders(f, shaders);
+    p3d::ReadMeshes(f, meshes);
+    for (const auto& t : textures) {
+        if (shared_.count(t.name)) continue;
+        GpuTexture g;
+        if (renderer_->CreateTexture(t, g)) {
+            shared_[t.name] = g.set;
+            library_.textures.push_back(g);
+        }
+    }
+    std::unordered_map<std::string, std::string> colour;
+    for (const auto& s : shaders) colour[s.name] = p3d::ColourTexture(s);
+    const std::string suffix = "InitialShape";
+    for (auto& m : meshes) {
+        if (m.name.size() <= suffix.size() || m.name.compare(m.name.size() - suffix.size(), suffix.size(), suffix) != 0) continue;
+        auto& parts = props_[m.name.substr(0, m.name.size() - suffix.size())];
+        for (auto& part : m.parts) {
+            PropPart p;
+            p.vertices = std::move(part.vertices);
+            p.indices = std::move(part.indices);
+            if (auto it = colour.find(part.shader); it != colour.end()) p.texture = it->second;
+            parts.push_back(std::move(p));
+        }
+    }
+    Log("  %zu props\n", props_.size());
+}
+
+std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, int group_from_name,
+                                           const std::filesystem::path& placements) {
     auto p = std::make_unique<Pending>();
     p3d::File f;
     if (!p3d::Load(file, f, p->error)) return p;
@@ -79,6 +130,54 @@ std::unique_ptr<City::Pending> City::Build(const std::filesystem::path& file, in
             p->parts.push_back(std::move(d));
         }
     }
+    // Props where the cell places them (the intact shape, as each object's whole).
+    std::error_code ec;
+    if (!placements.empty() && std::filesystem::file_size(placements, ec) > 64 && !ec) {
+        p3d::File ft;
+        std::string error;
+        std::vector<p3d::Placement> objects;
+        if (p3d::Load(placements, ft, error)) p3d::ReadPlacements(ft, objects);
+        for (const auto& o : objects) {
+            // Collectibles are the game's pick-ups, not the city's props.
+            if (o.prop.empty() || o.prop.rfind("Collectible", 0) == 0) continue;
+            auto it = props_.find(o.prop);
+            if (it == props_.end()) continue;
+            for (const auto& part : it->second) {
+                Pending::Part d;
+                d.first = static_cast<std::uint32_t>(p->indices.size());
+                d.count = static_cast<std::uint32_t>(part.indices.size());
+                d.offset = static_cast<std::int32_t>(p->vertices.size());
+                d.texture = part.texture;
+                for (p3d::Vertex v : part.vertices) {
+                    float r[3];
+                    Rotate(o.rotation, v.position, r);
+                    for (int k = 0; k < 3; ++k) v.position[k] = r[k] + o.position[k];
+                    Rotate(o.rotation, v.normal, r);
+                    std::copy(r, r + 3, v.normal);
+                    p->vertices.push_back(v);
+                }
+                p->indices.insert(p->indices.end(), part.indices.begin(), part.indices.end());
+                p->parts.push_back(std::move(d));
+            }
+        }
+    }
+    // One draw per texture (and group): the parts' indices regrouped, each made absolute.
+    std::map<std::pair<int, std::string>, std::vector<std::uint32_t>> merged;
+    for (const auto& part : p->parts) {
+        auto& out = merged[{part.group, part.texture}];
+        for (std::uint32_t i = 0; i < part.count; ++i) out.push_back(p->indices[part.first + i] + static_cast<std::uint32_t>(part.offset));
+    }
+    p->indices.clear();
+    p->parts.clear();
+    for (auto& [key, indices] : merged) {
+        Pending::Part d;
+        d.group = key.first;
+        d.texture = key.second;
+        d.first = static_cast<std::uint32_t>(p->indices.size());
+        d.count = static_cast<std::uint32_t>(indices.size());
+        p->indices.insert(p->indices.end(), indices.begin(), indices.end());
+        p->parts.push_back(std::move(d));
+    }
     return p;
 }
 
@@ -93,6 +192,16 @@ bool City::Upload(Pending& p, Model& model) {
         }
     }
     if (!p.vertices.empty() && !renderer_->CreateModel(p.vertices, p.indices, model)) return false;
+    if (&model != &low_ && !p.vertices.empty()) {
+        std::fill(model.min, model.min + 3, 1e30f);
+        std::fill(model.max, model.max + 3, -1e30f);
+        for (const auto& v : p.vertices) {
+            for (int k = 0; k < 3; ++k) {
+                model.min[k] = std::min(model.min[k], v.position[k]);
+                model.max[k] = std::max(model.max[k], v.position[k]);
+            }
+        }
+    }
     for (const auto& part : p.parts) {
         Draw d;
         d.first_index = part.first;
@@ -141,6 +250,8 @@ bool City::Open(const std::filesystem::path& game, Renderer& renderer, std::stri
         }
         error.clear();
     }
+    Log("Loading the props ...\n");
+    LoadProps(location_ / "props.p3d.rz");
     Log("Loading the low-detail city ...\n");
     auto low = Build(location_ / "midgeo.p3d.rz", 1);
     if (!low->error.empty()) {
@@ -222,7 +333,9 @@ void City::Worker() {
             file = cells_.at(n).file;
             ++loading_;
         }
-        auto p = Build(file, 0);
+        auto ft = file;
+        ft.replace_filename(file.stem().stem().string() + "_ft.p3d.rz");
+        auto p = Build(file, 0, ft);
         std::lock_guard lock(mutex_);
         --loading_;
         done_.emplace_back(n, std::move(p));

@@ -32,6 +32,8 @@ layer.
   - the detailed cells around the camera, streamed in on a worker thread and swapped for their
     low-detail mesh;
   - the textures, uploaded as the BC textures they are, with all their mip levels;
+  - the props the cells place (air conditioners, benches, street lights...) from `props.p3d.rz`,
+    at their positions and rotations;
   - a first lighting model (sun, sky light, fog) in place of the game's.
 - Controls:
   - hold the right mouse button (or press Tab) to look around;
@@ -41,7 +43,8 @@ layer.
 - `manhattan <game folder> --screenshot file.png [--at x,y,z --look yaw,pitch]` draws one view
   and saves it, for checking without a screen. Messages also go to `manhattan.log`.
 - Not yet:
-  - props, cars and lights placed by instances (only geometry in world space is shown);
+  - parked cars and light decals, and props whose parts have joints of their own (each prop is
+    drawn as one piece);
   - the textures in other tile modes;
   - the game's own shaders and lighting.
 

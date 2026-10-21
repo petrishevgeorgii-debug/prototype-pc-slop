@@ -42,6 +42,7 @@ struct Model {
     GpuBuffer vertices, indices;
     std::vector<Draw> draws;
     std::vector<GpuTexture> textures; ///< owned by this model
+    float min[3] = {-1e30f, -1e30f, -1e30f}, max[3] = {1e30f, 1e30f, 1e30f}; ///< world bounds, for culling
 };
 
 struct FrameView {

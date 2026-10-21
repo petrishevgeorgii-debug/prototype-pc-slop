@@ -52,8 +52,18 @@ private:
     };
     struct Pending; // CPU data of a loaded cell, waiting for upload
 
+    struct PropPart {
+        std::vector<p3d::Vertex> vertices;
+        std::vector<std::uint32_t> indices;
+        std::string texture;
+    };
+
     void Worker();
-    std::unique_ptr<Pending> Build(const std::filesystem::path& file, int group_from_name);
+    /// A cell's (or the low-detail city's) geometry; `placements`: the cell's _ft file, whose
+    /// props are added where it places them.
+    std::unique_ptr<Pending> Build(const std::filesystem::path& file, int group_from_name,
+                                   const std::filesystem::path& placements = {});
+    void LoadProps(const std::filesystem::path& file);
     bool Upload(Pending& p, Model& model);
     float Distance(const Cell& cell, const float camera[3]) const;
 
@@ -63,6 +73,8 @@ private:
     Model library_;  ///< textures shared by the cells (textures.p3d.rz)
     Model low_;      ///< the low-detail city (midgeo.p3d.rz), grouped by cell
     std::unordered_map<std::string, VkDescriptorSet> shared_;
+    /// Props by name (props.p3d.rz: their intact shape), placed by the cells' _ft files.
+    std::unordered_map<std::string, std::vector<PropPart>> props_;
     int max_index_ = 0;
 
     std::thread worker_;

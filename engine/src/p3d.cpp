@@ -369,6 +369,29 @@ void ReadTextures(const File& file, std::vector<Texture>& textures, std::vector<
     });
 }
 
+void ReadPlacements(const File& file, std::vector<Placement>& placements) {
+    Walk(file.chunks, [&](const Chunk& c) {
+        if (c.id != 0x07f00000) return;
+        Reader r{c.data, c.data + c.size};
+        const std::string full = r.Str();
+        const auto sep = full.find("(1):");
+        if (sep == std::string::npos || full.compare(0, sep, "GameObject") == 0) return;
+        const Chunk* attributes = c.First(0x07f00001);
+        if (!attributes || attributes->size < 8 + 28 || std::memcmp(attributes->data + 4, "META", 4) != 0) return;
+        Placement p;
+        p.type = full.substr(0, sep);
+        p.name = full.substr(sep + 4);
+        std::memcpy(p.position, attributes->data + 8, 12);
+        std::memcpy(p.rotation, attributes->data + 20, 16);
+        if (p.type == "proto::CloudSpawner") {
+            Reader rest{attributes->data + 36, attributes->data + attributes->size};
+            p.prop = rest.Str();
+            if (!rest.ok) p.prop.clear();
+        }
+        placements.push_back(std::move(p));
+    });
+}
+
 std::string ColourTexture(const Shader& shader) {
     for (const char* param : {"color", "colour", "diffuse", "color_inards", "color_infection", "Diffuse"}) {
         if (auto it = shader.textures.find(param); it != shader.textures.end()) return it->second;

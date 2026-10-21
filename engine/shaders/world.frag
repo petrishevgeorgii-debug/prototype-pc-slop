@@ -18,7 +18,7 @@ layout(push_constant) uniform Push {
 layout(location = 0) out vec4 out_colour;
 
 void main() {
-    vec3 albedo = pc.sun.w > 0.5 ? texture(colour_texture, v_uv).rgb : vec3(0.42, 0.40, 0.37);
+    vec3 albedo = pc.sun.w > 0.5 ? texture(colour_texture, v_uv).rgb : vec3(0.20, 0.19, 0.18);
     // Normals: the vertex's, else the face's (some of the city's geometry has none).
     vec3 n = dot(v_normal, v_normal) > 0.01 ? normalize(v_normal) : normalize(cross(dFdx(v_world), dFdy(v_world)));
     vec3 to_camera = pc.camera.xyz - v_world;
@@ -27,8 +27,8 @@ void main() {
     float direct = max(dot(n, sun), 0.0);
     vec3 sky = vec3(0.30, 0.38, 0.48);
     vec3 ground = vec3(0.10, 0.09, 0.08);
-    vec3 ambient = mix(ground, sky, n.y * 0.5 + 0.5) * 1.1;
-    vec3 lit = albedo * (ambient + vec3(1.0, 0.92, 0.80) * direct * 1.6);
+    vec3 ambient = mix(ground, sky, n.y * 0.5 + 0.5) * 0.9;
+    vec3 lit = albedo * (ambient + vec3(1.0, 0.92, 0.80) * direct * 1.3);
     float fog = 1.0 - exp(-length(to_camera) * pc.camera.w);
     out_colour = vec4(mix(lit, sky, clamp(fog, 0.0, 1.0)), 1.0);
 }

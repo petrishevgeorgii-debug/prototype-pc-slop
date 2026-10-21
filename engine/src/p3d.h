@@ -78,4 +78,13 @@ void ReadTextures(const File& file, std::vector<Texture>& textures, std::vector<
 /// The texture a shader shows as its surface colour, or "".
 std::string ColourTexture(const Shader& shader);
 
+/// An object the city places (the cells' _ft files): its type (e.g. proto::CloudSpawner), name,
+/// position and rotation (quaternion x y z w); for a CloudSpawner, the prop it places.
+struct Placement {
+    std::string type, name, prop;
+    float position[3];
+    float rotation[4];
+};
+void ReadPlacements(const File& file, std::vector<Placement>& placements);
+
 } // namespace p3d
