@@ -9,6 +9,7 @@
 #include "cpu_check.h"
 #include "isa_rewrite.h"
 #include "gpu/theordergpu.h"
+#include "game/native.h"
 #if !defined(__x86_64__) || !defined(__GNUC__)
 #error This prototype requires x86-64 GCC or Clang (including MinGW).
 #endif
@@ -789,6 +790,25 @@ void runtime_restart(void) {
 
 static unsigned char *g_diag_stubs;
 static size_t g_diag_stub_offset;
+#define DIAG_STUB_AREA 65536
+#define NATIVE_DATA_SIZE 4096
+static unsigned char *g_native_data;
+
+/* Code for the native game layer, from the same area as the call-site stubs below. */
+static uint8_t *native_alloc_code(size_t bytes) {
+    size_t rounded = (bytes + 31) & ~(size_t)31;
+    if (!g_diag_stubs || g_diag_stub_offset + rounded > DIAG_STUB_AREA) return NULL;
+    uint8_t *code = g_diag_stubs + g_diag_stub_offset;
+    g_diag_stub_offset += rounded;
+    return code;
+}
+
+/* The native game layer (game/, docs/NATIVE.md): C++ parts of the game that take over from the
+ * original code, each only where the code it replaces is found unchanged. */
+static void install_native_game(uint64_t image_size) {
+    NativeHost host = {image, image_size, native_alloc_code, g_native_data, g_native_data ? NATIVE_DATA_SIZE : 0};
+    native_game_install(&host);
+}
 
 static void hook_call_site(uint64_t call_site_offset, void *target_fn) {
     if (!g_diag_stubs) return;
@@ -1434,10 +1454,12 @@ int main(int argc, char **argv) {
     /* The stubs follow the image in the same low mapping (rel32 jmps reach them). */
     size_t isa_stub_size = isa_table ? round_page(isa_stub_area_size(isa_table)) : 0;
     size_t stub_area = isa_stub_size + 65536;
-    image = allocate(round_page(size) + stub_area);
+    /* After the stubs: one read/write page for the native game layer (game/native.h). */
+    image = allocate(round_page(size) + stub_area + NATIVE_DATA_SIZE);
     runtime_guest_image = (uintptr_t)image;
     unsigned char *stubs = image + round_page(size);
     g_diag_stubs = stubs + isa_stub_size;
+    g_native_data = stubs + stub_area;
     if (fread(image, 1, size, f) != size || fgetc(f) != EOF) fail("incorrect memory image size");
     fclose(f);
     if (isa_table && isa_table_matches(isa_table, image, size)) {
@@ -1508,6 +1530,7 @@ int main(int argc, char **argv) {
     install_event_fix(segments, ns);
     install_mouse_camera();
     install_p2_np_fix();
+    install_native_game(size);
 #ifdef _WIN32
     printf("Guest TCB loads redirected to the TEB TLS slot: %" PRIu64 "\n", patch_tcb_loads(segments, ns));
 #endif

@@ -204,12 +204,15 @@ if (WIN32)
     add_library(atrac9 STATIC ${THEORDER_ATRAC9})
     target_compile_options(atrac9 PRIVATE -w)
     set_target_properties(atrac9 PROPERTIES C_STANDARD 99 INTERPROCEDURAL_OPTIMIZATION OFF)
+    # The native game layer (../game, docs/NATIVE.md): C++ parts of the game linked into the loader.
+    file(GLOB_RECURSE THEORDER_NATIVE_GAME CONFIGURE_DEPENDS ../game/*.cpp)
     add_executable(theorder-probe ../src/probe.c ${THEORDER_RUNTIME} ../src/compat_win.c ../src/cpu_check.c ../src/vulkan_smoke.c
-        ../src/isa_rewrite.c ../src/isa_emulate.c
+        ../src/isa_rewrite.c ../src/isa_emulate.c ${THEORDER_NATIVE_GAME}
         ../packaging/windows/theorder-probe.rc)
     set_target_properties(theorder-probe PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
-    target_compile_options(theorder-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>)
-    target_include_directories(theorder-probe PRIVATE .. ../src)
+    target_compile_options(theorder-probe PRIVATE $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Werror>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>)
+    target_include_directories(theorder-probe PRIVATE .. ../src shim)
     target_link_libraries(theorder-probe PRIVATE theordergpu atrac9 onecore bcrypt ws2_32 -pthread)
     # The PS4 range (64 GiB - 1 TiB) must stay free: no high-entropy ASLR for heaps and stacks.
     # The guest main thread runs on the process stack: 16 MiB, committed (no stack probes).

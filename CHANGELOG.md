@@ -3,6 +3,13 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## Unreleased
+
+### Added
+- The native game layer ([docs/NATIVE.md](docs/NATIVE.md)) replaces parts of the game with C++ written for the port. Each part is installed only where the original code is found unchanged, and `THEORDER_NATIVE=0` turns the layer off.
+  - First part: the sun's shadow distance, live in the port menu (Image → SHADOW DISTANCE: GAME or 250 to 2000 m). It is very experimental.
+- `scripts/game_map.py` writes a map of the game's code to `out/game_map`. The map lists the 11,600 classes with their virtual functions, 73,000 functions with names where possible, and the engine's source files. It also writes a Ghidra symbol list.
+
 ## 0.7.0 — October 20, 2026 ([notes](docs/releases/v0.7.0.md))
 
 ### Added

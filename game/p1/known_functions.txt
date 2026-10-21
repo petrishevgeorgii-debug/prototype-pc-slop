@@ -1,0 +1,21 @@
+# PROTOTYPE (CUSA06545 01.00, eboot.bin): functions identified by hand, "address name".
+# scripts/game_map.py names them first; game/p1/*.cpp replaces some of them (docs/NATIVE.md).
+0x2c5e20 pure3d::Shadow::Shadow
+0x2c72c0 pure3d::Shadow::SetGlobalRangeHack
+0x2c72d0 pure3d::Shadow::SetBiasScale
+0x2c72e0 pure3d::Shadow::SetUnitScale
+0x2c7300 pure3d::Shadow::SetCascadeBias
+0x2c7310 pure3d::Shadow::SetCascadeExtent
+0x2c7320 pure3d::Shadow::GetCascadeExtent
+0x2c78d0 pure3d::Shadow::Update
+0x2c9590 pure3d::Shadow::ComputeCascades
+0x2c9fa0 pure3d::Shadow::SetNumCascades
+0x2cab50 pure3d::ShadowRenderManager::ShadowRenderManager
+0x2cade0 pure3d::ShadowRenderManager::Get
+0x2cadf0 pure3d::ShadowRenderManager::Initialise
+0x2cb4c0 pure3d::ShadowRenderManager::SizeForQuality
+0x2cb540 pure3d::ShadowRenderManager::SetResolution
+0xc16a0 pure3d::Light::SetNumShadowCascades
+0xc16e0 pure3d::Light::SetShadowCascadeExtent
+0x70fa90 proto::ChaseCamera::Update
+0x8f68d0 proto::ChaseCamera::ReadStick

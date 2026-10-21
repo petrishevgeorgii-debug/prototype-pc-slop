@@ -136,6 +136,7 @@ what you did, and `last_run.log` from the port folder. For FSR problems, the men
 
 - PROTOTYPE 2: keyboard button icons, FSR, the direct mouse camera
 - Object motion vectors for FSR (less ghosting on characters)
+- The native game layer ([docs/NATIVE.md](docs/NATIVE.md)): replace PROTOTYPE's renderer front end with native code, then native lighting, PBR materials and ray-traced shadows
 - Shadows: tune and test the shadow options; more draw distance
 - Graphics mods: extra textures (PBR materials) and effect slots for shader mods
 - NVIDIA and Intel testing and fixes

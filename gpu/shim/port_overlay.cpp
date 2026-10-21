@@ -830,6 +830,8 @@ struct Option {
 int category = 0;
 int row = 0;
 u64 shader_pick = 0; ///< the shader browser's pixel shader
+/// The SHADOW DISTANCE choices, metres (0: the game's own).
+constexpr int kShadowDistances[] = {0, 250, 500, 1000, 1500, 2000};
 } // namespace Proto
 
 void PrototypeMenu() {
@@ -946,6 +948,29 @@ void PrototypeMenu() {
                              "Река отражает город, мосты и людей на берегу (отражения в экранном "
                              "пространстве). Выкл: только отражение неба самой игры."),
                            0, {off, on}, s.ssr ? 1 : 0});
+        {
+            // PROTOTYPE, native game layer (game/p1/shadows.cpp): live, very experimental.
+            int at = 0;
+            for (int k = 0; k < int(std::size(kShadowDistances)); ++k) {
+                if (kShadowDistances[k] == s.shadow_distance.load()) at = k;
+            }
+            Option distance{T("SHADOW DISTANCE", "ДАЛЬНОСТЬ ТЕНЕЙ"),
+                            T("Very experimental. How far the sun's shadows reach (PROTOTYPE). GAME: about "
+                              "120 m, as on the PS4. Further spreads the shadow map's detail over more "
+                              "distance; best with 4096 shadows (launcher).",
+                              "Очень экспериментально. Как далеко видны тени от солнца (PROTOTYPE). ИГРА: "
+                              "около 120 м, как на PS4. Дальше: детали карты теней распределяются на большее "
+                              "расстояние; лучше с тенями 4096 (лаунчер)."),
+                            0, {}, at};
+            for (int k = 0; k < int(std::size(kShadowDistances)); ++k) {
+                if (kShadowDistances[k] == 0) {
+                    distance.values.push_back(T("GAME", "ИГРА"));
+                } else {
+                    distance.values.push_back(std::to_string(kShadowDistances[k]) + T(" M", " М"));
+                }
+            }
+            options.push_back(distance);
+        }
         break;
     case 3:
         options.push_back({T("JITTER", "ДРОЖАНИЕ КАДРА"),
@@ -1066,6 +1091,7 @@ void PrototypeMenu() {
         case 17: s.rcas = value == 1; break;
         case 18: s.rcas_strength = value * 10; break;
         case 19: s.ssr = value == 1; break;
+        case 20: s.shadow_distance = kShadowDistances[std::clamp(value, 0, int(std::size(kShadowDistances)) - 1)]; break;
         case 32: s.display_mode = value; break;
         case 33: s.vsync = value == 1; break;
         case 34: s.show_fps = value == 1; break;
@@ -1126,7 +1152,7 @@ void PrototypeMenu() {
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
         // Defaults of this category.
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; s.shadow_distance = 0; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {
@@ -1284,7 +1310,7 @@ void PrototypeMenu() {
     if (hint(X(0.09f), 1, T("BACK", "НАЗАД"), "ESC")) close = true;
     if (hint(X(0.338f), 2, T("DEFAULTS", "ПО УМОЛЧАНИЮ"), "BACKSPACE")) {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; s.shadow_distance = 0; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {

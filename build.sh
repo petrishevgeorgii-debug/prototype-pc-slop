@@ -89,13 +89,25 @@ if [[ ! -f out/libatrac9.a || -n $(find third_party/LibAtrac9/C/src -newer out/l
     for source in "${atrac9[@]}"; do "$CC" -std=c99 -O2 -g -w -c "$source" -o "out/atrac9/$(basename "${source%.c}").o"; done
     ar rcs out/libatrac9.a out/atrac9/*.o
 fi
+# The native game layer (game/, docs/NATIVE.md): C++ parts of the game linked into the loader.
+CXX=${CXX:-$(command -v c++ || command -v g++ || command -v clang++ || true)}
+if [[ -z $CXX ]]; then echo 'Install a C++ compiler or set CXX.' >&2; exit 1; fi
+native=()
+mkdir -p out/native
+while IFS= read -r -d '' source; do
+    object=out/native/$(echo "${source#game/}" | tr / _).o
+    "$CXX" -std=c++20 -O2 -g -Wall -Wextra -Werror -fPIC -I. -Igpu/shim -c "$source" -o "$object"
+    native+=("$object")
+done < <(find game -name '*.cpp' -print0 | sort -z)
 # isa_emulate runs inside guest code: no XMM/YMM.
 "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -mgeneral-regs-only -c src/isa_emulate.c -o out/isa_emulate.o
-"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/theorder-probe
+"$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -no-pie "${includes[@]}" -I. -Isrc src/probe.c "${runtime[@]}" src/cpu_check.c src/vulkan_smoke.c out/isa_emulate.o src/isa_rewrite.c "${native[@]}" out/libatrac9.a -lm -lstdc++ "${gpu[@]}" "${libraries[@]}" -o out/theorder-probe
 echo "Built $PWD/out/theorder-probe"
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/theorder-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
+    "$CXX" -std=c++20 -O2 -g -Wall -Wextra -Werror -I. -Igpu/shim tests/test_native.cpp game/native.cpp game/p1/*.cpp -o out/native-test
+    out/native-test >/dev/null
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread -I. -Isrc tests/test_runtime.c "${runtime[@]}" out/libatrac9.a -lm "${gpu[@]}" "${libraries[@]}" -o out/runtime-test

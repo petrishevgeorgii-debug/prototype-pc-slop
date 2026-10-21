@@ -56,6 +56,9 @@ struct Values {
     std::atomic<int> rcas_strength{75};
     /// PROTOTYPE: screen-space reflections on the river (vk_screen_reflections.h). Live.
     std::atomic<bool> ssr{false};
+    /// PROTOTYPE: how far the sun's shadows reach, in metres; 0 the game's own (about 120 m).
+    /// Live; the native game layer applies it (game/p1/shadows.cpp).
+    std::atomic<int> shadow_distance{0};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
     /// image is smaller than the window).
     std::atomic<bool> rcas_applied{false};
