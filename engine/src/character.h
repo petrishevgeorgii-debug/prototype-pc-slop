@@ -22,6 +22,10 @@ struct CharacterState {
     float vertical = 0;     ///< m/s, up
     bool grounded = true;
     bool wall_running = false;
+    bool moving = false;    ///< the player wants to move
+    // What happened this frame:
+    bool jumped = false, double_jumped = false, landed = false, left_wall_top = false;
+    float impact = 0;       ///< falling speed at the landing, m/s
 };
 
 class Character {
@@ -68,8 +72,15 @@ private:
         bool loop = true;
     };
 
+    /// A one-off move: played through once, then the body goes back to moving as it does,
+    /// unless what it does ends it first (landing, moving off, ...).
+    enum class Action { None, TakeOff, Flip, Land, HeavyLand, Stop, WallTop };
+
     int Find(const std::string& name) const;
-    void Play(const std::string& name, float rate, bool loop);
+    /// `restart`: play it from `start` (a fraction of it) even when it is playing already.
+    void Play(const std::string& name, float rate, bool loop, float start = 0, bool restart = false);
+    void Act(Action action, const std::string& name, float rate, float start = 0);
+    bool Finished(const Clip& clip) const;
     void Advance(Clip& clip, float dt) const;
     /// The clip's local pose of a skeleton (joints it does not animate keep the rest pose).
     void Sample(const Clip& clip, const Skeleton& skeleton, std::vector<Pose>& out);
@@ -83,6 +94,10 @@ private:
     Clip current_, previous_;
     float blend_ = 1.0f; ///< of the current clip over the previous one
     bool forced_ = false;
+    Action action_ = Action::None;
+    float action_time_ = 0;  ///< seconds since it began
+    float last_speed_ = 0;
+    bool was_moving_ = false;
     Model model_;
     std::vector<p3d::Vertex> skinned_;
     std::vector<Pose> pose_a_, pose_b_;

@@ -128,6 +128,17 @@ layer.
   - a change of clip blends over 0.18 s; running into sprinting keeps the stride's phase;
   - the clips' own root motion (`Motion_Root`) is left out: the engine moves the body.
 - Sprinting into something lower than about 2.6 m vaults it; taller, he runs up it.
+- One-off moves play through once, unless what Alex does ends them (landing, moving off):
+  - the jump: `alex_loco_jump_long`; the double jump (Space in the air, once):
+    `alex_loco_jump_long_flip`; long jumps lean in with `alex_loco_jump_long_all1_start` /
+    `_end` when moving fast;
+  - landings by the falling speed and the running speed: `alex_loco_jump_land_soft`,
+    `alex_loco_jump_land_touch_fwd` (running on), `alex_loco_jump_land_heavy` (above 28 m/s,
+    holding him for 0.6 s), `alex_loco_diveroll` (above 28 m/s while sprinting);
+  - stopping: `alex_loco_run_stop`, `alex_loco_run_sprint_stop`;
+  - the top of a wall: `alex_wall_run_top`.
+- `--walk-test seconds --jump-at 0.3,0.6` presses jump at those times and logs the jumps and
+  landings.
 - `--anim alex_loco_jump_backflip [--anim-time frame]` plays one clip only, to look at it.
 
 ## Next milestones

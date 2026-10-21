@@ -27,10 +27,15 @@ public:
     bool grounded = false, wall_running = false;
     float facing = 0;                ///< where the body faces (yaw, radians; 0: -z)
     float wall_normal[2] = {0, 1};   ///< x z, away from the wall it runs up
+    // What happened in the last Update:
+    bool jumped = false, double_jumped = false, landed = false, left_wall_top = false;
+    float impact = 0;                ///< falling speed when it landed
 
 private:
     float safe_[3] = {0, 0, 0}; ///< the last place it stood, to come back to after a fall out of the city
     bool has_safe_ = false;
+    bool double_used_ = false;
+    float stun_ = 0; ///< seconds held after a heavy landing
 };
 
 } // namespace engine

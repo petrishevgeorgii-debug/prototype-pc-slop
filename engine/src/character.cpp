@@ -105,6 +105,17 @@ const char* kSprint = "alex_loco_run_sprint_n"; // 8.1 m/s
 const char* kRise = "alex_loco_amb_air";
 const char* kFall = "alex_loco_jump_fall_cycle";
 const char* kWallRun = "alex_wall_run_up";
+const char* kAirForward = "alex_loco_jump_long_all1_start";  // leaning into a long jump
+const char* kFallForward = "alex_loco_jump_long_all1_end";
+const char* kTakeOff = "alex_loco_jump_long";
+const char* kFlip = "alex_loco_jump_long_flip";              // the double jump
+const char* kLandSoft = "alex_loco_jump_land_soft";
+const char* kLandHeavy = "alex_loco_jump_land_heavy";
+const char* kLandRun = "alex_loco_jump_land_touch_fwd";
+const char* kDiveRoll = "alex_loco_diveroll";
+const char* kRunStop = "alex_loco_run_stop";
+const char* kSprintStop = "alex_loco_run_sprint_stop";
+const char* kWallTop = "alex_wall_run_top";
 
 bool Locomotion(const std::string& name) {
     return name == kWalk || name == kRun || name == kSprint;
@@ -232,23 +243,36 @@ std::string Character::Playing() const {
     return current_.animation >= 0 ? animations_[current_.animation].name : std::string();
 }
 
-void Character::Play(const std::string& name, float rate, bool loop) {
+void Character::Play(const std::string& name, float rate, bool loop, float start, bool restart) {
     const int a = Find(name);
     if (a < 0) return;
-    if (a == current_.animation) {
+    if (a == current_.animation && !restart) {
         current_.rate = rate;
+        current_.loop = loop;
         return;
     }
-    Clip next{a, 0.0f, rate, loop};
+    const float length = std::max(1.0f, animations_[a].frames - 1);
+    Clip next{a, start * length, rate, loop};
     // Running into sprinting (and back) keeps the stride where it was.
-    if (current_.animation >= 0 && Locomotion(animations_[current_.animation].name) && Locomotion(name)) {
+    if (!restart && current_.animation >= 0 && Locomotion(animations_[current_.animation].name) && Locomotion(name)) {
         const float from = std::max(1.0f, animations_[current_.animation].frames - 1);
-        const float to = std::max(1.0f, animations_[a].frames - 1);
-        next.time = current_.time / from * to;
+        next.time = current_.time / from * length;
     }
     previous_ = current_;
     current_ = next;
     blend_ = previous_.animation >= 0 ? 0.0f : 1.0f;
+}
+
+void Character::Act(Action action, const std::string& name, float rate, float start) {
+    if (Find(name) < 0) return;
+    Play(name, rate, false, start, true);
+    action_ = action;
+    action_time_ = 0;
+}
+
+bool Character::Finished(const Clip& clip) const {
+    if (clip.animation < 0 || clip.loop) return false;
+    return clip.time >= std::max(1.0f, animations_[clip.animation].frames - 1) - 0.01f;
 }
 
 bool Character::Force(const std::string& name, float time) {
@@ -272,16 +296,53 @@ void Character::Advance(Clip& clip, float dt) const {
 
 void Character::Animate(float dt, const CharacterState& s) {
     if (!forced_) {
-        if (s.wall_running) Play(kWallRun, 1.5f, true);
-        else if (!s.grounded) Play(s.vertical > 1.0f ? kRise : kFall, 1.0f, true);
-        else if (s.speed < 0.4f) Play(kIdle, 1.0f, true);
-        else if (s.speed < 2.5f) Play(kWalk, s.speed / 1.39f, true);
-        else if (s.speed < 11.0f) Play(kRun, std::max(0.7f, s.speed / 6.0f), true);
-        else Play(kSprint, std::clamp(s.speed / 8.14f, 1.0f, 1.9f), true);
+        // What happened starts a move.
+        if (s.jumped) Act(Action::TakeOff, kTakeOff, 1.3f);
+        if (s.double_jumped) Act(Action::Flip, kFlip, 1.25f, 0.2f);
+        if (s.left_wall_top) Act(Action::WallTop, kWallTop, 1.0f);
+        if (s.landed) {
+            if (s.impact > 28.0f) Act(Action::HeavyLand, s.speed > 10.0f ? kDiveRoll : kLandHeavy, 1.1f, s.speed > 10.0f ? 0.1f : 0.0f);
+            else if (s.speed > 10.0f) action_ = Action::None; // sprinting on
+            else if (s.speed > 3.0f) Act(Action::Land, kLandRun, 1.2f);
+            else if (s.impact > 6.0f) Act(Action::Land, kLandSoft, 1.2f, 0.05f);
+            else action_ = Action::None;
+        }
+        if (s.grounded && was_moving_ && !s.moving && last_speed_ > 4.0f && (action_ == Action::None || action_ == Action::Land)) {
+            Act(Action::Stop, last_speed_ > 12.0f ? kSprintStop : kRunStop, 1.2f);
+        }
+        // A move plays out unless what the body does ends it.
+        if (action_ != Action::None) {
+            action_time_ += dt;
+            bool end = Finished(current_);
+            switch (action_) {
+            case Action::TakeOff: end = end || (s.grounded && action_time_ > 0.2f) || s.wall_running; break;
+            case Action::Flip: end = end || s.grounded || s.wall_running; break;
+            case Action::Land:
+            case Action::Stop: end = end || !s.grounded || (s.moving && action_time_ > 0.15f && action_ == Action::Stop) ||
+                                     (s.moving && action_time_ > 0.35f); break;
+            case Action::HeavyLand: end = end || !s.grounded || s.wall_running || (s.moving && action_time_ > 0.9f); break;
+            case Action::WallTop: end = end || s.wall_running || (s.grounded && action_time_ > 0.25f); break;
+            case Action::None: break;
+            }
+            if (end) action_ = Action::None;
+        }
+        if (action_ == Action::None) {
+            if (s.wall_running) Play(kWallRun, 1.5f, true);
+            else if (!s.grounded) {
+                // In the air: leaning into it when moving fast.
+                if (s.vertical > 1.0f) Play(s.speed > 6.0f ? kAirForward : kRise, 1.0f, true);
+                else Play(s.speed > 6.0f ? kFallForward : kFall, 1.0f, true);
+            } else if (s.speed < 0.4f) Play(kIdle, 1.0f, true);
+            else if (s.speed < 2.5f) Play(kWalk, s.speed / 1.39f, true);
+            else if (s.speed < 11.0f) Play(kRun, std::max(0.7f, s.speed / 6.0f), true);
+            else Play(kSprint, std::clamp(s.speed / 8.14f, 1.0f, 1.9f), true);
+        }
     }
+    last_speed_ = s.speed;
+    was_moving_ = s.moving;
     Advance(current_, dt);
     Advance(previous_, dt);
-    blend_ = std::min(1.0f, blend_ + dt / 0.18f);
+    blend_ = std::min(1.0f, blend_ + dt / 0.15f);
 }
 
 const std::vector<int>& Character::Tracks(int animation, const Skeleton& skeleton) {

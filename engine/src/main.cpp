@@ -128,6 +128,7 @@ int main(int argc, char** argv) {
     bool validation = false, mirror = false, at_given = false, look_given = false, shadows = true;
     float exposure = 0.0f, walk_test = 0.0f, anim_time = 0.0f;
     std::string anim;
+    std::vector<float> jump_at; // --walk-test: when to press jump
     bool walk = false;
     int width = 1600, height = 900;
     Camera camera;
@@ -146,6 +147,14 @@ int main(int argc, char** argv) {
         else if (a == "--walk") walk = true;
         else if (a == "--anim" && i + 1 < argc) anim = argv[++i];
         else if (a == "--anim-time" && i + 1 < argc) anim_time = std::strtof(argv[++i], nullptr);
+        else if (a == "--jump-at" && i + 1 < argc) {
+            for (const char* p = argv[++i]; *p;) {
+                char* end = nullptr;
+                jump_at.push_back(std::strtof(p, &end));
+                if (end == p) break;
+                p = *end == ',' ? end + 1 : end;
+            }
+        }
         else if (a == "--walk-test" && i + 1 < argc) walk_test = std::strtof(argv[++i], nullptr), walk = true;
         else if (a == "--help" || a == "-h") {
             std::puts("manhattan <game folder> [--at x,y,z] [--look yaw,pitch] [--district name] [--screenshot file.png] "
@@ -241,6 +250,8 @@ int main(int argc, char** argv) {
         engine::Player player;
         bool on_foot = false, jump_pressed = false;
         float walk_time = 0.0f, walk_log = 0.0f;
+        engine::CharacterState happened; // the player's events since Alex was last animated
+        float body_dt = 0.0f;            // and the time it moved
         const auto set_on_foot = [&](bool foot) {
             on_foot = foot;
             if (foot) {
@@ -322,7 +333,21 @@ int main(int argc, char** argv) {
                     in.sprint = true;
                     for (int i = 0; i < 15 && walk_time < walk_test; ++i) {
                         walk_time += 1.0f / 60.0f;
+                        in.jump = false;
+                        for (float& t : jump_at) {
+                            if (t > 0 && walk_time >= t) in.jump = true, t = -1;
+                        }
                         player.Update(1.0f / 60.0f, in, city);
+                        body_dt += 1.0f / 60.0f;
+                        happened.jumped |= player.jumped;
+                        happened.double_jumped |= player.double_jumped;
+                        happened.left_wall_top |= player.left_wall_top;
+                        if (player.landed) happened.landed = true, happened.impact = player.impact;
+                        if (player.jumped || player.double_jumped || player.landed || player.left_wall_top) {
+                            Log("Walk %.2f s:%s%s%s%s (impact %.1f)\n", walk_time, player.jumped ? " jump" : "",
+                                player.double_jumped ? " double jump" : "", player.landed ? " landed" : "",
+                                player.left_wall_top ? " over the top" : "", player.impact);
+                        }
                         if (walk_time >= walk_log) {
                             Log("Walk %.2f s: %.1f, %.1f, %.1f%s%s\n", walk_time, player.position[0], player.position[1],
                                 player.position[2], player.grounded ? " (ground)" : "", player.wall_running ? " (up a wall)" : "");
@@ -331,6 +356,11 @@ int main(int argc, char** argv) {
                     }
                 } else {
                     player.Update(dt, in, city);
+                    body_dt += dt;
+                    happened.jumped |= player.jumped;
+                    happened.double_jumped |= player.double_jumped;
+                    happened.left_wall_top |= player.left_wall_top;
+                    if (player.landed) happened.landed = true, happened.impact = player.impact;
                 }
                 player.Eye(camera.position);
                 if (third_person && has_alex) {
@@ -362,7 +392,15 @@ int main(int argc, char** argv) {
             city.Models(models, hidden);
             if (on_foot && has_alex && third_person) {
                 const float hs = std::sqrt(player.velocity[0] * player.velocity[0] + player.velocity[2] * player.velocity[2]);
-                alex.Animate(dt, {hs, player.velocity[1], player.grounded, player.wall_running});
+                engine::CharacterState cs = happened;
+                happened = {};
+                cs.speed = hs;
+                cs.vertical = player.velocity[1];
+                cs.grounded = player.grounded;
+                cs.wall_running = player.wall_running;
+                cs.moving = walk_test > 0.0f || keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_D];
+                alex.Animate(body_dt, cs);
+                body_dt = 0.0f;
                 // Alex's place: turned to where he faces. The game's wall-run clips are made
                 // against a wall in front, so on a wall he only faces it.
                 float fwd[3] = {std::sin(player.facing), 0, -std::cos(player.facing)}, upw[3] = {0, 1, 0};

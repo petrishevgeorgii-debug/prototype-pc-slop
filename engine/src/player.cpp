@@ -44,15 +44,25 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
     float wish[2] = {fx * in.forward + -fz * in.right, fz * in.forward + fx * in.right};
     const float wl = std::sqrt(wish[0] * wish[0] + wish[1] * wish[1]);
     if (wl > 1.0f) wish[0] /= wl, wish[1] /= wl;
-    const float speed = in.sprint ? kSprint : kWalk;
+    float speed = in.sprint ? kSprint : kWalk;
+    if (stun_ > 0) stun_ -= dt, speed = 0; // a heavy landing holds Alex down for a moment
     const float rate = grounded ? 12.0f : wall_running ? 10.0f : 2.5f;
     const float k = std::min(1.0f, rate * dt);
     velocity[0] += (wish[0] * speed - velocity[0]) * k;
     velocity[2] += (wish[1] * speed - velocity[2]) * k;
+    const bool was_grounded = grounded, was_wall_running = wall_running;
+    jumped = double_jumped = landed = left_wall_top = false;
     if (in.jump && (grounded || wall_running)) {
         velocity[1] = kJump;
         grounded = false;
+        jumped = true;
+    } else if (in.jump && !double_used_) {
+        // Once more in the air (Alex's double jump).
+        velocity[1] = std::max(velocity[1], kJump * 0.85f);
+        double_used_ = true;
+        double_jumped = true;
     }
+    const float falling = -velocity[1];
     velocity[1] = std::max(velocity[1] - kGravity * dt, -60.0f);
 
     // Moved in steps short enough not to pass through a wall.
@@ -103,6 +113,12 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
         }
     }
     grounded = on_ground;
+    if (grounded && !was_grounded) {
+        landed = true;
+        impact = std::max(falling, 0.0f);
+        const float hs = std::sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);
+        if (impact > 28.0f && hs < 10.0f) stun_ = 0.6f;
+    }
     // Running up walls: sprinting into one.
     wall_running = false;
     if (wall && in.sprint && wish[0] * -wall_normal[0] + wish[1] * -wall_normal[1] > 0.3f) {
@@ -118,6 +134,8 @@ void Player::Update(float dt, const PlayerInput& in, const City& city) {
             velocity[1] = std::max(velocity[1], kVault);
         }
     }
+    if (grounded || wall_running) double_used_ = false;
+    if (was_wall_running && !wall_running && !grounded && velocity[1] > 0) left_wall_top = true;
     // The body turns to where it goes (quickly: Alex turns on the spot).
     const float hs = std::sqrt(velocity[0] * velocity[0] + velocity[2] * velocity[2]);
     float target = facing;
