@@ -25,7 +25,7 @@ typedef struct NativeHost {
 } NativeHost;
 
 /* Installs every native replacement whose original code is found unchanged; prints what it did.
- * THEORDER_NATIVE=0 turns the layer off; THEORDER_NATIVE=-shadows,-<name> leaves groups or single
+ * THEORDER_NATIVE=0 turns the layer off; THEORDER_NATIVE=-<group>,-<name> leaves groups or single
  * replacements out. */
 void native_game_install(const NativeHost *host);
 

@@ -5,12 +5,18 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 
 ## Unreleased
 
+### Changed
+- The launcher is redesigned from scratch: a Blackwatch terminal look (dossier pages, monospace type, scanlines, warning stripes). Every setting, the controls, the folder check and Prepare / Restore / Clean up are still there.
+
+### Removed
+- PROTOTYPE's shadow options: shadow resolution 4096 and shadow distance 2×, 3×, 4× and Whole city (launcher GAME page), and the port menu's Image → SHADOW DISTANCE. They were very experimental and are scrapped.
+- The launcher's Manhattan Engine button. `manhattan.exe` still starts on its own.
+
 ### Added
 - The native game layer ([docs/NATIVE.md](docs/NATIVE.md)) replaces parts of the game with C++ written for the port. Each part is installed only where the original code is found unchanged, and `THEORDER_NATIVE=0` turns the layer off.
-  - First part: the sun's shadow distance, live in the port menu (Image → SHADOW DISTANCE: GAME or 250 to 2000 m). It is very experimental.
 - The Manhattan Engine ([docs/ENGINE.md](docs/ENGINE.md)) is the start of a PC engine that runs PROTOTYPE from your own copy's data, as the P.T. PC port does. Milestone 0 is the city's data read without the game: `tools/formats` reads PROTOTYPE's Pure3D files and untiles their textures ([docs/formats/pure3d.md](docs/formats/pure3d.md)).
   - The tools can draw the whole of Manhattan and a textured city block, and export cells to OBJ for Blender.
-  - Milestone 1: `manhattan.exe` (launcher: **Manhattan Engine**) flies through PROTOTYPE's city in its own Vulkan renderer. It shows the low-detail city, with the detailed cells and their textures streamed in around the camera.
+  - Milestone 1: `manhattan.exe` flies through PROTOTYPE's city in its own Vulkan renderer. It shows the low-detail city, with the detailed cells and their textures streamed in around the camera.
   - Milestone 2, the look: the city's own light rig from `manhattan_tod` (the sun, the sky light and two fill lights), the sun's shadows in four cascades, normal maps, the vertex tint the game colours its buildings with, cut-out leaves and fences, blended decals (the hive infection), a sky, haze and tone mapping. Light cones and particles are left out for now. N and B fly to the city's 14 districts; L turns shadows off; [ and ] change the exposure.
   - Parked cars: the cells' parking places (`proto::ParkedCarSpawner`) get the vehicles their district spawns, by the district's weights, from `art/packages/vehicles`. Each car is put together from its skeleton's parts (body, doors, wheels) and painted with a colour from its own palette (`<car>_tod`). Car windows are glass that reflects the sky.
   - Fixed: the low-detail city's traffic strips covered the streets of the detailed cells.

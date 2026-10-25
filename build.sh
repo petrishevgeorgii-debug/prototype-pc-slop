@@ -119,7 +119,8 @@ fi
 # GPU check for run.sh (live_resolution=auto): links only the Vulkan loader.
 "$CC" -std=c11 -O2 -Wall -Wextra -Werror -Igpu/shadps4 tools/gpu_capabilities.c "${libraries[@]}" -o out/theorder-gpu-capabilities
 if [[ ${1:-} == --test ]]; then
-    "$CXX" -std=c++20 -O2 -g -Wall -Wextra -Werror -I. -Igpu/shim tests/test_native.cpp game/native.cpp game/p1/*.cpp -o out/native-test
+    mapfile -d "" game_sources < <(find game -name "*.cpp" -print0 | sort -z)
+    "$CXX" -std=c++20 -O2 -g -Wall -Wextra -Werror -I. -Igpu/shim tests/test_native.cpp "${game_sources[@]}" -o out/native-test
     out/native-test >/dev/null
     "$CC" -std=c11 -O2 -g -Wall -Wextra -Werror -pthread "${includes[@]}" -I. -Isrc tests/test_pad.c "${libraries[@]}" -o out/pad-test
     out/pad-test

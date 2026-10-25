@@ -26,7 +26,8 @@ layer.
 **Milestone 1: fly through the city.** The first build is in.
 
 - `engine/` is the engine itself, C++20 with Vulkan and SDL3. The port's build makes it as
-  `out/manhattan.exe`, and the launcher starts it from **Manhattan Engine** at its bottom.
+  `out/manhattan.exe`. Start it with the game folder: `out\manhattan.exe "D:\Games\CUSA06545"`
+  (from the port folder; SDL3.dll comes from MSYS2's `clang64\bin`, so have that on PATH).
 - It shows:
   - the whole city at low detail;
   - the detailed cells around the camera, streamed in on a worker thread and swapped for their

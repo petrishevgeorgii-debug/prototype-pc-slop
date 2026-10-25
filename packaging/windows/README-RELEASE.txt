@@ -13,8 +13,8 @@ Tested on AMD Radeon. NVIDIA and Intel are untested: please report how it runs.
 
 PLAYING
   1. Unpack this folder anywhere (a path without special characters is safest).
-  2. Start Prototype.exe, choose your game folder, pick PROTOTYPE or PROTOTYPE 2 at the top,
-     press PLAY.
+  2. Start Prototype.exe, choose your game folder, pick PROTOTYPE or PROTOTYPE 2 (the file
+     tabs at the top left), press PLAY or Enter.
      The first start prepares the game (about a minute); later starts are quick.
 
 KEYBOARD AND MOUSE
@@ -41,9 +41,6 @@ IN GAME
 WHAT'S NEW IN 0.7.0 (all versions: CHANGELOG.md)
   - Graphics modding: your own GLSL shaders in mods\shaders replace the game's; the port
     menu's SHADERS page shows what each shader draws and exports it (docs\SHADER_MODS.md).
-  - PROTOTYPE shadows, VERY EXPERIMENTAL (launcher GAME page, off by default): 4096 shadow
-    map, shadow distance 2x to 4x, or Whole city. If shadows break, flicker or the game
-    crashes on load, set them back to 2048 / PS4.
   - Fixed: black river water in PROTOTYPE.
 
 SAVES AND LOGS
@@ -57,8 +54,6 @@ KNOWN ISSUES
     are shown), FSR upscaling does not work in it yet, its mouse camera goes through the right
     stick, and 4K is untested.
   - Render resolution above 1080p is experimental.
-  - The shadow options are very experimental: shadows can break, float or flicker, and
-    Whole city costs frame rate.
   - FSR 4.1 needs a driver feature AMD's Windows driver does not have yet; it stays hidden.
 
 PROTOTYPE is a trademark of its owners. This is an unofficial fan project, not affiliated with

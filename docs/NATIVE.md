@@ -29,12 +29,12 @@ lighting, materials (PBR) and ray tracing become possible.
   and before the game starts) and logs each one:
 
   ```
-  Native: pure3d::Shadow::Update (call 1) [shadows] at 0x330dca
-  Native: 3 replacements installed, 0 not
+  Native: <name> [<group>] at 0x...
+  Native: N replacements installed, 0 not
   ```
 
 - `THEORDER_NATIVE=0` turns the whole layer off, to compare with the original. To leave out a
-  group or a single replacement, list it with a minus sign: `THEORDER_NATIVE=-shadows`.
+  group or a single replacement, list it with a minus sign: `THEORDER_NATIVE=-<group>`.
 - `tests/test_native.cpp` installs the layer into a stand-in of the eboot that holds only the
   bytes it checks, and runs the native code against stand-in game objects (`bash build.sh --test`
   on Linux).
@@ -60,19 +60,9 @@ please add to it when you identify a function.
 
 ## What is native so far
 
-### Shadows (`game/p1/shadows.cpp`): very experimental
-
-`pure3d::Shadow::Update` runs every frame. Both of the renderer's calls to it now go through
-native code first. With the port menu's **Image → SHADOW DISTANCE** set to 250 to 2000 m, it
-does three things:
-
-- spreads the sun's cascades from 5 m out to that distance, each one ending a constant factor
-  further than the last;
-- grows the shadow box to hold them;
-- points the game's range check at the native range.
-
-**GAME** puts the game's own values back. The setting is live: no restart. The layout of
-`pure3d::Shadow` worked out so far is at the top of the file.
+Nothing yet. The first part, the sun's shadow distance in the port menu, was removed: it was
+too experimental to keep. The layer, its checks and its test stay, ready for the renderer work
+below.
 
 ## Next
 

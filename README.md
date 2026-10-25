@@ -8,7 +8,7 @@ PS4 GPU commands into Vulkan. It is built on
 
 **Version 0.7.0 — October 20, 2026** ([notes](docs/releases/v0.7.0.md), [changelog](CHANGELOG.md)):
 - Graphics modding: shader mods and an in-game shader browser.
-- Sharper and longer shadows in PROTOTYPE, **very experimental**.
+- Sharper and longer shadows in PROTOTYPE, **very experimental** (removed again after 0.7.0).
 - The black river water is fixed.
 
 PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
@@ -48,13 +48,9 @@ fix is applied in memory, and the port checks the executables against the untouc
   language), with keyboard, controller and mouse.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
-- **Shadows** (PROTOTYPE, **very experimental**, off by default):
-  - a 4096 × 4096 sun shadow map (PS4: 2048);
-  - shadow distance 2× to 4×;
-  - *Whole city*: near shadows stay sharp and far ones reach about 1.5 km.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
   with an in-game shader browser that shows what each shader draws and exports it for editing.
-- A **launcher** (`Prototype.exe`): a tab for each game with its own resolution and frame rate,
+- A **launcher** (`Prototype.exe`) dressed as a Blackwatch terminal: a file for each game with its own resolution and frame rate,
   game folder check, shared graphics, display and controls settings, saves and backups, the log.
 
 ## Playing
@@ -62,11 +58,11 @@ fix is applied in memory, and the port checks the executables against the untouc
 1. Download `PROTOTYPE-PC-Port-v0.7.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
-   `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** at the top and press **PLAY**. The first start prepares the game (about a
+   `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** (the file tabs at the top left) and press **PLAY** or Enter. The first start prepares the game (about a
    minute); later starts are quick.
 
 The launcher's **GAME** page holds each game's own render resolution and 30 / 60 FPS (and
-PROTOTYPE's tendril fix and its very experimental shadow resolution and distance). FSR 1 and sharpening, anisotropic filtering, display mode, V-Sync, the
+PROTOTYPE's tendril fix). FSR 1 and sharpening, anisotropic filtering, display mode, V-Sync, the
 frame counter and the keyboard and mouse controls are shared by both games.
 
 ### Keyboard and mouse
@@ -117,10 +113,6 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
   PlayStation buttons) and FSR upscaling does not work in it yet. Its mouse camera goes through
   the right stick, and 4K is untested.
 - Render resolutions above 1080p are experimental.
-- The shadow options (resolution 4096, distance 2× to 4× and Whole city) are **very experimental**:
-  - shadows can break, float or flicker, and Whole city costs frame rate;
-  - distant buildings may cast no shadow even with it;
-  - set them back to 2048 / PS4 if anything looks wrong.
 - FSR 4.1 needs a Vulkan feature (`VK_VALVE_shader_mixed_float_dot_product`) that AMD's Windows
   driver does not offer yet; the menu hides it.
 - Characters can ghost slightly with FSR (the port gives FSR the camera motion; animated objects
@@ -138,7 +130,7 @@ what you did, and `last_run.log` from the port folder. For FSR problems, the men
 - Object motion vectors for FSR (less ghosting on characters)
 - The Manhattan Engine ([docs/ENGINE.md](docs/ENGINE.md)): a PC engine that runs PROTOTYPE from its data, as the P.T. PC port does (milestone 0: the city's data, read)
 - The native game layer ([docs/NATIVE.md](docs/NATIVE.md)): replace PROTOTYPE's renderer front end with native code, then native lighting, PBR materials and ray-traced shadows
-- Shadows: tune and test the shadow options; more draw distance
+- More draw distance
 - Graphics mods: extra textures (PBR materials) and effect slots for shader mods
 - NVIDIA and Intel testing and fixes
 
