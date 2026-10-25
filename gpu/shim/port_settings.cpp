@@ -97,8 +97,6 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.fsr1 = i != 0;
     } else if (key == "rcas") {
         v.rcas = i != 0;
-    } else if (key == "ssr") {
-        v.ssr = i != 0;
     } else if (key == "rcas_strength") {
         v.rcas_strength = PortGraphics::ParseRcasStrength(value.empty() ? -1 : i);
     } else if (key == "frames_queued") {
@@ -174,7 +172,7 @@ void Load() {
         {"THEORDER_ASYNC_SHADERS", "async_shaders"},      {"THEORDER_DEFERRED_READBACK", "deferred_readback"},
         {"THEORDER_STALE_READBACK", "stale_readback"},     {"THEORDER_FSR1", "fsr1"},
         {"THEORDER_RCAS", "rcas"},                        {"THEORDER_FRAMES_AHEAD", "frames_queued"},
-        {"THEORDER_ANISOTROPY", "anisotropy"},            {"THEORDER_SSR", "ssr"},
+        {"THEORDER_ANISOTROPY", "anisotropy"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -289,9 +287,8 @@ void Save() {
                  PortGraphics::Aspects[std::clamp(v.aspect.load(), 0, 3)].data(),
                  v.engine_fps.load(), int(v.deferred_readback.load()), int(v.stale_readback.load()),
                  int(v.restart_unconfirmed.load()));
-    std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\nssr=%d\n",
-                 v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load(),
-                 int(v.ssr.load()));
+    std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\n",
+                 v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

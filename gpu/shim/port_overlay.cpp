@@ -940,12 +940,6 @@ void PrototypeMenu() {
         options.push_back({T("SHARPENING STRENGTH", "СИЛА РЕЗКОСТИ"),
                            T("How strong the final sharpening is.", "Насколько сильно повышается резкость."),
                            1, {}, std::clamp(s.rcas_strength.load() / 10, 0, 10), s.rcas.load()});
-        options.push_back({T("WATER REFLECTIONS", "ОТРАЖЕНИЯ В ВОДЕ"),
-                           T("The river reflects the city, the bridges and the people on the shore "
-                             "(screen-space reflections). Off: only the game's own sky reflection.",
-                             "Река отражает город, мосты и людей на берегу (отражения в экранном "
-                             "пространстве). Выкл: только отражение неба самой игры."),
-                           0, {off, on}, s.ssr ? 1 : 0});
         break;
     case 3:
         options.push_back({T("JITTER", "ДРОЖАНИЕ КАДРА"),
@@ -1065,7 +1059,6 @@ void PrototypeMenu() {
         case 16: s.fsr1 = value == 1; break;
         case 17: s.rcas = value == 1; break;
         case 18: s.rcas_strength = value * 10; break;
-        case 19: s.ssr = value == 1; break;
         case 32: s.display_mode = value; break;
         case 33: s.vsync = value == 1; break;
         case 34: s.show_fps = value == 1; break;
@@ -1126,7 +1119,7 @@ void PrototypeMenu() {
     if (ImGui::IsKeyPressed(ImGuiKey_Backspace, false) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceUp, false)) {
         // Defaults of this category.
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {
@@ -1284,7 +1277,7 @@ void PrototypeMenu() {
     if (hint(X(0.09f), 1, T("BACK", "НАЗАД"), "ESC")) close = true;
     if (hint(X(0.338f), 2, T("DEFAULTS", "ПО УМОЛЧАНИЮ"), "BACKSPACE")) {
         if (category == 0) { s.upscaler = PortSettings::UpscalerOff; s.preset = 0; s.sharpen = true; s.sharpness = 0.4f; s.debug_view = PortSettings::DebugNone; }
-        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; s.ssr = false; }
+        if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
         if (category == 3) {

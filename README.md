@@ -6,12 +6,11 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 0.7.0 — October 20, 2026** ([notes](docs/releases/v0.7.0.md), [changelog](CHANGELOG.md)):
-- Graphics modding: shader mods and an in-game shader browser.
-- Sharper and longer shadows in PROTOTYPE, **very experimental** (removed again after 0.7.0).
-- The black river water is fixed.
+**Version 1.0.1 — October 25, 2026** ([notes](docs/releases/v1.0.1.md), [changelog](CHANGELOG.md)):
+- A new launcher, redesigned from scratch as a Blackwatch terminal.
+- The experimental shadow options and water reflections are removed.
 
-PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
+Graphics modding since [0.7.0](docs/releases/v0.7.0.md); PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
@@ -55,7 +54,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v0.7.0.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v1.0.1.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** (the file tabs at the top left) and press **PLAY** or Enter. The first start prepares the game (about a
@@ -97,7 +96,7 @@ In game, **Insert** (keyboard) or **R3 + L2** (controller) opens the port menu:
 | Close | Esc | Circle |
 
 Sections: **Upscaling** (FSR 3.1 / FSR 4, quality preset, FSR sharpening), **Image** (FSR 1,
-sharpening, water reflections), **Display** (window mode, V-Sync, frame counter), **FSR tests**
+sharpening), **Display** (window mode, V-Sync, frame counter), **FSR tests**
 (switches and a motion-vector view for problem reports) and **Shaders** (the shader browser for
 graphics mods, [docs/SHADER_MODS.md](docs/SHADER_MODS.md)). Choices are saved to `theorder.ini`.
 

@@ -50,7 +50,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '0.7.0'
+VERSION = '1.0.1'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -127,7 +127,7 @@ LANGUAGES = [('English', 1), ('Français', 2), ('Español', 3), ('Deutsch', 4), 
 DEFAULTS = {
     'game_dir': '', 'anisotropy': 16, 'fsr1': True,
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
-    'show_fps': False, 'language': 1, 'panel': 'GAME', 'ssr': False,
+    'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'game': 'p1',
 }
@@ -157,12 +157,13 @@ def load_settings():
         ini = graphics_options.read_ini(PORT_DIR / 'theorder.ini')
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
-                          ('mouse_look', bool), ('mouse_sensitivity', int), ('ssr', bool)):
+                          ('mouse_look', bool), ('mouse_sensitivity', int)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
     except Exception:
         pass
+    values.pop('ssr', None)  # water reflections: no setting since 1.0.1
     if not isinstance(values.get('controls'), dict):
         values['controls'] = {}
     if values.get('game') not in GAMES:
@@ -210,7 +211,6 @@ def write_ini(values):
             'fsr1': int(values['fsr1']), 'rcas': int(values['rcas']),
             'rcas_strength': int(values['rcas_strength']),
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
-            'ssr': int(values.get('ssr', False)),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -1177,7 +1177,7 @@ class Launcher:
                  ('V-SYNC', 'ON' if v['vsync'] else 'OFF', 'DISPLAY'),
                  ('FILTERING', f"{v['anisotropy']}× AF" if v['anisotropy'] else 'GAME', 'GRAPHICS'),
                  ('MOUSE LOOK', f"ON · {v['mouse_sensitivity']}" if v['mouse_look'] else 'OFF', 'CONTROLS'),
-                 ('REFLECTIONS', 'ON' if v.get('ssr') else 'OFF', 'GRAPHICS'),
+                 ('BUTTON ICONS', dict(PROMPTS).get(v.get('prompts'), 'Automatic').upper(), 'CONTROLS'),
                  ('FRAME COUNTER', 'ON' if v['show_fps'] else 'OFF', 'DISPLAY'))
         x0 = PANEL[0] + 32
         half = (PANEL[2] - PANEL[0] - 64) // 2
@@ -1199,9 +1199,6 @@ class Launcher:
         self.slider('Sharpness', 'Strength of the sharpening.', 'rcas_strength', 0, 100, locked=not self.values['rcas'])
         self.stepper('Texture filtering', 'Anisotropic filtering: sharper ground and walls at steep angles.',
                      'anisotropy', [(0, 'Game default'), (2, '2× AF'), (4, '4× AF'), (8, '8× AF'), (16, '16× AF')])
-        self.toggle('Water reflections', 'PROTOTYPE: the river reflects the city, the bridges and the '
-                    'people on the shore (screen-space reflections). Off: only the game\'s own sky '
-                    'reflection. Also in the in-game menu.', 'ssr')
         self.row_y += 20
         self.note('Render resolution and frame rate are on the GAME page: each game has its own.', C['dim'])
 

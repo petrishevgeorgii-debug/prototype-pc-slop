@@ -3,13 +3,14 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
-## Unreleased
+## 1.0.1 — October 25, 2026 ([notes](docs/releases/v1.0.1.md))
 
 ### Changed
 - The launcher is redesigned from scratch: a Blackwatch terminal look (dossier pages, monospace type, scanlines, warning stripes). Every setting, the controls, the folder check and Prepare / Restore / Clean up are still there.
 
 ### Removed
 - PROTOTYPE's shadow options: shadow resolution 4096 and shadow distance 2×, 3×, 4× and Whole city (launcher GAME page), and the port menu's Image → SHADOW DISTANCE. They were very experimental and are scrapped.
+- Water reflections (screen-space reflections on the river, off by default): the launcher's Graphics switch and the port menu's Image → WATER REFLECTIONS. They looked too poor to offer.
 - The launcher's Manhattan Engine button. `manhattan.exe` still starts on its own.
 
 ### Added

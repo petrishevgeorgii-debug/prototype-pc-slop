@@ -38,10 +38,11 @@ IN GAME
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 0.7.0 (all versions: CHANGELOG.md)
-  - Graphics modding: your own GLSL shaders in mods\shaders replace the game's; the port
-    menu's SHADERS page shows what each shader draws and exports it (docs\SHADER_MODS.md).
-  - Fixed: black river water in PROTOTYPE.
+WHAT'S NEW IN 1.0.1 (all versions: CHANGELOG.md)
+  - A new launcher, redesigned from scratch as a Blackwatch terminal. Keys 1-5 switch its
+    pages, Enter starts the game. Every setting and the controls are where they were.
+  - Removed: the very experimental shadow options of 0.7.0 and the water reflections.
+    Your other settings and your saves are kept.
 
 SAVES AND LOGS
   Saves:   user\savedata (backed up at every start to user\savedata_backups)

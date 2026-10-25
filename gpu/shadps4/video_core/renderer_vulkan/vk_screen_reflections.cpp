@@ -136,8 +136,7 @@ ScreenReflections::ScreenReflections(const Instance& instance_, Scheduler& sched
         }
     }
     ready = true;
-    std::printf("Water reflections: ready (%s; menu: Image)\n",
-                PortSettings::Get().ssr ? "on" : "off");
+    std::printf("Water reflections: ready (%s)\n", PortSettings::Get().ssr ? "on" : "off");
 }
 
 ScreenReflections::~ScreenReflections() {
