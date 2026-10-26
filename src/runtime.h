@@ -152,5 +152,12 @@ int runtime_pad_haptic_voices(RuntimeHapticVoice *out,int max,float *game_large,
 void runtime_haptics_poll(void);
 int runtime_haptics_active(void);
 void runtime_haptics_feed(const void *frames,int count,int channels,int is_float);
+/* Discord Rich Presence (runtime_discord.c): "Playing PROTOTYPE", in the menus or playing, the
+ * story mission's name, the time played and a link to the port, over Discord's local IPC (no SDK).
+ * THEORDER_DISCORD_APP_ID: the Discord application (its name is the game Discord shows), unset or
+ * THEORDER_DISCORD=0: off; THEORDER_DISCORD_MISSIONS: a file of "<id>\t<name>" lines (run.py,
+ * from the game's text bible). runtime_discord_source registers the game's state (game/native.h). */
+void runtime_discord_source(int (*source)(char *mission,int size));
+void runtime_discord_start(void);
 ABI uint8_t runtime_chase_camera_input(void *input,float *x,float *y,float *boost);
 #endif

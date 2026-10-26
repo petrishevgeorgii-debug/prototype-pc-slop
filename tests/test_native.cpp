@@ -67,6 +67,11 @@ constexpr std::uint64_t kLash = 0x8ac8d0, kLashSlot = 0x109fd30 + 0x30;
 constexpr std::uint64_t kHit = 0x8683c0, kHitSlot = 0x109c8a0 + 0x30, kPlayer = 0x13491c0;
 // The camera shake: the CameraManager's call (to kApplyShake), its pointer at kCameraManager to a
 // stand-in manager at kManager.
+// The Discord status: verified at a read of the player's handle; the object table's pointer at
+// kObjects to a stand-in table at kTable (the player's entry: index 0x12, generation 7).
+constexpr std::uint64_t kPresenceSite = 0x505de2, kObjects = 0x1233670, kTable = 0x1f400;
+int (*g_presence)(char*, int) = nullptr;
+void PresenceSource(int (*source)(char*, int)) { g_presence = source; }
 constexpr std::uint64_t kShakeCall = 0x70c2ed, kApplyShake = 0x103e90, kCameraManager = 0x135c5f0, kManager = 0x1f200;
 
 // Pulses the native layer asks the pad for.
@@ -127,6 +132,10 @@ void BuildGame() {
     Put(kApplyShake, {0xc3});
     std::uint8_t* manager = g_base + kManager;
     std::memcpy(g_base + kCameraManager, &manager, 8);
+    Put(kPresenceSite, {0x48, 0x8d, 0x05, 0xd7, 0x33, 0xe4, 0x00, 0x8b, 0x00, 0x89, 0x45, 0x98});
+    std::uint8_t* table = g_base + kTable;
+    std::memcpy(g_base + kObjects, &table, 8);
+    std::memset(table + 0x12 * 16, 0, 16);
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
@@ -193,7 +202,7 @@ int main() {
     g_base = static_cast<std::uint8_t*>(mmap(nullptr, kImage + kCode + kData, PROT_READ | PROT_WRITE | PROT_EXEC,
                                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (g_base == MAP_FAILED) return 2;
-    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr, PadEffect};
+    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr, PadEffect, PresenceSource};
 
     // Off: nothing changes.
     BuildGame();
@@ -359,6 +368,21 @@ int main() {
     calls = LuaCalls();
     LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_main_select")});
     CHECK(LuaCalls() == calls + 1); // the sound itself still plays
+
+    // The Discord status: playing while the player's object is in the table.
+    {
+        CHECK(g_presence != nullptr);
+        char mission[32] = "x";
+        CHECK(g_presence(mission, sizeof(mission)) == 0 && mission[0] == 0); // no object: the menus
+        const std::uint64_t object = 0x1234;
+        const std::uint16_t generation = 7;
+        std::memcpy(g_base + kTable + 0x12 * 16, &object, 8);
+        std::memcpy(g_base + kTable + 0x12 * 16 + 8, &generation, 2);
+        CHECK(g_presence(mission, sizeof(mission)) == 1);
+        const std::uint16_t other = 8; // a later object in the same slot: not the player
+        std::memcpy(g_base + kTable + 0x12 * 16 + 8, &other, 2);
+        CHECK(g_presence(mission, sizeof(mission)) == 0);
+    }
 
     // Without the port's menu every call goes to the game.
     BuildGame();

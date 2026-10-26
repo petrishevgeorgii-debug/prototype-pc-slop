@@ -19,6 +19,7 @@ std::uint8_t* g_image = nullptr;
 const NativeHost* g_host = nullptr; ///< during installation only: the loader's host lives on its stack
 const TheOrderGameMenu* g_menu = nullptr;
 void (*g_pad_effect)(int, int, float, float, unsigned, unsigned, unsigned, int) = nullptr;
+void (*g_presence_source)(int (*)(char*, int)) = nullptr;
 std::size_t g_data_used = 0;
 
 std::vector<Native::Replacement>& Registry() {
@@ -164,6 +165,24 @@ bool IsPlayer(std::uint32_t handle) {
            handle == *reinterpret_cast<const std::uint32_t*>(g_image + 0x13491c0);
 }
 
+bool PlayerExists() {
+    if (!g_image) return false;
+    const std::uint32_t handle = *reinterpret_cast<const volatile std::uint32_t*>(g_image + 0x13491c0);
+    const std::uint32_t index = handle & 0xffff;
+    if (handle == 0xffffffffu || index == 0xffff) return false;
+    // The object table: 16-byte entries {object, u16 generation}.
+    const auto table = *reinterpret_cast<const volatile std::uintptr_t*>(g_image + 0x1233670);
+    if (!table) return false;
+    const auto* entry = reinterpret_cast<const volatile std::uint8_t*>(table + std::uintptr_t(index) * 16);
+    const auto object = *reinterpret_cast<const volatile std::uintptr_t*>(entry);
+    const auto generation = *reinterpret_cast<const volatile std::uint16_t*>(entry + 8);
+    return object != 0 && generation == (handle >> 16);
+}
+
+void SetPresenceSource(int (*source)(char* mission, int size)) {
+    if (g_presence_source) g_presence_source(source);
+}
+
 } // namespace Native
 
 extern "C" void native_game_install(const NativeHost* host) {
@@ -174,6 +193,7 @@ extern "C" void native_game_install(const NativeHost* host) {
     g_image = host->image;
     g_menu = host->menu; // kept: the host itself is gone once the game runs
     g_pad_effect = host->pad_effect;
+    g_presence_source = host->presence_source;
     unsigned installed = 0, skipped = 0;
     bool all_off = false;
     for (const auto& r : Registry()) {

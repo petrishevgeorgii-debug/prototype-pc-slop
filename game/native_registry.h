@@ -68,6 +68,14 @@ void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned
 /// player's.
 bool IsPlayer(std::uint32_t handle);
 
+/// PROTOTYPE: whether the player's object exists (a game is being played, not the menus): its
+/// handle (0x13491c0) names a live entry of the object table (0x1233670). Any thread.
+bool PlayerExists();
+
+/// What Discord shows: `source` (any thread) returns PlayerExists-like 1/0 and the story
+/// mission's id (src/runtime_discord.c). Nothing without a host for it.
+void SetPresenceSource(int (*source)(char* mission, int size));
+
 struct Registrar {
     explicit Registrar(const Replacement& replacement) { Register(replacement); }
 };

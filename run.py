@@ -279,6 +279,38 @@ def prototype_menu(env, game, out, derived):
             derived.append('THEORDER_FILE_OVERRIDES')
 
 
+# The Discord application whose name ("PROTOTYPE") the Discord status shows, with its "logo" image
+# (theorder.ini discord_app_id overrides it; discord=0 turns the status off).
+DISCORD_APP_ID = ''
+
+
+def prototype_discord(env, game, out, derived):
+    """PROTOTYPE: the Discord status (src/runtime_discord.c): its application and the story
+    missions' names in the game's language (scripts/proto_presence.py)."""
+    import graphics_options
+    ini = graphics_options.read_ini(env['THEORDER_CONFIG'])
+    app = ini.get('discord_app_id', '').strip() or DISCORD_APP_ID
+    if ini.get('discord', '1') == '0' or get_env(env, 'DISCORD', '1') == '0':
+        print('Discord: status off (the setting)', flush=True)
+        return
+    if not app:
+        print('Discord: no application id (run.py DISCORD_APP_ID or theorder.ini discord_app_id)', flush=True)
+        return
+    env['THEORDER_DISCORD_APP_ID'] = app
+    derived.append('THEORDER_DISCORD_APP_ID')
+    try:
+        import proto_presence
+        language = resolve_language(None, env, env['THEORDER_CONFIG'], graphics_options)
+        names = proto_presence.generate(game, out / 'discord_missions.txt', language,
+                                        log=lambda m: print(m, flush=True))
+    except (OSError, ValueError, ImportError) as error:
+        print(f'Discord: no mission names ({error})', flush=True)
+        names = None
+    if names:
+        env['THEORDER_DISCORD_MISSIONS'] = str(names)
+        derived.append('THEORDER_DISCORD_MISSIONS')
+
+
 def find_probe_executable():
     """Finds the probe executable (theorder-probe)."""
     return find_executable('theorder-probe' + EXE_SUFFIX)
@@ -500,6 +532,7 @@ def main():
             prototype_controls(env, probe, game, out, derived, prompts=not is_prototype2)
             if not is_prototype2:
                 prototype_menu(env, game, out, derived)
+                prototype_discord(env, game, out, derived)
         elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
             env.setdefault('THEORDER_UPSCALER', 'none')
         env.setdefault('THEORDER_READBACK_LINEAR', '1')

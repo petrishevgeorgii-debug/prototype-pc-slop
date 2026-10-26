@@ -17,12 +17,15 @@
 // screens' db_GetInt / db_SetInt / fe_RestoreGameDBDefault for PortSetting names, from the port's
 // settings (gpu/shim/port_game_menu.cpp). Everything else goes to the game's Lua as before.
 // Without the rewritten screens nothing asks for these names. The menus' sounds pass through here
-// too: they also tap the controller (MenuSound).
+// too: they also tap the controller (MenuSound). And the story mission Discord shows is read here
+// (Presence): the game database's Proto_Save_NextStoryMission, as the pause menu reads it.
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 
 #include "game/guest.h"
 #include "game/native_registry.h"
@@ -243,10 +246,60 @@ void MenuSound(const GfxValue* args, int argc) {
         Native::Pulse(Pulses::MenuMove, 0.15f, 0.45f, 60, 0, Native::Texture::Click);
 }
 
+// ---- Discord (src/runtime_discord.c): playing or in the menus, and the story mission
+
+constexpr const char* kStoryMission = "Proto_Save_NextStoryMission";
+std::mutex g_mission_lock;
+char g_mission[32] = "";
+std::chrono::steady_clock::time_point g_mission_read{};
+
+void NoteMission(const GfxValue& value) {
+    if (value.type != GfxValue::String || !value.string) return;
+    std::scoped_lock lock{g_mission_lock};
+    std::snprintf(g_mission, sizeof(g_mission), "%s", value.string);
+}
+
+/// A menu's call: the game's answer to a read of the story mission is kept, and while a game is
+/// played the mission is read again now and then (on the menus' thread, as the pause menu does).
+void Presence(void* handler, const GfxValue* args, int argc, const GfxValue* ret, bool before) {
+    const char* function = Text(args, argc, 0);
+    if (!function) return;
+    if (!before) {
+        const char* name = Text(args, argc, 1);
+        if (ret && name && !std::strcmp(function, "db_GetString") && !std::strcmp(name, kStoryMission)) NoteMission(*ret);
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (now - g_mission_read < std::chrono::seconds(15) || !Native::PlayerExists()) return;
+    g_mission_read = now;
+    GfxValue get[] = {String("db_GetString"), String(kStoryMission), Number(0), Number(0)};
+    NoteMission(GameCall(handler, get, 4));
+}
+
+int PresenceSource(char* mission, int size) {
+    {
+        std::scoped_lock lock{g_mission_lock};
+        std::snprintf(mission, std::size_t(size), "%s", g_mission);
+    }
+    return Native::PlayerExists() ? 1 : 0;
+}
+
+/// Verified at a read of the player's handle (0x13491c0), which PlayerExists also reads.
+bool InstallPresence(std::uint64_t) {
+    Native::SetPresenceSource(&PresenceSource);
+    return true;
+}
+
+NATIVE_REPLACEMENT({"Discord status (playing or the menus, the story mission)", "presence", Native::Kind::Custom,
+                    0x505de2, {0x48, 0x8d, 0x05, 0xd7, 0x33, 0xe4, 0x00, 0x8b, 0x00, 0x89, 0x45, 0x98}, nullptr,
+                    nullptr, &InstallPresence});
+
 GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     MenuSound(args, argc);
+    Presence(handler, args, argc, ret, true);
     if (Answer(handler, args, argc, ret)) return;
     Guest::Call<void>(g_place_lua_call, handler, args, argc, ret);
+    Presence(handler, args, argc, ret, false);
 }
 
 NATIVE_REPLACEMENT({"Scaleform PlaceLuaCall (the port's settings in Options > Video, Controller)", "menu", Native::Kind::CallSite,

@@ -130,7 +130,7 @@ DEFAULTS = {
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
-    'haptics': True, 'haptics_sound': 2,
+    'haptics': True, 'haptics_sound': 2, 'discord': True,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -161,7 +161,7 @@ def load_settings():
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
                           ('light_bar', bool), ('menu_vibration', int), ('extra_vibration', bool),
-                          ('haptics', bool), ('haptics_sound', int)):
+                          ('haptics', bool), ('haptics_sound', int), ('discord', bool)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -231,6 +231,7 @@ def write_ini(values):
             'menu_vibration': int(values['menu_vibration']),
             'extra_vibration': int(bool(values['extra_vibration'])),
             'haptics': int(bool(values['haptics'])), 'haptics_sound': int(values['haptics_sound']),
+            'discord': int(bool(values['discord'])),
             # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
             'proto_res': values['per_game']['p1']['render_res'],
             'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
@@ -1178,6 +1179,9 @@ class Launcher:
                          'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
                         'difference). Keep it on.', 'game.tendril_fix')
+            self.toggle('Discord status', 'Your Discord profile shows "Playing PROTOTYPE": in the menus or '
+                        'playing, the story mission and the time played, with a link to the port. Needs the '
+                        'Discord app running.', 'discord')
         self.row_y += 20
         self.note(f'These apply to {name} only: {other} keeps its own (switch with the file tabs on the left). '
                   'Graphics, display and controls are shared by both games.'

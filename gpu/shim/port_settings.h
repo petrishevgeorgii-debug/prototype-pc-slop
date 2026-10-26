@@ -82,6 +82,10 @@ struct Values {
     /// of the game's sound they play too (0 off .. 3 strong).
     std::atomic<bool> haptics{true};
     std::atomic<int> haptics_sound{2};
+    /// The Discord status (src/runtime_discord.c, started by run.py): on/off, and an application id
+    /// that replaces the port's (digits only; empty: the port's). Kept here so saving keeps them.
+    std::atomic<bool> discord{true};
+    char discord_app_id[24] = "";
     /// PROTOTYPE's render resolution (index into ProtoResolutions) and 60 FPS patch: run.py turns
     /// them into patches at start (THEORDER_PROTO_RES, THEORDER_FPS60), so they apply on the next
     /// start; startup_*: what this launch runs with. -1: not known (another game).

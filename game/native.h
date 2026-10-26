@@ -28,6 +28,10 @@ typedef struct NativeHost {
      * ms, period ms, the texture DualSense HD haptics play it with), or NULL. */
     void (*pad_effect)(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms,
                        int texture);
+    /* Registers what Discord shows (src/runtime_discord.c), or NULL: `source` is asked every few
+     * seconds on another thread; it returns 1 while a game is being played (else the menus) and
+     * writes the story mission's id ("e01m02", or "") into `mission`. */
+    void (*presence_source)(int (*source)(char *mission, int size));
 } NativeHost;
 
 /* Installs every native replacement whose original code is found unchanged; prints what it did.

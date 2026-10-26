@@ -52,6 +52,7 @@ fix is applied in memory, and the port checks the executables against the untouc
   the game's light bar colours and vibration (with a strength setting),
   vibration on Alex's moves and powers (consuming, the whipfist, wall running, devastators, hits,
   landings, explosions) and in the menus, also in the game's own Options > Controller screen.
+- **Discord status** — "Playing PROTOTYPE" with the story mission and the time played.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
