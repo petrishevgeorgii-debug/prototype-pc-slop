@@ -3,6 +3,11 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## Unreleased
+
+### Fixed
+- **The mouse could not choose a power on the power wheel** (hold Tab): the wheel selects with the right stick, but the mouse turns PROTOTYPE's camera directly, so it never reached the stick. While the power wheel is held, the mouse now points the right stick (a short move towards a power chooses it, and it stays chosen until you move again or let go).
+
 ## 1.0.4 — October 26, 2026 ([notes](docs/releases/v1.0.4.md))
 
 ### Added

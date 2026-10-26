@@ -300,9 +300,31 @@ int main(void) {
     test_mouse.captured=0;
     data=read_pad();
     assert(!(data.buttons & (BTN_SQUARE|BTN_DOWN)));
+    /* PROTOTYPE's power wheel: while L1 is held the mouse points the right stick, and the
+     * direction stays until the mouse moves again. */
+    static int camera_stand_in;
+    runtime_set_chase_camera_input(&camera_stand_in);
+    key_map=(ButtonMap){{{SRC_MOUSE+SDL_BUTTON_X1,BTN_L1}},1};
+    test_mouse=(TheOrderMouse){.captured=1,.buttons=SDL_BUTTON_X1MASK,.sensitivity=1.0f};
+    data=read_pad();
+    assert(data.buttons & BTN_L1);
+    test_mouse.dx=30.0f;
+    data=read_pad();
+    assert(data.right_x==255 && data.right_y==128);
+    data=read_pad();
+    assert(data.right_x==255 && data.right_y==128);
+    test_mouse.dx=-40.0f; test_mouse.dy=-60.0f; /* past the ring: up and a little left */
+    data=read_pad();
+    assert(data.right_y<20 && data.right_x>60 && data.right_x<128);
+    test_mouse.dx=4.0f; /* inside the dead zone after a release: nothing */
+    test_mouse.buttons=0;
+    data=read_pad();
+    data=read_pad();
+    assert(!(data.buttons & BTN_L1));
+    runtime_set_chase_camera_input(NULL);
 
     SDL_Quit();
     unlink(path);
     puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map, "
-         "light bar, vibration, pulses");
+         "light bar, vibration, pulses, power wheel");
 }

@@ -406,6 +406,31 @@ static void note_device(int device) {
     fputs(device==1 ? "keyboard\n" : "gamepad\n",f);
     fclose(f);
 }
+/* PROTOTYPE's power wheel: held open with L1 (Tab), it selects with the right stick, but the mouse
+ * turns the camera itself (above), so it could not choose. While L1 is held the mouse moves a
+ * point on a small ring instead, and the right stick points where it is: move the mouse towards a
+ * power and it stays chosen until the next move or L1's release. */
+enum { POWER_WHEEL_DEAD_PX=10, POWER_WHEEL_RING_PX=48 };
+static uint32_t keys_last;            /* the keyboard and mouse's PS4 buttons at the last read */
+static int power_wheel_open;
+static double power_wheel_x, power_wheel_y;
+static int power_wheel(PadData *d, float dx, float dy) {
+    if (!look_original || !((d->buttons|keys_last) & BTN_L1)) { power_wheel_open=0; return 0; }
+    if (!power_wheel_open) {
+        power_wheel_open=1;
+        power_wheel_x=power_wheel_y=0.0;
+        look_clear(); /* no camera turn owed from before */
+    }
+    power_wheel_x+=dx; power_wheel_y+=dy;
+    const double r=hypot(power_wheel_x,power_wheel_y);
+    if (r>POWER_WHEEL_RING_PX) { power_wheel_x*=POWER_WHEEL_RING_PX/r; power_wheel_y*=POWER_WHEEL_RING_PX/r; }
+    if (r>POWER_WHEEL_DEAD_PX) {
+        const double n=hypot(power_wheel_x,power_wheel_y);
+        d->right_x=(uint8_t)lround(128.0+127.0*power_wheel_x/n);
+        d->right_y=(uint8_t)lround(128.0+127.0*power_wheel_y/n);
+    }
+    return 1;
+}
 /* The mouse buttons and wheel (keyboard map sources) and mouse look on the right stick. */
 static uint32_t mouse_held; /* SDL_BUTTON_MASK bits and 1<<30 / 1<<31 for the wheel */
 static void mouse_input(PadData *d) {
@@ -422,6 +447,10 @@ static void mouse_input(PadData *d) {
     if (fabsf(m.dx)+fabsf(m.dy)>4.0f || m.wheel) note_device(1);
     if (wheel_held(0,m.wheel>0 ? m.wheel : 0,now)) mouse_held|=1u<<30;
     if (wheel_held(1,m.wheel<0 ? -m.wheel : 0,now)) mouse_held|=1u<<31;
+    if (power_wheel(d,m.dx,m.dy)) { /* choosing a power: the mouse points the right stick */
+        mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0;
+        return;
+    }
     if (direct_look(now)) { /* the camera takes the mouse itself */
         mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0;
         const double k=MOUSE_RAD_PER_PIXEL*m.sensitivity;
@@ -546,6 +575,7 @@ static void sample_host(PadData *d) {
      * stick follows the keys only while one of them is held. */
     uint32_t keys=0;
     for (size_t i=0;i<key_map.count;++i) if (key_source_down(k,key_map.entries[i].source)) keys|=key_map.entries[i].ps;
+    keys_last=keys;
     if (keys) note_device(1);
     d->buttons|=keys & ~STICK_BITS;
     if (keys & BTN_L2) d->l2=255;
