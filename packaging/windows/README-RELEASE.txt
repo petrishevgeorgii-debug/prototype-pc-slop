@@ -38,8 +38,16 @@ IN GAME
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 1.0.3 (all versions: CHANGELOG.md)
-  - Fixed: Options > Video showed only Brightness with dumps that keep the game's files in
+WHAT'S NEW IN 1.0.4 BETA 1 (a test build; all versions: CHANGELOG.md)
+  - Options > Display (pause menu: a fourth category; main menu: a fourth Options button):
+    resolution, frame rate (30/60), display mode, V-Sync, frame counter. Resolution and frame
+    rate apply on the next start, or at once with Apply > Restart now (unsaved progress is
+    lost). Dumps with loose files only; with p1\*.rcf archives it is not there yet.
+  - DualSense and other gamepads: the game's light bar colours and vibration (it never
+    vibrated: the PS4 profile's rumble switch is kept on), a vibration strength, vibration
+    on consuming and in the menus. Options > Controller has Vibration, Light bar and Menu
+    vibration; so do the launcher's CONTROLLER page and the port menu.
+  - 1.0.3: Fixed: Options > Video showed only Brightness with dumps that keep the game's files in
     archives (p1\*.rcf). The port's rows now appear with every dump.
   - 1.0.2: PROTOTYPE's Options > Video screen (main menu and pause menu) has the port's settings
     as the game's own rows: Upscaling, Upscaling quality, Sharpening, Display mode, V-Sync.
