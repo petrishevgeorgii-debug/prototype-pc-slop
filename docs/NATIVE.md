@@ -96,6 +96,16 @@ setting (`src/runtime_pad.c`). The Controller screen's Vibration row is also lin
 switch (`TheOrderGameMenu::linked`): it sets it with the game's own `db_SetInt`, so the profile
 saves it on.
 
+### Vibration on consuming and in the menus
+
+The consume moves have no vibration of their own. `0x849900(consumer, victim, how)` is the
+consume itself (it sends `ConsumeHealthGainedMessage`); its six calls (`ConsumeAction` and the
+other consume moves, and `go_Consume`'s tail call) go through native code that adds a strong
+pulse (`Native::Pulse`, `runtime_pad_pulse` in `src/runtime_pad.c`: added to the game's motors and
+scaled by the Vibration setting). The menus play their sounds through PlaceLuaCall
+(`snd_PlayPatchOverlapped`, protomain's soundmanager): `options_menu.cpp` taps the controller for
+the select, back and tab sounds, and for the move sounds with Menu vibration set to All.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

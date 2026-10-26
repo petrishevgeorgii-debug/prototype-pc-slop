@@ -4,8 +4,8 @@
 // game/p1/options_menu.cpp answers the screens). The same settings as the port menu's
 // (port_overlay.cpp), applied live; the port menu keeps the rest (FSR 1, the frame counter, FSR
 // tests, the shader browser). The Video screen has room for six rows, Brightness and five of
-// these: the pause menu's cuts off the seventh. The Controller screen gets the gamepad's two
-// after the game's six (Target toggle last), as many as the PC version's screen had there.
+// these: the pause menu's cuts off the seventh. The Controller screen gets the gamepad's three
+// after the game's six (Target toggle last); the PC version's screen had four there.
 
 #include <algorithm>
 #include <cmath>
@@ -32,7 +32,7 @@ const char* T(const char* en, const char* ru) {
 }
 
 enum Row { Upscaler, Quality, Sharpening, DisplayMode, VSync, RowCount };
-enum PadRow { Vibration, LightBar, PadRowCount };
+enum PadRow { Vibration, LightBar, MenuVibration, PadRowCount };
 constexpr int kVibrationSteps = 8; ///< 0 off, then 25% steps up to 200% (the port menu's)
 
 /// The upscalers this PC can use, in menu order.
@@ -164,6 +164,7 @@ const char* PadLabel(int row) {
     switch (row) {
     case Vibration: return T("VIBRATION", "ВИБРАЦИЯ");
     case LightBar: return T("LIGHT BAR", "СВЕТОВАЯ ПАНЕЛЬ");
+    case MenuVibration: return T("MENU VIBRATION", "ВИБРАЦИЯ В МЕНЮ");
     default: return "";
     }
 }
@@ -172,6 +173,7 @@ int PadChoices(int row) {
     switch (row) {
     case Vibration: return kVibrationSteps + 1;
     case LightBar: return 2;
+    case MenuVibration: return 3;
     default: return 0;
     }
 }
@@ -184,6 +186,12 @@ const char* PadChoice(int row, int index) {
         text = std::to_string(std::min(index, kVibrationSteps) * 25) + "%";
         return text.c_str();
     case LightBar: return OnOff(index);
+    case MenuVibration: {
+        static const char* const en[] = {"OFF", "PRESSES", "ALL"};
+        static const char* const ru[] = {"ВЫКЛ", "НАЖАТИЯ", "ВСЕ"};
+        index = std::clamp(index, 0, 2);
+        return Russian() ? ru[index] : en[index];
+    }
     default: return "";
     }
 }
@@ -193,6 +201,7 @@ int PadGet(int row) {
     switch (row) {
     case Vibration: return std::clamp(int(std::lround(s.vibration.load() / 25.0)), 0, kVibrationSteps);
     case LightBar: return s.light_bar ? 1 : 0;
+    case MenuVibration: return std::clamp(s.menu_vibration.load(), 0, 2);
     default: return 0;
     }
 }
@@ -202,6 +211,7 @@ void PadSet(int row, int index) {
     switch (row) {
     case Vibration: s.vibration = std::clamp(index, 0, kVibrationSteps) * 25; break;
     case LightBar: s.light_bar = index != 0; break;
+    case MenuVibration: s.menu_vibration = std::clamp(index, 0, 2); break;
     default: break;
     }
 }
@@ -211,6 +221,7 @@ void PadReset(int row) {
     switch (row) {
     case Vibration: s.vibration = 100; break;
     case LightBar: s.light_bar = true; break;
+    case MenuVibration: s.menu_vibration = 1; break;
     default: break;
     }
 }

@@ -807,7 +807,7 @@ static uint8_t *native_alloc_code(size_t bytes) {
  * original code, each only where the code it replaces is found unchanged. */
 static void install_native_game(uint64_t image_size) {
     NativeHost host = {image, image_size, native_alloc_code, g_native_data, g_native_data ? NATIVE_DATA_SIZE : 0,
-                       gpu_enabled ? theordergpu_game_menu() : NULL};
+                       gpu_enabled ? theordergpu_game_menu() : NULL, runtime_pad_pulse};
     native_game_install(&host);
 }
 

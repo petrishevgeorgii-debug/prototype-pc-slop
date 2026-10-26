@@ -452,6 +452,14 @@ static SDL_Gamepad *feedback_pad;
 static int bar_applied=-1;
 static uint16_t rumble_lo=0xffff, rumble_hi=0xffff;
 static uint64_t rumble_sent_us;
+/* A pulse the port adds to the game's own vibration (runtime_pad_pulse): both motors at their
+ * levels (0..1) for the first part of its time, then fading out. */
+static struct { float large, small; uint64_t start_us, end_us; } pulse;
+static float pulse_level(uint64_t now) {
+    if (now>=pulse.end_us || pulse.end_us<=pulse.start_us) return 0.0f;
+    const float t=(float)(now-pulse.start_us)/(float)(pulse.end_us-pulse.start_us);
+    return t<0.4f ? 1.0f : (1.0f-t)/0.6f;
+}
 static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
     if (g!=feedback_pad) { feedback_pad=g; bar_applied=-1; rumble_lo=rumble_hi=0xffff; }
     if (!g) return;
@@ -462,9 +470,16 @@ static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
         bar_applied=want;
     }
     const int strength=o->vibration<0 ? 0 : o->vibration>200 ? 200 : o->vibration;
-    const int lo=rumble_large*257*strength/100, hi=rumble_small*257*strength/100;
-    const uint16_t l=(uint16_t)(lo>65535 ? 65535 : lo), h=(uint16_t)(hi>65535 ? 65535 : hi);
     const uint64_t now=now_us();
+    const float level=pulse_level(now);
+    int large=rumble_large, small=rumble_small;
+    if (level>0.0f) {
+        const int pl=(int)(pulse.large*level*255.0f+0.5f), ps=(int)(pulse.small*level*255.0f+0.5f);
+        if (pl>large) large=pl;
+        if (ps>small) small=ps;
+    }
+    const int lo=large*257*strength/100, hi=small*257*strength/100;
+    const uint16_t l=(uint16_t)(lo>65535 ? 65535 : lo), h=(uint16_t)(hi>65535 ? 65535 : hi);
     if (l!=rumble_lo || h!=rumble_hi || ((l || h) && now-rumble_sent_us>5000000)) {
         SDL_RumbleGamepad(g,l,h,10000);
         rumble_lo=l; rumble_hi=h; rumble_sent_us=now;
@@ -721,6 +736,23 @@ static void feedback_now(void) {
     TheOrderPadOptions options;
     theordergpu_pad_options(&options);
     apply_feedback(current_gamepad(),&options);
+}
+void runtime_pad_pulse(int kind, float large, float small, unsigned ms) {
+    TheOrderPadOptions options;
+    theordergpu_pad_options(&options);
+    if ((kind==RUNTIME_PULSE_MENU_PRESS && options.menu_vibration<1) ||
+        (kind==RUNTIME_PULSE_MENU_MOVE && options.menu_vibration<2) || options.vibration<=0 || !ms) return;
+    pthread_mutex_lock(&lock);
+    const uint64_t now=now_us();
+    /* A weaker pulse does not cut a stronger one short. */
+    const float left=pulse_level(now);
+    if (left*(pulse.large>pulse.small ? pulse.large : pulse.small) <= (large>small ? large : small)) {
+        pulse.large=large<0 ? 0 : large>1 ? 1 : large;
+        pulse.small=small<0 ? 0 : small>1 ? 1 : small;
+        pulse.start_us=now; pulse.end_us=now+(uint64_t)ms*1000;
+    }
+    apply_feedback(current_gamepad(),&options);
+    pthread_mutex_unlock(&lock);
 }
 static ABI int32_t pad_vibration(int32_t handle, const uint8_t *param) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;

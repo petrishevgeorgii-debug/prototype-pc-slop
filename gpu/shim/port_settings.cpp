@@ -109,6 +109,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.vibration = std::clamp(i, 0, 200);
     } else if (key == "light_bar") {
         v.light_bar = i != 0;
+    } else if (key == "menu_vibration") {
+        v.menu_vibration = std::clamp(i, 0, 2);
     } else if (key == "fov") {
         v.fov = std::clamp(i, 50, 200);
     } else if (key == "anisotropy") {
@@ -293,7 +295,8 @@ void Save() {
                  int(v.restart_unconfirmed.load()));
     std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\n",
                  v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
-    std::fprintf(file, "vibration=%d\nlight_bar=%d\n", v.vibration.load(), int(v.light_bar.load()));
+    std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\n", v.vibration.load(), int(v.light_bar.load()),
+                 v.menu_vibration.load());
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

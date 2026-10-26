@@ -15,7 +15,8 @@
 // hand-over to 0x1cd90 (a tail call) goes through native code that answers those, and the
 // screens' db_GetInt / db_SetInt / fe_RestoreGameDBDefault for PortSetting names, from the port's
 // settings (gpu/shim/port_game_menu.cpp). Everything else goes to the game's Lua as before.
-// Without the rewritten screens nothing asks for these names.
+// Without the rewritten screens nothing asks for these names. The menus' sounds pass through here
+// too: they also tap the controller (MenuSound).
 
 #include <cstdint>
 #include <cstdio>
@@ -189,7 +190,42 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     return true;
 }
 
+bool Has(const char* text, const char* part) {
+    return std::strstr(text, part) != nullptr;
+}
+
+/// The menus' sounds (protomain's soundmanager: PlaySound(id) is DoCallBack("snd_PlayPatchOverlapped",
+/// patch), a few movies call snd_PlayPatch(patch, "play")) also tap the controller: a press
+/// (select, confirm, back, tab: ui_fe_main_select, ui_fe_ht_back...) or a move (ui_fe_main_nav,
+/// ui_fe_ht_menu_end, ui_fe_ht_slider, fe_move...). The menu_vibration option picks which.
+void MenuSound(const GfxValue* args, int argc) {
+    const char* function = Text(args, argc, 0);
+    if (!function || (std::strcmp(function, "snd_PlayPatchOverlapped") != 0 && std::strcmp(function, "snd_PlayPatch") != 0))
+        return;
+    const char* patch = Text(args, argc, 1);
+    const char* action = Text(args, argc, 2);
+    if (!patch || (action && !std::strcmp(action, "stop"))) return;
+    static int logged = 0;
+    if (logged < 16) {
+        ++logged;
+        std::printf("Menu: sound %s\n", patch);
+        std::fflush(stdout);
+    }
+    using Native::Pulses;
+    if (Has(patch, "select") || Has(patch, "confirm") || Has(patch, "start_game") || Has(patch, "start_screen_exit"))
+        Native::Pulse(Pulses::MenuPress, 0.45f, 0.6f, 110);
+    else if (Has(patch, "_back"))
+        Native::Pulse(Pulses::MenuPress, 0.25f, 0.5f, 90);
+    else if (Has(patch, "_tab"))
+        Native::Pulse(Pulses::MenuPress, 0.2f, 0.45f, 80);
+    else if (Has(patch, "menu_end") || Has(patch, "locked"))
+        Native::Pulse(Pulses::MenuMove, 0.35f, 0.2f, 70);
+    else if (Has(patch, "_nav") || Has(patch, "slider") || Has(patch, "fe_move"))
+        Native::Pulse(Pulses::MenuMove, 0.0f, 0.35f, 45);
+}
+
 GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
+    MenuSound(args, argc);
     if (Answer(handler, args, argc, ret)) return;
     Guest::Call<void>(g_place_lua_call, handler, args, argc, ret);
 }

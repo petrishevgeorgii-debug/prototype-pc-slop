@@ -37,7 +37,7 @@ int failures = 0;
         }                                                                     \
     } while (0)
 
-constexpr std::size_t kImage = 0x570000, kCode = 0x10000, kData = 0x1000;
+constexpr std::size_t kImage = 0x850000, kCode = 0x10000, kData = 0x1000;
 constexpr std::uint64_t kCallee = 0x1000; ///< the stand-in game function: marks byte +0 of its argument
 constexpr std::uint64_t kSite = 0x2000;   ///< a call to it
 std::uint8_t* g_base = nullptr;
@@ -59,6 +59,32 @@ constexpr std::uint64_t kLuaCalls = 0x1f000; ///< the stand-in PlaceLuaCall coun
 // The rumble switch's hand-over (game/p1/rumble.cpp) to 0x568510(on, player), which here stores
 // its arguments at kRumbleArgs.
 constexpr std::uint64_t kSwitchSite = 0x5685cb, kSetRumble = 0x568510, kRumbleArgs = 0x1f100;
+// The consume (0x849900, here: returns 7) and the calls of it the consume vibration takes over.
+constexpr std::uint64_t kConsume = 0x849900;
+struct ConsumeSite {
+    std::uint64_t at;
+    std::initializer_list<int> bytes;
+};
+const ConsumeSite kConsumeSites[] = {
+    {0x694a61, {0xe9, 0x9a, 0x4e, 0x1b, 0x00, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00}},
+    {0x84a0b2, {0xe8, 0x49, 0xf8, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xe0}},
+    {0x84a42a, {0xe8, 0xd1, 0xf4, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xd8}},
+    {0x84a72c, {0xe8, 0xcf, 0xf1, 0xff, 0xff, 0x31, 0xc0, 0x48, 0x83, 0xc4, 0x08, 0x5b}},
+    {0x84b127, {0xe8, 0xd4, 0xe7, 0xff, 0xff, 0xc6, 0x43, 0x50, 0x01, 0xc7, 0x45, 0xd0}},
+    {0x84b28b, {0xe8, 0x70, 0xe6, 0xff, 0xff, 0xc7, 0x45, 0xc0, 0x3c, 0x00, 0x00, 0x00}},
+};
+
+// Pulses the native layer asks the pad for.
+int g_pulses = 0, g_pulse_kind = -1;
+float g_pulse_large = 0, g_pulse_small = 0;
+unsigned g_pulse_ms = 0;
+void PadPulse(int kind, float large, float small, unsigned ms) {
+    ++g_pulses;
+    g_pulse_kind = kind;
+    g_pulse_large = large;
+    g_pulse_small = small;
+    g_pulse_ms = ms;
+}
 
 void PutRel32(std::uint64_t at, std::uint64_t target, std::uint64_t end) {
     const std::int32_t rel = std::int32_t(target - end);
@@ -88,6 +114,8 @@ void BuildGame() {
     PutRel32(kSetRumble + 8, kRumbleArgs + 4, kSetRumble + 12);
     Put(kSwitchSite, {0xe9, 0x40, 0xff, 0xff, 0xff, 0x48, 0x3b, 0x47, 0x08, 0x75, 0x11, 0x48});
     std::memset(g_base + kRumbleArgs, 0xff, 8);
+    Put(kConsume, {0xb8, 0x07, 0x00, 0x00, 0x00, 0xc3}); // mov eax, 7; ret
+    for (const ConsumeSite& site : kConsumeSites) Put(site.at, site.bytes);
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
@@ -152,7 +180,7 @@ int main() {
     g_base = static_cast<std::uint8_t*>(mmap(nullptr, kImage + kCode + kData, PROT_READ | PROT_WRITE | PROT_EXEC,
                                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (g_base == MAP_FAILED) return 2;
-    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr};
+    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr, PadPulse};
 
     // Off: nothing changes.
     BuildGame();
@@ -238,6 +266,36 @@ int main() {
         std::memcpy(got, g_base + kRumbleArgs, 8);
         CHECK(got[0] == 1 && got[1] == 3);
     }
+
+    // A consume: the game's own, then a strong pulse.
+    for (const ConsumeSite& site : kConsumeSites) {
+        using Consume = std::uint64_t(GUEST_ABI*)(std::uint64_t, std::uint64_t, std::uint64_t);
+        std::int32_t rel;
+        std::memcpy(&rel, g_base + site.at + 1, 4);
+        auto* target = g_base + site.at + 5 + rel;
+        CHECK(target != g_base + kConsume); // taken over
+        const int before = g_pulses;
+        CHECK(reinterpret_cast<Consume>(target)(1, 2, 0) == 7);
+        CHECK(g_pulses == before + 1 && g_pulse_kind == 0 && g_pulse_large == 1.0f);
+    }
+
+    // The menus' sounds tap the controller: a press, a move, not a stop, not other calls.
+    int pulses = g_pulses;
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_main_select")});
+    CHECK(g_pulses == pulses + 1 && g_pulse_kind == 1);
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_ht_back")});
+    CHECK(g_pulses == pulses + 2 && g_pulse_kind == 1);
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_ht_nav")});
+    CHECK(g_pulses == pulses + 3 && g_pulse_kind == 2);
+    LuaCall({Str("snd_PlayPatch"), Str("fe_select"), Str("play")});
+    CHECK(g_pulses == pulses + 4 && g_pulse_kind == 1);
+    LuaCall({Str("snd_PlayPatch"), Str("ui_fe_main_select"), Str("stop")});
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_ht_wipe")});
+    LuaCall({Str("fe_select")});
+    CHECK(g_pulses == pulses + 4);
+    calls = LuaCalls();
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_main_select")});
+    CHECK(LuaCalls() == calls + 1); // the sound itself still plays
 
     // Without the port's menu every call goes to the game.
     BuildGame();

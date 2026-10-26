@@ -10,7 +10,7 @@ static int capture;
 int theordergpu_overlay_captures_input(void) { return capture; }
 static TheOrderMouse test_mouse;
 void theordergpu_mouse_take(TheOrderMouse *out) { *out=test_mouse; test_mouse.dx=test_mouse.dy=0; test_mouse.wheel=0; }
-static TheOrderPadOptions test_options={100,1};
+static TheOrderPadOptions test_options={100,1,1};
 void theordergpu_pad_options(TheOrderPadOptions *out) { *out=test_options; }
 /* What the virtual controller was asked for. */
 static Uint8 test_led[3]={1,1,1};
@@ -212,6 +212,25 @@ int main(void) {
     test_options.light_bar=1;
     assert(pad_reset_light_bar(1)==0);
     assert(test_led[2]==0x40);
+    /* Pulses the port adds (menus, consuming): over the game's motors, scaled, gone after their
+     * time; a menu move only with menu_vibration 2. */
+    test_options.vibration=100;
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_MOVE,1.0f,1.0f,200);
+    assert(test_rumble[0]==0 && test_rumble[1]==0);
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,0.5f,1.0f,200);
+    assert(test_rumble[0]==128*257 && test_rumble[1]==65535);
+    test_options.menu_vibration=0;
+    usleep(250000);
+    data=read_pad();
+    assert(test_rumble[0]==0 && test_rumble[1]==0);
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,1.0f,1.0f,200);
+    assert(test_rumble[0]==0);
+    runtime_pad_pulse(RUNTIME_PULSE_GAME,1.0f,0.5f,200);
+    assert(test_rumble[0]==65535 && test_rumble[1]==128*257);
+    usleep(250000);
+    data=read_pad();
+    assert(test_rumble[0]==0 && test_rumble[1]==0);
+    test_options.menu_vibration=1;
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;
@@ -253,5 +272,5 @@ int main(void) {
     SDL_Quit();
     unlink(path);
     puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map, "
-         "light bar, vibration");
+         "light bar, vibration, pulses");
 }

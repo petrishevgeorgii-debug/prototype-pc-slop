@@ -1042,6 +1042,12 @@ void PrototypeMenu() {
                              "DualSense / DualShock 4: световая панель показывает цвета игры, как на PS4. Выкл: "
                              "обычный цвет контроллера."),
                            0, {off, on}, s.light_bar ? 1 : 0});
+        options.push_back({T("MENU VIBRATION", "ВИБРАЦИЯ В МЕНЮ"),
+                           T("A short tap when you press a button in the game's menus (select, back), or also "
+                             "when you move between items.",
+                             "Короткий толчок при нажатии в меню игры (выбор, назад) или также при переходе между "
+                             "пунктами."),
+                           0, {off, T("PRESSES", "НАЖАТИЯ"), T("ALL", "ВСЕ")}, std::clamp(s.menu_vibration.load(), 0, 2)});
         break;
     }
     default:
@@ -1106,6 +1112,7 @@ void PrototypeMenu() {
         case 67: PortShaderMods::Export(shader_pick); break;
         case 80: s.vibration = value * 25; break;
         case 81: s.light_bar = value == 1; break;
+        case 82: s.menu_vibration = value; break;
         default: break;
         }
     };
@@ -1142,7 +1149,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
@@ -1301,7 +1308,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;

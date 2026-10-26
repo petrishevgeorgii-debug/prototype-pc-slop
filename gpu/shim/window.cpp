@@ -32,6 +32,7 @@ extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {
     const auto& s = PortSettings::Get();
     out->vibration = s.vibration;
     out->light_bar = s.light_bar ? 1 : 0;
+    out->menu_vibration = s.menu_vibration;
 }
 
 namespace Frontend {

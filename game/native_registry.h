@@ -47,6 +47,13 @@ void WriteCode(std::uint64_t address, const void* bytes, std::size_t size);
 /// The port's settings for the game's own menus (gpu/theordergpu.h), or nullptr.
 const TheOrderGameMenu* Menu();
 
+/// What a vibration pulse is for: the player's options decide which ones are felt.
+enum class Pulses { Game = 0, MenuPress = 1, MenuMove = 2 };
+
+/// A short vibration added to the game's own (src/runtime_pad.c runtime_pad_pulse): motor levels
+/// 0..1 (large: the low rumble, small: the high one), `ms` long. Nothing without a host for it.
+void Pulse(Pulses kind, float large, float small, unsigned ms);
+
 struct Registrar {
     explicit Registrar(const Replacement& replacement) { Register(replacement); }
 };

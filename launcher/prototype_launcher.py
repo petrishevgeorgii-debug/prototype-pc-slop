@@ -129,7 +129,7 @@ DEFAULTS = {
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
-    'vibration': 100, 'light_bar': True,
+    'vibration': 100, 'light_bar': True, 'menu_vibration': 1,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -159,7 +159,7 @@ def load_settings():
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
-                          ('light_bar', bool)):
+                          ('light_bar', bool), ('menu_vibration', int)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -216,6 +216,7 @@ def write_ini(values):
             'rcas_strength': int(values['rcas_strength']),
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
             'vibration': int(values['vibration']), 'light_bar': int(values['light_bar']),
+            'menu_vibration': int(values['menu_vibration']),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -1275,8 +1276,11 @@ class Launcher:
         self.stepper('Vibration', 'Strength of the game\'s vibration (rumble). Off: none.', 'vibration', [(v, f'{v}%' if v else 'Off') for v in (0, 25, 50, 75, 100, 150, 200)])
         self.toggle('Light bar', 'DualSense and DualShock 4: the light bar shows the colours the game sets, '
                     'as on the PS4. Off: the controller\'s own colour.', 'light_bar')
+        self.stepper('Menu vibration', 'A short tap when you press a button in the game\'s menus (select, back), '
+                     'or also when you move between items. Consuming always vibrates (with Vibration on).',
+                     'menu_vibration', [(0, 'Off'), (1, 'Presses'), (2, 'All')])
         self.row_y += 20
-        self.note('Both work live: they are also in the game\'s own Options > Controller screen and on the '
+        self.note('All work live: they are also in the game\'s own Options > Controller screen and on the '
                   'port menu\'s CONTROLLER page (Insert or R3 + L2). Keyboard keys and mouse are on the CONTROLS '
                   'page.', C['dim'], height=64)
 

@@ -18,6 +18,7 @@ namespace {
 std::uint8_t* g_image = nullptr;
 const NativeHost* g_host = nullptr; ///< during installation only: the loader's host lives on its stack
 const TheOrderGameMenu* g_menu = nullptr;
+void (*g_pad_pulse)(int, float, float, unsigned) = nullptr;
 std::size_t g_data_used = 0;
 
 std::vector<Native::Replacement>& Registry() {
@@ -147,6 +148,10 @@ const TheOrderGameMenu* Menu() {
     return g_menu;
 }
 
+void Pulse(Pulses kind, float large, float small, unsigned ms) {
+    if (g_pad_pulse) g_pad_pulse(static_cast<int>(kind), large, small, ms);
+}
+
 } // namespace Native
 
 extern "C" void native_game_install(const NativeHost* host) {
@@ -156,6 +161,7 @@ extern "C" void native_game_install(const NativeHost* host) {
     g_host = host;
     g_image = host->image;
     g_menu = host->menu; // kept: the host itself is gone once the game runs
+    g_pad_pulse = host->pad_pulse;
     unsigned installed = 0, skipped = 0;
     bool all_off = false;
     for (const auto& r : Registry()) {

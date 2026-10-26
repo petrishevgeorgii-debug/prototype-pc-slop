@@ -47,8 +47,8 @@ fix is applied in memory, and the port checks the executables against the untouc
   upscaling, sharpening, display mode and V-Sync, as the game's own rows.
 - A **port menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse, for everything else.
-- **DualSense features** — the game's light bar colours and vibration (with a strength setting), also
-  in the game's own Options > Controller screen.
+- **DualSense features** — the game's light bar colours and vibration (with a strength setting),
+  vibration on consuming and in the menus, also in the game's own Options > Controller screen.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
@@ -97,8 +97,10 @@ them too. The port makes this screen from your game's own menu files when the ga
 files in `p1\art\hud`, or inside the `p1\*.rcf` archives) and the game reads the port's copy:
 the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own screens.
 
-**Options > Controller** has the gamepad's two after Target toggle: **Vibration** (off, 25% to
-200%) and **Light bar** (the game's colours on a DualSense or DualShock 4, or the controller's own).
+**Options > Controller** has the gamepad's three after Target toggle: **Vibration** (off, 25% to
+200%), **Light bar** (the game's colours on a DualSense or DualShock 4, or the controller's own)
+and **Menu vibration** (a tap on pressing in the game's menus, or also on moving). Consuming
+vibrates too.
 
 ### Port menu
 

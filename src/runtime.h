@@ -127,5 +127,10 @@ ABI int32_t runtime_event_reset(void *event,uint32_t n);
 /* PROTOTYPE mouse look on the on-foot camera (runtime_pad.c): probe.c redirects the camera's call
  * of its stick helper (original) to runtime_chase_camera_input. */
 void runtime_set_chase_camera_input(void *original);
+/* A short vibration the port adds to the game's (runtime_pad.c), as the vibration options allow:
+ * kind RUNTIME_PULSE_GAME (a game event: always), RUNTIME_PULSE_MENU_PRESS / _MENU_MOVE (the
+ * game's menus: menu_vibration). Motor levels 0..1, length in ms. */
+enum { RUNTIME_PULSE_GAME=0, RUNTIME_PULSE_MENU_PRESS=1, RUNTIME_PULSE_MENU_MOVE=2 };
+void runtime_pad_pulse(int kind,float large,float small,unsigned ms);
 ABI uint8_t runtime_chase_camera_input(void *input,float *x,float *y,float *boost);
 #endif
