@@ -22,6 +22,8 @@ typedef struct NativeHost {
      * rip-relative operands that the native layer redirects. */
     uint8_t *data;
     size_t data_size;
+    /* The port's settings for the game's own menus (gpu/theordergpu.h), or NULL. */
+    const struct TheOrderGameMenu *menu;
 } NativeHost;
 
 /* Installs every native replacement whose original code is found unchanged; prints what it did.

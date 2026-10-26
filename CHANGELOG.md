@@ -3,6 +3,14 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## Unreleased
+
+### Added
+- The port's settings in PROTOTYPE's own **Options > Video** screen, in the main menu and the pause menu: Upscaling, Upscaling quality, Sharpening, FSR 1 scaling, Display mode, V-Sync and Frame counter, as the game's own rows under Brightness. They apply at once and are saved to `theorder.ini`.
+  - The screen is made from the player's own menu files at start (`scripts/proto_menu.py`) and read in place of the game's: the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own screen.
+  - The screen's calls reach the port through the game's own way of calling native code from its menus, `PlaceLuaCall` (`game/p1/options_menu.cpp`, [docs/NATIVE.md](docs/NATIVE.md)).
+- File overrides (`THEORDER_FILE_OVERRIDES`) can come from several folders (separated by `;`).
+
 ## 1.0.1 — October 25, 2026 ([notes](docs/releases/v1.0.1.md))
 
 ### Changed

@@ -86,7 +86,9 @@ const char* Install(const Native::Replacement& r) {
     switch (r.kind) {
     case Native::Kind::Function:
     case Native::Kind::CallSite: {
-        if (r.original.size() < 5 || (r.kind == Native::Kind::CallSite && r.original[0] != 0xe8)) {
+        // A call site is a call (e8) or a tail call (e9: jmp rel32); it stays what it was.
+        if (r.original.size() < 5 ||
+            (r.kind == Native::Kind::CallSite && r.original[0] != 0xe8 && r.original[0] != 0xe9)) {
             return "bad description";
         }
         std::uint8_t* thunk = Thunk(r.native);
@@ -99,7 +101,7 @@ const char* Install(const Native::Replacement& r) {
             std::memcpy(&old, g_image + r.address + 1, 4);
             *r.callee = r.address + 5 + static_cast<std::int64_t>(old);
         }
-        std::uint8_t bytes[5] = {static_cast<std::uint8_t>(r.kind == Native::Kind::CallSite ? 0xe8 : 0xe9)};
+        std::uint8_t bytes[5] = {static_cast<std::uint8_t>(r.kind == Native::Kind::CallSite ? r.original[0] : 0xe9)};
         std::memcpy(bytes + 1, &rel, 4);
         Native::WriteCode(r.address, bytes, 5);
         return nullptr;
@@ -138,6 +140,10 @@ void* NearData(std::size_t bytes, std::size_t align) {
 
 void WriteCode(std::uint64_t address, const void* bytes, std::size_t size) {
     std::memcpy(g_image + address, bytes, size);
+}
+
+const TheOrderGameMenu* Menu() {
+    return g_host ? g_host->menu : nullptr;
 }
 
 } // namespace Native

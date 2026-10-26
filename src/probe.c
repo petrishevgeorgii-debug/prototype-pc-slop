@@ -806,7 +806,8 @@ static uint8_t *native_alloc_code(size_t bytes) {
 /* The native game layer (game/, docs/NATIVE.md): C++ parts of the game that take over from the
  * original code, each only where the code it replaces is found unchanged. */
 static void install_native_game(uint64_t image_size) {
-    NativeHost host = {image, image_size, native_alloc_code, g_native_data, g_native_data ? NATIVE_DATA_SIZE : 0};
+    NativeHost host = {image, image_size, native_alloc_code, g_native_data, g_native_data ? NATIVE_DATA_SIZE : 0,
+                       gpu_enabled ? theordergpu_game_menu() : NULL};
     native_game_install(&host);
 }
 

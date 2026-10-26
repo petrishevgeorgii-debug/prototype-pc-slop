@@ -52,6 +52,22 @@ void theordergpu_mouse_take(TheOrderMouse *out);
  * grows with every new camera and its time (steady clock, ns); 0 before the first camera (it is
  * found while the camera is tracked, THEORDER_UPSCALER not "none"). For mouse look (runtime_pad.c). */
 int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
+/* PROTOTYPE: the port's settings as rows of the game's own Options > Video screen
+ * (scripts/proto_menu.py adds the rows, game/p1/options_menu.cpp answers the screen's calls).
+ * Every row is a choice: `choices` texts, the current one `get`, `set` applies one (live) and
+ * `reset` the default; `save` writes the settings file. Texts are in the game's language. Called
+ * on the game's thread. */
+typedef struct TheOrderGameMenu {
+    int (*count)(void);
+    const char *(*label)(int row);
+    int (*choices)(int row);
+    const char *(*choice)(int row, int index);
+    int (*get)(int row);
+    void (*set)(int row, int index);
+    void (*reset)(int row);
+    void (*save)(void);
+} TheOrderGameMenu;
+const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
 unsigned theordergpu_symbol_count(void);
 #ifdef __cplusplus

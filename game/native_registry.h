@@ -6,14 +6,16 @@
 // another build of the game, or a patch that changed the same code, leaves the original running.
 //
 //   Function   the whole function: its first instruction jumps to the native one
-//   CallSite   one call to a function: it calls the native one instead, which can call the
-//              original (`original`) before or after its own work
+//   CallSite   one call (or tail call: jmp) to a function: it goes to the native one instead,
+//              which can call the original (`callee`) before or after its own work
 //   Custom     anything else (an operand redirected to native data...): `install` does it
 
 #pragma once
 
 #include <cstdint>
 #include <vector>
+
+#include "gpu/theordergpu.h"
 
 namespace Native {
 
@@ -41,6 +43,9 @@ void* NearData(std::size_t bytes, std::size_t align = 16);
 
 /// Writes `bytes` over the game's code at `address` (installation only).
 void WriteCode(std::uint64_t address, const void* bytes, std::size_t size);
+
+/// The port's settings for the game's own menus (gpu/theordergpu.h), or nullptr.
+const TheOrderGameMenu* Menu();
 
 struct Registrar {
     explicit Registrar(const Replacement& replacement) { Register(replacement); }

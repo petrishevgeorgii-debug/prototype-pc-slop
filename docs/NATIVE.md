@@ -60,9 +60,27 @@ please add to it when you identify a function.
 
 ## What is native so far
 
-Nothing yet. The first part, the sun's shadow distance in the port menu, was removed: it was
-too experimental to keep. The layer, its checks and its test stay, ready for the renderer work
-below.
+### The game's menus call the port (`game/p1/options_menu.cpp`)
+
+PROTOTYPE's menus are Scaleform movies (`p1/art/hud/*.gfx`). Their ActionScript calls the game
+through `ExternalInterface.call("PlaceLuaCall", function, ...)` (`commonregisters.DoCallBack`):
+the movie's ExternalInterface handler (`0x1caf0`) hands `PlaceLuaCall` on to `0x1cd90` with a tail
+call, which runs the Lua function of that name. That hand-over now goes through native code
+first. It answers:
+
+- `port_Count`, `port_Label(row)`, `port_Choices(row)`, `port_Choice(row, index)`: the port's
+  settings rows (`gpu/shim/port_game_menu.cpp`, `TheOrderGameMenu` in `gpu/theordergpu.h`);
+- `db_GetInt`, `db_SetInt` and `fe_RestoreGameDBDefault` for the game database names
+  `PortSetting<row>`: the settings themselves.
+
+Everything else goes to the game's Lua as before. `scripts/proto_menu.py` makes the Video
+screens that ask for these (`protovideooption.gfx` and `protopausevideo.gfx`: after Brightness, a
+loop over the port's rows instead of the PC version's rows the PS4 hides) and gives
+`protooptionsoverlay.gfx` the toggles they use. The files are made from the player's own when
+the game starts and read in place of the game's (`THEORDER_FILE_OVERRIDES`).
+
+`scripts/proto_menu.py` can be run on its own (`python scripts/proto_menu.py <game> <out>`); its
+patched movies can be checked with any SWF disassembler (they are uncompressed GFX 8, SWF 8).
 
 ## Next
 

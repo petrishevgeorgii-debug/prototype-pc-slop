@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Native game layer (game/): installation into a stand-in game image. A test replacement takes
 // over one call: it is installed only where the original bytes are found, can be turned off with
-// THEORDER_NATIVE, and calls the original through the address it is handed. Linux
-// (build.sh --test).
+// THEORDER_NATIVE, and calls the original through the address it is handed. Then the game's
+// PlaceLuaCall hand-over (game/p1/options_menu.cpp) answers the Video screen's port rows from a
+// stand-in menu and leaves everything else to the game. Linux (build.sh --test).
 
 #include <sys/mman.h>
 
@@ -35,7 +36,7 @@ int failures = 0;
         }                                                                     \
     } while (0)
 
-constexpr std::size_t kImage = 0x10000, kCode = 0x10000, kData = 0x1000;
+constexpr std::size_t kImage = 0x20000, kCode = 0x10000, kData = 0x1000;
 constexpr std::uint64_t kCallee = 0x1000; ///< the stand-in game function: marks byte +0 of its argument
 constexpr std::uint64_t kSite = 0x2000;   ///< a call to it
 std::uint8_t* g_base = nullptr;
@@ -52,10 +53,50 @@ void Put(std::uint64_t at, std::initializer_list<int> bytes) {
     for (int b : bytes) g_base[at++] = std::uint8_t(b);
 }
 
+constexpr std::uint64_t kHandOver = 0x1cbf2, kPlaceLuaCall = 0x1cd90;
+
 void BuildGame() {
     std::memset(g_base, 0xcc, kImage);
     Put(kCallee, {0xc6, 0x07, 0x01, 0xc3});                     // mov byte [rdi], 1; ret
     Put(kSite, {0xe8, 0xfb, 0xef, 0xff, 0xff, 0x90, 0x90});     // call kCallee
+    // The ExternalInterface handler's tail call to PlaceLuaCall, which here marks its result
+    // with type 5 (the game's Lua answered).
+    Put(kHandOver, {0xe9, 0x99, 0x01, 0x00, 0x00, 0x49, 0x81, 0xc5, 0x40, 0x02, 0x00, 0x00});
+    Put(kPlaceLuaCall, {0xc7, 0x01, 0x05, 0x00, 0x00, 0x00, 0xc3}); // mov dword [rcx], 5; ret
+}
+
+// ---- a stand-in menu of two rows
+int g_values[2] = {1, 0}, g_saved = 0;
+int MenuCount() { return 2; }
+const char* MenuLabel(int row) { return row ? "B" : "A"; }
+int MenuChoices(int row) { return row ? 2 : 3; }
+const char* MenuChoice(int row, int index) { return row == 0 && index == 2 ? "THIRD" : "X"; }
+int MenuGet(int row) { return g_values[row]; }
+void MenuSet(int row, int index) { g_values[row] = index; }
+void MenuReset(int row) { g_values[row] = 0; }
+void MenuSave() { ++g_saved; }
+const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave};
+
+struct Value {
+    std::uint32_t type, pad;
+    union {
+        double number;
+        const char* string;
+        std::uint64_t raw;
+    };
+};
+Value Str(const char* s) { Value v{4, 0, {}}; v.string = s; return v; }
+Value Num(double n) { Value v{3, 0, {}}; v.number = n; return v; }
+
+/// Calls the hand-over as the game's ExternalInterface handler does.
+Value LuaCall(std::initializer_list<Value> args) {
+    using HandOver = void(GUEST_ABI*)(void*, const Value*, int, Value*);
+    Value list[8];
+    int n = 0;
+    for (const Value& v : args) list[n++] = v;
+    Value ret{0, 0, {}};
+    reinterpret_cast<HandOver>(g_base + kHandOver)(nullptr, list, n, &ret);
+    return ret;
 }
 
 std::uint64_t g_original = 0;
@@ -84,7 +125,7 @@ int main() {
     g_base = static_cast<std::uint8_t*>(mmap(nullptr, kImage + kCode + kData, PROT_READ | PROT_WRITE | PROT_EXEC,
                                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (g_base == MAP_FAILED) return 2;
-    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData};
+    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr};
 
     // Off: nothing changes.
     BuildGame();
@@ -112,6 +153,34 @@ int main() {
     g_base[kSite + 5] = 0x91;
     native_game_install(&host);
     CHECK(reinterpret_cast<std::uint8_t*>(CallTarget(kSite)) == g_base + kCallee);
+
+    // The Video screen's rows: answered from the menu; the game's own calls go to its Lua.
+    BuildGame();
+    host.menu = &kMenu;
+    native_game_install(&host);
+    Value r = LuaCall({Str("port_Count")});
+    CHECK(r.type == 3 && r.number == 2);
+    r = LuaCall({Str("port_Label"), Num(1)});
+    CHECK(r.type == 4 && !std::strcmp(r.string, "B"));
+    r = LuaCall({Str("port_Choices"), Num(0)});
+    CHECK(r.type == 3 && r.number == 3);
+    r = LuaCall({Str("port_Choice"), Num(0), Num(2)});
+    CHECK(r.type == 4 && !std::strcmp(r.string, "THIRD"));
+    r = LuaCall({Str("db_GetInt"), Str("PortSetting0"), Num(0), Num(0)});
+    CHECK(r.type == 3 && r.number == 1);
+    r = LuaCall({Str("db_SetInt"), Str("PortSetting1"), Num(0), Num(1), Num(0)});
+    CHECK(g_values[1] == 1 && g_saved == 1 && r.type != 5);
+    r = LuaCall({Str("fe_RestoreGameDBDefault"), Str("PortSetting0"), Num(0)});
+    CHECK(g_values[0] == 0 && g_saved == 2);
+    CHECK(LuaCall({Str("db_GetInt"), Str("SettingVideoGammaCorrection"), Num(0), Num(0)}).type == 5);
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting7"), Num(0), Num(0)}).type == 5); // no such row
+    CHECK(LuaCall({Str("fe_IsStorageAvailable")}).type == 5);
+
+    // Without the port's menu every call goes to the game.
+    BuildGame();
+    host.menu = nullptr;
+    native_game_install(&host);
+    CHECK(LuaCall({Str("port_Count")}).type == 5);
 
     if (failures) {
         std::fprintf(stderr, "native test: %d failures\n", failures);

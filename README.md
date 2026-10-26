@@ -43,8 +43,10 @@ fix is applied in memory, and the port checks the executables against the untouc
 - **FSR 3.1 and FSR 4** temporal anti-aliasing and upscaling: *Native AA*, *Quality*, *Balanced*,
   *Performance*, *Ultra Performance*, switchable while playing. FSR 4 needs a Radeon RX 9000 GPU.
 - **FSR 1** scaling to the window, **RCAS** sharpening, **anisotropic filtering** up to 16×.
-- An **in-game menu drawn like the game's own options screens** (English or Russian with the game
-  language), with keyboard, controller and mouse.
+- **The port's settings in the game's own Options > Video screen** (main menu and pause menu):
+  upscaling, sharpening, display mode, V-Sync and the frame counter, as the game's own rows.
+- A **port menu drawn like the game's own options screens** (English or Russian with the game
+  language), with keyboard, controller and mouse, for everything else.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
@@ -82,6 +84,15 @@ sensitivity and the **button icons in game**: *Keyboard & mouse*, *PlayStation*,
 (the device you played with last time). The keyboard prompts are made at
 start from your own game files (the texts and the hint pictures) into `out\prompts`; the game
 folder is not changed. A controller works at any time.
+
+### Settings in the game's menu
+
+PROTOTYPE's **Options > Video** (from the main menu or the pause menu) has the port's settings
+under Brightness, as the game's own rows: **Upscaling** (off, FSR 3.1, FSR 4 on a Radeon RX
+9000), **Upscaling quality**, **Sharpening**, **FSR 1 scaling**, **Display mode**, **V-Sync** and
+**Frame counter**. They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
+them too. The port makes this screen from your game's own menu files when the game starts (only
+in memory: the game folder is not changed). `THEORDER_GAME_MENU=0` keeps the game's own screen.
 
 ### Port menu
 

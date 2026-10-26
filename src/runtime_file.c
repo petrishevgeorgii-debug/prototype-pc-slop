@@ -104,22 +104,31 @@ void runtime_file_configure(const char *app0,const char *user) {
         runtime_file_mount(guest,path);
     }
 }
-/* THEORDER_FILE_OVERRIDES=<dir>: game files the launcher generated (run.py, scripts/proto_prompts.py:
- * the keyboard and mouse button prompts) are read from <dir>/<game path in lower case> instead
- * of the game folder, which is never written. Only regular files are replaced. An archive gets
- * <dir>/<game path in lower case>.patch instead: regions replaced and data added at its end
- * (G3PATCH1, open_patch). */
+/* THEORDER_FILE_OVERRIDES=<dir>[;<dir>...]: game files the launcher generated (run.py,
+ * scripts/proto_prompts.py: the keyboard and mouse button prompts; scripts/proto_menu.py: the
+ * Video screen with the port's settings) are read from <dir>/<game path in lower case> instead
+ * of the game folder, which is never written; the first folder that has the file wins. Only
+ * regular files are replaced. An archive gets <dir>/<game path in lower case>.patch instead:
+ * regions replaced and data added at its end (G3PATCH1, open_patch). */
 static int override_candidate(const char *relative,const char *suffix,char *out,size_t size) {
-    static const char *dir; static int checked;
-    if (!checked) { dir=getenv("THEORDER_FILE_OVERRIDES"); checked=1; }
-    if (!dir || !*dir || !relative || !*relative) return -1;
-    if ((size_t)snprintf(out,size,"%s%s%s",dir,relative,suffix)>=size) return -1;
-    for (char *p=out+strlen(dir);*p;++p) {
-        if (*p=='\\') *p='/';
-        else if (*p>='A' && *p<='Z') *p=(char)(*p-'A'+'a');
+    static const char *dirs; static int checked;
+    if (!checked) { dirs=getenv("THEORDER_FILE_OVERRIDES"); checked=1; }
+    if (!dirs || !*dirs || !relative || !*relative) return -1;
+    for (const char *dir=dirs;*dir;) {
+        const char *end=strchr(dir,';');
+        const size_t length=end ? (size_t)(end-dir) : strlen(dir);
+        if (length && (size_t)snprintf(out,size,"%.*s%s%s",(int)length,dir,relative,suffix)<size) {
+            for (char *p=out+length;*p;++p) {
+                if (*p=='\\') *p='/';
+                else if (*p>='A' && *p<='Z') *p=(char)(*p-'A'+'a');
+            }
+            HostStat st;
+            if (!host_stat(out,&st) && S_ISREG(st.st_mode)) return 0;
+        }
+        if (!end) break;
+        dir=end+1;
     }
-    HostStat st;
-    return host_stat(out,&st) || !S_ISREG(st.st_mode) ? -1 : 0;
+    return -1;
 }
 static void override_path(const char *relative,char *out,size_t size) {
     char candidate[1024];

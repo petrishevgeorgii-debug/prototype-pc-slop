@@ -250,6 +250,27 @@ def prototype_controls(env, probe, game, out, derived, prompts=True):
         derived.append('THEORDER_FILE_OVERRIDES')
 
 
+def prototype_menu(env, game, out, derived):
+    """PROTOTYPE: the port's settings in the game's own Options > Video screen (files made from the
+    game's own, scripts/proto_menu.py). THEORDER_GAME_MENU=0 keeps the game's screen."""
+    if get_env(env, 'GAME_MENU', '1') == '0':
+        return
+    import proto_menu
+    try:
+        root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True))
+    except (OSError, ValueError, ImportError) as error:
+        print(f'Menu: the game\'s Video screen stays ({error})', flush=True)
+        return
+    if root:
+        roots = [r for r in env.get('THEORDER_FILE_OVERRIDES', '').split(';') if r]
+        path = str(Path(root).resolve())
+        if path not in roots:
+            roots.append(path)
+        env['THEORDER_FILE_OVERRIDES'] = ';'.join(roots)
+        if 'THEORDER_FILE_OVERRIDES' not in derived:
+            derived.append('THEORDER_FILE_OVERRIDES')
+
+
 def find_probe_executable():
     """Finds the probe executable (theorder-probe)."""
     return find_executable('theorder-probe' + EXE_SUFFIX)
@@ -461,6 +482,8 @@ def main():
             if 'upscaler' not in graphics_options.read_ini(env['THEORDER_CONFIG']):
                 graphics_options.write_keys(env['THEORDER_CONFIG'], {'upscaler': 'off'})
             prototype_controls(env, probe, game, out, derived, prompts=not is_prototype2)
+            if not is_prototype2:
+                prototype_menu(env, game, out, derived)
         elif get_env(env, 'EXPERIMENTAL_UPSCALER') != '1':
             env.setdefault('THEORDER_UPSCALER', 'none')
         env.setdefault('THEORDER_READBACK_LINEAR', '1')
