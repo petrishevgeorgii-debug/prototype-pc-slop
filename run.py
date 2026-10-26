@@ -256,17 +256,17 @@ def prototype_menu(env, game, out, derived):
     if get_env(env, 'GAME_MENU', '1') == '0':
         return
     import proto_menu
+    roots = [r for r in env.get('THEORDER_FILE_OVERRIDES', '').split(';') if r]
+    menu_root = str((out / 'menu').resolve())
+    others = [r for r in roots if r != menu_root]
     try:
-        root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True))
+        root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True), base_roots=others)
     except (OSError, ValueError, ImportError) as error:
         print(f'Menu: the game\'s Video screen stays ({error})', flush=True)
         return
     if root:
-        roots = [r for r in env.get('THEORDER_FILE_OVERRIDES', '').split(';') if r]
-        path = str(Path(root).resolve())
-        if path not in roots:
-            roots.append(path)
-        env['THEORDER_FILE_OVERRIDES'] = ';'.join(roots)
+        # First: an archive's patch here includes the prompts' patch of it.
+        env['THEORDER_FILE_OVERRIDES'] = ';'.join([menu_root, *others])
         if 'THEORDER_FILE_OVERRIDES' not in derived:
             derived.append('THEORDER_FILE_OVERRIDES')
 

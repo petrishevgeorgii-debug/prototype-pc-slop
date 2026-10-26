@@ -15,7 +15,8 @@ the PS4 shows only Brightness. Here:
   * protooptionsoverlay.gfx gets the toggles those rows use (tglPort0...), copies of the screen's
     own toggle placed in its VideoOptionsOverlay.
 
-The results go to <out>/p1/art/hud/ (THEORDER_FILE_OVERRIDES, src/runtime_file.c). The game
+The results go to <out>/p1/art/hud/, or for dumps that keep p1 in archives (art.rcf, ...) a patch
+per archive, <out>/p1/<archive>.patch (THEORDER_FILE_OVERRIDES, src/runtime_file.c). The game
 folder is only read, and nothing written here is part of a release.
 """
 import argparse
@@ -24,12 +25,13 @@ import json
 from pathlib import Path
 import struct
 import sys
+import zlib
 
 HUD = Path('p1') / 'art' / 'hud'
 SCREENS = ('protovideooption.gfx', 'protopausevideo.gfx')
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 1        # of this script's output (part of the cache key)
+VERSION = 2        # of this script's output (part of the cache key)
 
 
 # ---- SWF structure
@@ -299,16 +301,152 @@ def patch_overlay(data):
     raise ValueError('VideoOptionsOverlay sprite not found')
 
 
-def generate(game, out, log=print):
-    """Writes the patched menu movies into `out` (cached); returns `out`, or None when the game
-    folder has no loose menu files (an archive dump) or they are not the expected ones."""
+# ---- archives
+
+# Dumps straight from the PS4 package keep p1's files in Radical's archives (art.rcf,
+# art_play_go.rcf, ...): "ATG CORE CEMENT LIBRARY", u32 directory offset at 0x24 and its length at
+# 0x28, entries of u32 name hash, u32 offset, u32 length (as scripts/proto_prompts.py). The
+# patched movies are added past the archive's end and their entries point there: a G3PATCH1 file
+# the runtime lays over the archive (src/runtime_file.c). The keyboard prompts may have patched
+# the same archive: their patch is taken into this one, which the runtime then reads first.
+RCF_MAGIC = b'ATG CORE CEMENT LIBRARY'
+
+
+def rcf_entries(f):
+    head = f.read(0x3c)
+    if not head.startswith(RCF_MAGIC) or head[0x22] != 0:  # little-endian archives only
+        return []
+    offset, length = struct.unpack_from('<II', head, 0x24)
+    if length % 12 or length > 64 << 20:
+        return []
+    f.seek(offset)
+    table = f.read(length)
+    return [(offset + i, *struct.unpack_from('<III', table, i)) for i in range(0, len(table), 12)]
+
+
+def read_patch(path, base_size):
+    """[(offset, length, bytes)] and the new size of a G3PATCH1 made for `base_size`, or ([], 0)."""
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return [], 0
+    if len(data) < 32 or not data.startswith(b'G3PATCH1'):
+        return [], 0
+    size, vsize, count = struct.unpack_from('<QQI', data, 8)
+    if size != base_size:
+        return [], 0
+    regions = []
+    for i in range(count):
+        offset, length, at = struct.unpack_from('<QQQ', data, 32 + 24 * i)
+        regions.append((offset, length, data[at:at + length]))
+    return regions, vsize
+
+
+def unpack(member):
+    """(movie bytes, packed) of an archive member, or (None, False) when it is not a movie."""
+    packed = member.startswith(b'RZ\0\0')
+    if packed:
+        try:
+            member = zlib.decompress(member[16:])
+        except zlib.error:
+            return None, False
+    if member[:3] in (b'CFX', b'CWS'):  # a zlib-compressed movie: stored uncompressed after patching
+        try:
+            member = (b'GFX' if member[:3] == b'CFX' else b'FWS') + member[3:8] + zlib.decompress(member[8:])
+        except zlib.error:
+            return None, False
+    return (member, packed) if member[:3] in (b'GFX', b'FWS') else (None, False)
+
+
+def patch_movie(data):
+    """The patched movie, or None when it is none of the three."""
+    if b'VideoOptionsOverlay' in data and b'tglResolution' in data:
+        try:
+            return patch_overlay(data)
+        except ValueError:
+            pass  # a screen importing the overlay
+    if b'SettingVideoGammaCorrection' in data and b'mVideoOptions' in data:
+        return patch_screen(data)
+    return None
+
+
+def patch_archive(path, target, base_patch):
+    """Writes `target` for archive `path` (with `base_patch`'s regions); returns the number of
+    movies patched (0: nothing written)."""
+    size = path.stat().st_size
+    patched = []
+    with open(path, 'rb') as f:
+        for entry_at, _, offset, length in rcf_entries(f):
+            if length < 64 or offset + length > size:
+                continue
+            f.seek(offset)
+            head = f.read(16)
+            if not (head.startswith(b'RZ\0\0') or head[:3] in (b'GFX', b'FWS', b'CFX', b'CWS')):
+                continue
+            f.seek(offset)
+            data, packed = unpack(f.read(length))
+            if data is None:
+                continue
+            new = patch_movie(data)
+            if new is None:
+                continue
+            if packed:
+                new = b'RZ\0\0' + struct.pack('<III', 0, len(new), 0) + zlib.compress(new, 6)
+            patched.append((entry_at, new))
+    if not patched:
+        return 0
+    regions, vsize = read_patch(base_patch, size) if base_patch else ([], 0)
+    end = (max(size, vsize) + 0x7ff) & ~0x7ff
+    for entry_at, data in patched:
+        if end + len(data) > 0xffffffff:
+            raise ValueError(f'{path.name} is too large to add to')
+        regions.append((entry_at + 4, 8, struct.pack('<II', end, len(data))))
+        regions.append((end, len(data), data))
+        end = (end + len(data) + 0x7ff) & ~0x7ff
+    header = 32 + 24 * len(regions)
+    table, payload, at = [], b'', header
+    for offset, length, data in regions:
+        table.append(struct.pack('<QQQ', offset, length, at))
+        payload += data
+        at += len(data)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix('.tmp')
+    tmp.write_bytes(b'G3PATCH1' + struct.pack('<QQII', size, end, len(regions), 0) + b''.join(table) + payload)
+    tmp.replace(target)
+    return len(patched)
+
+
+def fingerprint(path):
+    try:
+        st = Path(path).stat()
+        return [Path(path).name, st.st_size, int(st.st_mtime)]
+    except OSError:
+        return None
+
+
+def generate(game, out, log=print, base_roots=()):
+    """Writes the patched menu movies into `out` (cached); returns `out`, or None when they could
+    not be made. Loose files (p1/art/hud/*.gfx) become files; archives get a patch each, which
+    includes the patch of the same archive in the first of `base_roots` that has one (the
+    keyboard prompts'): `out` must then come first in THEORDER_FILE_OVERRIDES."""
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
-    if not all(s.is_file() for s in sources):
-        log('Menu: p1/art/hud has no loose Video screen files (archive dump?): the game\'s Video screen stays')
+    archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
+    loose = all(s.is_file() for s in sources)
+    if not loose and not archives:
+        log('Menu: neither p1/art/hud/*.gfx nor p1/*.rcf in the game folder: the game\'s Video screen stays')
         return None
+    bases = {}
+    for archive in archives:
+        for root in base_roots:
+            candidate = Path(root) / 'p1' / (archive.name.lower() + '.patch')
+            if candidate.is_file():
+                bases[archive.name] = candidate
+                break
     key = hashlib.sha256(json.dumps({
-        'v': VERSION, 'files': [(s.name, s.stat().st_size, int(s.stat().st_mtime)) for s in sources]},
+        'v': VERSION, 'loose': loose,
+        'files': [fingerprint(s) for s in (sources if loose else archives)],
+        'bases': {name: fingerprint(p) for name, p in bases.items()}},
         sort_keys=True).encode()).hexdigest()
     out = Path(out)
     stamp = out / 'menu.json'
@@ -318,21 +456,37 @@ def generate(game, out, log=print):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    target.mkdir(parents=True, exist_ok=True)
-    written = []
+    for old in [*(target / s.name.lower() for s in sources), *(out / 'p1').glob('*.rcf.patch')]:
+        old.unlink(missing_ok=True)
     try:
-        results = {s.name.lower(): (patch_overlay if s.name == OVERLAY else patch_screen)(s.read_bytes())
-                   for s in sources}
-    except (ValueError, OSError, struct.error, StopIteration, IndexError) as error:
+        if loose:
+            target.mkdir(parents=True, exist_ok=True)
+            for s in sources:
+                movie, _ = unpack(s.read_bytes())
+                if movie is None:
+                    raise ValueError(f'{s.name} is not a movie')
+                data = (patch_overlay if s.name == OVERLAY else patch_screen)(movie)
+                (target / s.name.lower()).write_bytes(data)
+            done = 3
+        else:
+            done = 0
+            for archive in archives:
+                n = patch_archive(archive, out / 'p1' / (archive.name.lower() + '.patch'), bases.get(archive.name))
+                if n:
+                    log(f'Menu: {archive.name}: {n} menu movies')
+                done += n
+    except (ValueError, OSError, struct.error, StopIteration, IndexError, zlib.error) as error:
         log(f'Menu: the game\'s Video screen stays ({error})')
-        for s in sources:
-            (target / s.name.lower()).unlink(missing_ok=True)
+        for old in [*(target / s.name.lower() for s in sources), *(out / 'p1').glob('*.rcf.patch')]:
+            old.unlink(missing_ok=True)
         return None
-    for name, data in results.items():
-        (target / name).write_bytes(data)
-        written.append(name)
+    if done < 3:
+        log(f'Menu: only {done} of the 3 Video screen movies found: the game\'s Video screen stays')
+        for old in (out / 'p1').glob('*.rcf.patch'):
+            old.unlink(missing_ok=True)
+        return None
     stamp.write_text(json.dumps({'key': key}), encoding='utf-8')
-    log(f'Menu: the port\'s settings in Options > Video ({", ".join(written)})')
+    log(f'Menu: the port\'s settings in Options > Video ({"loose files" if loose else "archive patches"})')
     return out
 
 

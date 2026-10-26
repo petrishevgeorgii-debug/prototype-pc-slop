@@ -3,6 +3,11 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## 1.0.3 — October 26, 2026 ([notes](docs/releases/v1.0.3.md))
+
+### Fixed
+- Options > Video showed only Brightness with dumps that keep p1 in archives (`p1\*.rcf`, straight from the PS4 package). `scripts/proto_menu.py` now finds the Video screen's movies in the archives (plain, RZ or zlib-compressed) and writes a patch per archive. An archive the keyboard prompts also patch gets one patch with both, read first.
+
 ## 1.0.2 — October 26, 2026 ([notes](docs/releases/v1.0.2.md))
 
 ### Added

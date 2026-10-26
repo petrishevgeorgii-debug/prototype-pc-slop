@@ -6,8 +6,9 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 1.0.2 — October 26, 2026** ([notes](docs/releases/v1.0.2.md), [changelog](CHANGELOG.md)):
-- The port's settings in the game's own Options > Video screen (main menu and pause menu).
+**Version 1.0.3 — October 26, 2026** ([notes](docs/releases/v1.0.3.md), [changelog](CHANGELOG.md)):
+- The port's settings in the game's own Options > Video screen (main menu and pause menu, since
+  [1.0.2](docs/releases/v1.0.2.md)) now also with dumps that keep the game's files in archives.
 
 The redesigned launcher since [1.0.1](docs/releases/v1.0.1.md); graphics modding since [0.7.0](docs/releases/v0.7.0.md); PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
@@ -55,7 +56,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v1.0.2.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v1.0.3.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** (the file tabs at the top left) and press **PLAY** or Enter. The first start prepares the game (about a
@@ -90,8 +91,9 @@ PROTOTYPE's **Options > Video** (from the main menu or the pause menu) has the p
 under Brightness, as the game's own rows: **Upscaling** (off, FSR 3.1, FSR 4 on a Radeon RX
 9000), **Upscaling quality**, **Sharpening**, **Display mode** and **V-Sync** (the screen has room
 for five; FSR 1 and the frame counter are in the port menu). They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
-them too. The port makes this screen from your game's own menu files when the game starts (only
-in memory: the game folder is not changed). `THEORDER_GAME_MENU=0` keeps the game's own screen.
+them too. The port makes this screen from your game's own menu files when the game starts (loose
+files in `p1\art\hud`, or inside the `p1\*.rcf` archives) and the game reads the port's copy:
+the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own screen.
 
 ### Port menu
 

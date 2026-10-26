@@ -38,11 +38,13 @@ IN GAME
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 1.0.2 (all versions: CHANGELOG.md)
-  - PROTOTYPE's Options > Video screen (main menu and pause menu) has the port's settings
+WHAT'S NEW IN 1.0.3 (all versions: CHANGELOG.md)
+  - Fixed: Options > Video showed only Brightness with dumps that keep the game's files in
+    archives (p1\*.rcf). The port's rows now appear with every dump.
+  - 1.0.2: PROTOTYPE's Options > Video screen (main menu and pause menu) has the port's settings
     as the game's own rows: Upscaling, Upscaling quality, Sharpening, Display mode, V-Sync.
-    They apply at once. Made in memory from your game's menu files: the game folder is not
-    changed (THEORDER_GAME_MENU=0 keeps the game's own screen).
+    They apply at once. Made from your game's menu files: the game folder is not changed
+    (THEORDER_GAME_MENU=0 keeps the game's own screen).
   - 1.0.1: the redesigned launcher; the experimental shadow options and water reflections
     were removed.
 
