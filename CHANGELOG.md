@@ -3,7 +3,7 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
-## Unreleased
+## 1.0.2 — October 26, 2026 ([notes](docs/releases/v1.0.2.md))
 
 ### Added
 - The port's settings in PROTOTYPE's own **Options > Video** screen, in the main menu and the pause menu: Upscaling, Upscaling quality, Sharpening, Display mode and V-Sync, as the game's own rows under Brightness (the screen has room for five). They apply at once and are saved to `theorder.ini`.

@@ -38,11 +38,13 @@ IN GAME
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 1.0.1 (all versions: CHANGELOG.md)
-  - A new launcher, redesigned from scratch as a Blackwatch terminal. Keys 1-5 switch its
-    pages, Enter starts the game. Every setting and the controls are where they were.
-  - Removed: the very experimental shadow options of 0.7.0 and the water reflections.
-    Your other settings and your saves are kept.
+WHAT'S NEW IN 1.0.2 (all versions: CHANGELOG.md)
+  - PROTOTYPE's Options > Video screen (main menu and pause menu) has the port's settings
+    as the game's own rows: Upscaling, Upscaling quality, Sharpening, Display mode, V-Sync.
+    They apply at once. Made in memory from your game's menu files: the game folder is not
+    changed (THEORDER_GAME_MENU=0 keeps the game's own screen).
+  - 1.0.1: the redesigned launcher; the experimental shadow options and water reflections
+    were removed.
 
 SAVES AND LOGS
   Saves:   user\savedata (backed up at every start to user\savedata_backups)

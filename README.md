@@ -6,11 +6,10 @@ system libraries and the [shadPS4](https://github.com/shadps4-emu/shadPS4) video
 PS4 GPU commands into Vulkan. It is built on
 [The Order: 1886 port](https://github.com/mateussmeneses/theorder1886-port) (see [Credits](#credits)).
 
-**Version 1.0.1 — October 25, 2026** ([notes](docs/releases/v1.0.1.md), [changelog](CHANGELOG.md)):
-- A new launcher, redesigned from scratch as a Blackwatch terminal.
-- The experimental shadow options and water reflections are removed.
+**Version 1.0.2 — October 26, 2026** ([notes](docs/releases/v1.0.2.md), [changelog](CHANGELOG.md)):
+- The port's settings in the game's own Options > Video screen (main menu and pause menu).
 
-Graphics modding since [0.7.0](docs/releases/v0.7.0.md); PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
+The redesigned launcher since [1.0.1](docs/releases/v1.0.1.md); graphics modding since [0.7.0](docs/releases/v0.7.0.md); PROTOTYPE 2 since [0.6.0](docs/releases/v0.6.0.md); keyboard and mouse since [0.5.0](docs/releases/v0.5.0.md); first public release: 0.4.0.
 [Download it from Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest).
 
 **This repository and its releases contain no game files.** You need your own legally obtained,
@@ -56,7 +55,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v1.0.1.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v1.0.2.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** (the file tabs at the top left) and press **PLAY** or Enter. The first start prepares the game (about a
