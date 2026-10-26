@@ -80,6 +80,9 @@ typedef struct TheOrderGameMenu {
     /* The game's own database setting (an int) the row also switches, or NULL: kept at 1 while
      * the row's choice is not 0 and 0 when it is (Vibration: the game's own rumble switch). */
     const char *(*linked)(int page, int row);
+    /* Quit to the desktop (the game's own Quit buttons, fe_ExitGame): saves the settings and
+     * closes the window as its close button does. Returns at once; the process ends shortly. */
+    void (*quit)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

@@ -140,8 +140,10 @@ void MenuSet(int page, int row, int index) { g_values[page][row] = index; }
 void MenuReset(int page, int row) { g_values[page][row] = 0; }
 void MenuSave() { ++g_saved; }
 const char* MenuLinked(int page, int row) { return page == 1 && row == 0 ? "GameSwitch" : nullptr; }
+int g_quits = 0;
+void MenuQuit() { ++g_quits; }
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
-                                MenuLinked};
+                                MenuLinked, MenuQuit};
 
 struct Value {
     std::uint32_t type, pad;
@@ -268,6 +270,9 @@ int main() {
     CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0"), Num(0), Num(0)}).type == 5);   // not a name of ours
     CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0_0x"), Num(0), Num(0)}).type == 5);
     CHECK(LuaCall({Str("fe_IsStorageAvailable")}).type == 5);
+    // Quit to the desktop: the port's, not the game's (the PS4 game has none).
+    calls = LuaCalls();
+    CHECK(LuaCall({Str("fe_ExitGame")}).type != 5 && g_quits == 1 && LuaCalls() == calls);
 
     // The profile's rumble switch: off is handed on as on.
     {

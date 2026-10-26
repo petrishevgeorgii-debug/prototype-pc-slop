@@ -166,6 +166,16 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
         else ret->type = GfxValue::Undefined;
         return true;
     }
+    // Quit to the desktop: the main menu's Quit button and the pause menu's Quit > Quit to desktop
+    // (the PC version's, shown on the PS4 by scripts/proto_menu.py). The PS4 game has no such call.
+    if (!std::strcmp(function, "fe_ExitGame")) {
+        if (!menu->quit) return false;
+        std::printf("Menu: quit to the desktop\n");
+        std::fflush(stdout);
+        menu->quit();
+        ret->type = GfxValue::Null;
+        return true;
+    }
     // db_GetInt(name, profile, index), db_SetInt(name, profile, value, index),
     // fe_RestoreGameDBDefault(name, profile)
     const Setting setting = Parse(Text(args, argc, 1), menu);

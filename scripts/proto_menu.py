@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 5        # of this script's output (part of the cache key)
+VERSION = 6        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -436,6 +436,9 @@ MAIN = 'protomain.gfx'
 NEW_SCREENS = {'protopausegame': ('protodebug.gfx', 'protopausecontroller.gfx'),
                'protogameoption': ('protodevmenu.gfx', 'protocontrolleroption.gfx')}
 DISPLAY_INPUTS = (*PAUSE_SCREENS, *MAIN_SCREENS, HUB, MAIN, 'protodebug.gfx', 'protodevmenu.gfx')
+# Quit to the desktop: the PC version's Quit button of the main menu and Quit to desktop row of
+# the pause menu's Quit screen, which the PS4 game hides (patched when found, each on its own).
+QUIT_INPUTS = ('protomainmenu.gfx', 'protoquit.gfx')
 
 
 def patch_main(data):
@@ -459,6 +462,8 @@ MARKERS = {
     'protomain.gfx': (b'protopausegame.swf', b'protogameoption.swf', b'RegisterScreen'),
     'protodebug.gfx': (b'MakeAlexInvulnerable', b'ActivatePowerList'),
     'protodevmenu.gfx': (b'GotoMissionSelect', b'SELECT MISSION'),
+    'protomainmenu.gfx': (b'mcBtnQuit', b'GotoQuit', b'mcBtnSwitchProfile'),
+    'protoquit.gfx': (b'QuitToDesktop', b'DetermineQuitOptions'),
     OVERLAY: (b'VideoOptionsOverlay', b'ControllerOptionsOverlay', b'tglResolution'),
 }
 
@@ -490,7 +495,46 @@ def patch_all(movies, label):
         out[MAIN] = patch_main(movies[MAIN])
         for screen, (target, source) in NEW_SCREENS.items():
             out[target] = display_screen(movies[source], screen == 'protopausegame', label)
+    for name in QUIT_INPUTS:
+        if name in movies:
+            try:
+                out[name] = (main_menu_quit if name == 'protomainmenu.gfx' else pause_quit)(movies[name])
+            except (ValueError, StopIteration, IndexError):
+                pass  # another build of the screen: it stays as it is
     return out
+
+
+def on_pc(data, follows, what, within=4):
+    """The movie with one `if (_global.PLATFORM == _global.RAD_WIN32)` made always true: the
+    first one whose next `within` actions have a Push whose values `follows` takes."""
+    def locate(acts):
+        for i in range(len(acts) - 7):
+            if is_push(acts[i], 'PLATFORM') and acts[i + 1][1] == 0x4E and is_push(acts[i + 2], 'RAD_WIN32') \
+                    and acts[i + 3][1] == 0x4E and acts[i + 4][1] == 0x49 and acts[i + 5][1] == 0x12 \
+                    and acts[i + 6][1] == 0x9D \
+                    and any(a[1] == 0x96 and a[4] and follows(a[4]) for a in acts[i + 7:i + 7 + within]):
+                lo, hi = whole(acts[i + 6])
+                return lo, hi, bytes([0x17])  # Pop the condition instead of branching on it
+        return None
+    return edit_code(data, locate, what)
+
+
+def main_menu_quit(data):
+    """protomainmenu.gfx: the PC version's Quit button (fe_ExitGame, game/p1/options_menu.cpp)
+    after Extras, named Quit game, asking "Quit to desktop?"."""
+    quit_button = lambda v: 'mcBtnQuit' in v or 'GotoQuit' in v
+    for what in ('the Quit button', 'the Quit button\'s label', 'the Quit button\'s action'):
+        data = on_pc(data, quit_button, what)
+    data = replace_push(data, lambda a: is_push(a, exact=['$QUIT', 1, 'mcBtnQuit']),
+                        lambda v: ['$QUIT_GAME', 1, 'mcBtnQuit'], 'the Quit button\'s label')
+    # The PC text $QUITTODESKTOP is not in the PS4's text bible; $QUITDESKTOP (the pause menu's) is.
+    return replace_push(data, lambda a: is_push(a, '$QUITTODESKTOP'),
+                        lambda v: ['$QUITDESKTOP' if x == '$QUITTODESKTOP' else x for x in v], 'the Quit question')
+
+
+def pause_quit(data):
+    """protoquit.gfx (pause menu > Quit): Quit to desktop after Quit to main menu."""
+    return on_pc(data, lambda v: '$QUITDESKTOP' in v, 'the Quit to desktop row', within=16)
 
 
 def display_label(language):
@@ -857,6 +901,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
     display_sources = [hud / n for n in DISPLAY_INPUTS]
+    quit_sources = [hud / n for n in QUIT_INPUTS]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
@@ -870,7 +915,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
                 bases[archive.name] = candidate
                 break
     label = display_label(language)
-    inputs = sorted(set(sources + [d for d in display_sources if d.is_file()]))
+    inputs = sorted(set(sources + [d for d in (*display_sources, *quit_sources) if d.is_file()]))
     key = hashlib.sha256(json.dumps({
         'v': VERSION, 'loose': loose, 'label': label,
         'files': [fingerprint(s) for s in (inputs if loose else archives)],
@@ -884,7 +929,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, 'protopausegame.gfx', 'protogameoption.gfx']
+    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, *QUIT_INPUTS, 'protopausegame.gfx', 'protogameoption.gfx']
 
     def clean():
         stamp.unlink(missing_ok=True)
@@ -897,8 +942,10 @@ def generate(game, out, log=print, base_roots=(), language=None):
             display = all(d.is_file() for d in display_sources)
             if display:
                 movies.update({d.name: loose_movie(d) for d in display_sources})
+            movies.update({q.name: loose_movie(q) for q in quit_sources if q.is_file()})
             target.mkdir(parents=True, exist_ok=True)
-            for name, data in patch_all(movies, label if display else None).items():
+            patched = patch_all(movies, label if display else None)
+            for name, data in patched.items():
                 (target / name.lower()).write_bytes(data)
         else:
             found = archive_movies(archives)
@@ -924,6 +971,9 @@ def generate(game, out, log=print, base_roots=(), language=None):
     stamp.write_text(json.dumps({'key': key, 'display': display}), encoding='utf-8')
     log(f'Menu: the port\'s settings in Options > Video and Controller{" and a Display screen" if display else ""} '
         f'({"loose files" if loose else "archive patches"})')
+    quits = [n for n in QUIT_INPUTS if n in patched]
+    log(f'Menu: quit to the desktop from {" and ".join({"protomainmenu.gfx": "the main menu", "protoquit.gfx": "the pause menu"}[n] for n in quits)}'
+        if quits else 'Menu: no quit to the desktop (the main menu and quit screens were not found or not recognised)')
     return out
 
 

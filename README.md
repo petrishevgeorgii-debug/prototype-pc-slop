@@ -99,6 +99,9 @@ them too. The port makes this screen from your game's own menu files when the ga
 files in `p1\art\hud`, or inside the `p1\*.rcf` archives) and the game reads the port's copy:
 the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own screens.
 
+**Quit game** in the main menu and **Quit > Quit to desktop** in the pause menu close the game (the
+PC version's own buttons, which the PS4 version hides).
+
 A **Display** screen (a fourth category of the pause menu's options, a fourth button of the main
 menu's Options) has **Resolution**, **Frame rate** (30 / 60 FPS), **Display mode**, **V-Sync**,
 **Frame counter** and **Apply resolution**: the resolution and frame rate apply on the next start,

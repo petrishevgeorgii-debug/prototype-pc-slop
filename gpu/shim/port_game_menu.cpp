@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include <SDL3/SDL.h>
+
 #include "../theordergpu.h"
 #include "port_settings.h"
 
@@ -433,7 +435,16 @@ const char* Linked(int page, int row) {
     return page == THEORDER_MENU_CONTROLLER && row == Vibration ? "Proto_Profile_GamepadRumbleEnabled" : nullptr;
 }
 
-const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked};
+/// The game's Quit buttons: the window closes as with its close button (theordergpu.cpp: the
+/// window thread ends the process once the event is read).
+void Quit() {
+    PortSettings::Save();
+    SDL_Event event{};
+    event.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&event);
+}
+
+const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit};
 
 } // namespace
 
