@@ -1043,8 +1043,8 @@ void PrototypeMenu() {
                              "обычный цвет контроллера."),
                            0, {off, on}, s.light_bar ? 1 : 0});
         options.push_back({T("MENU VIBRATION", "ВИБРАЦИЯ В МЕНЮ"),
-                           T("A short tap when you press a button in the game's menus (select, back), or also "
-                             "when you move between items.",
+                           T("A short tap when you press a button in the game's menus (select, back) and scroll "
+                             "the main menu, or also when you move between items in every menu.",
                              "Короткий толчок при нажатии в меню игры (выбор, назад) или также при переходе между "
                              "пунктами."),
                            0, {off, T("PRESSES", "НАЖАТИЯ"), T("ALL", "ВСЕ")}, std::clamp(s.menu_vibration.load(), 0, 2)});

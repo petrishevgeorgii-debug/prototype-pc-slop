@@ -10,10 +10,10 @@
 // port's own Vibration setting (Options > Controller, the port menu, the launcher) sets how strong
 // it is, off included (src/runtime_pad.c).
 //
-// Consuming has no vibration of its own in the game's moves. 0x849900(consumer, victim, how) is
-// the consume itself (the victim is taken in, health gained: it sends ConsumeHealthGainedMessage);
-// the consume moves (ConsumeAction and the others) and the script function go_Consume call it.
-// Each of those calls goes through native code that adds a strong pulse when it is done.
+// Consuming has no vibration of its own in the game's moves. The consume moves start and end the
+// consume effect (the tendrils around the victim) with an EffectConsumeAction: its start (vtable
+// slot 6, 0x856cd0) and its end (slot 7, 0x8570a0) now also start a swelling rumble and end it.
+// (The consume itself, 0x849900, comes only at the end of the move: too late to be felt with it.)
 
 #include <cstdint>
 #include <cstdio>
@@ -41,29 +41,40 @@ NATIVE_REPLACEMENT({"rumble switch (the profile's GamepadRumbleEnabled, kept on)
                     kSwitchChanged, {0xe9, 0x40, 0xff, 0xff, 0xff, 0x48, 0x3b, 0x47, 0x08, 0x75, 0x11, 0x48},
                     reinterpret_cast<void*>(&SetRumble), &g_set_rumble});
 
-std::uint64_t g_consume = 0; ///< 0x849900(consumer, victim, how)
+// EffectConsumeAction (vtable 0x109b420): slot 6 starts the consume effect, slot 7 ends it.
+constexpr std::uint64_t kEffectStart = 0x856cd0, kEffectEnd = 0x8570a0;
+constexpr std::uint64_t kStartSlot = 0x109b450, kEndSlot = 0x109b458;
 
-GUEST_ABI std::uint64_t Consume(std::uint64_t consumer, std::uint64_t victim, std::uint64_t how) {
-    const std::uint64_t result = Guest::Call<std::uint64_t>(g_consume, consumer, victim, how); // (go_Consume returns it)
+GUEST_ABI std::uint64_t ConsumeEffectStart(void* action) {
     static int logged = 0;
     if (logged < 3) {
         ++logged;
         std::printf("Rumble: consume\n");
         std::fflush(stdout);
     }
-    Native::Pulse(Native::Pulses::Game, 1.0f, 0.7f, 450);
-    return result;
+    // Rises over the first half second and holds (2.5 s at most) until the effect ends.
+    Native::Pulse(Native::Pulses::Game, 0.9f, 0.55f, 2500, 500);
+    return Guest::Call<std::uint64_t>(kEffectStart, action);
 }
 
-#define CONSUME_CALL(site, ...)                                                                          \
-    NATIVE_REPLACEMENT({"consume vibration (call of the consume at " #site ")", "rumble", Native::Kind::CallSite, \
-                        site, {__VA_ARGS__}, reinterpret_cast<void*>(&Consume), &g_consume})
+GUEST_ABI std::uint64_t ConsumeEffectEnd(void* action) {
+    Native::Pulse(Native::Pulses::Game, 0, 0, 0);
+    return Guest::Call<std::uint64_t>(kEffectEnd, action);
+}
 
-CONSUME_CALL(0x694a61, 0xe9, 0x9a, 0x4e, 0x1b, 0x00, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00); // go_Consume
-CONSUME_CALL(0x84a0b2, 0xe8, 0x49, 0xf8, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xe0); // ConsumeAction
-CONSUME_CALL(0x84a42a, 0xe8, 0xd1, 0xf4, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xd8);
-CONSUME_CALL(0x84a72c, 0xe8, 0xcf, 0xf1, 0xff, 0xff, 0x31, 0xc0, 0x48, 0x83, 0xc4, 0x08, 0x5b);
-CONSUME_CALL(0x84b127, 0xe8, 0xd4, 0xe7, 0xff, 0xff, 0xc6, 0x43, 0x50, 0x01, 0xc7, 0x45, 0xd0);
-CONSUME_CALL(0x84b28b, 0xe8, 0x70, 0xe6, 0xff, 0xff, 0xc7, 0x45, 0xc0, 0x3c, 0x00, 0x00, 0x00);
+/// The slots hold the relocated addresses of the two functions: they now hold the native ones.
+bool InstallConsumeEffect(std::uint64_t) {
+    auto& start = Guest::At<std::uintptr_t>(kStartSlot);
+    auto& end = Guest::At<std::uintptr_t>(kEndSlot);
+    const auto image = reinterpret_cast<std::uintptr_t>(Guest::Image());
+    if (start != image + kEffectStart || end != image + kEffectEnd) return false;
+    start = reinterpret_cast<std::uintptr_t>(&ConsumeEffectStart);
+    end = reinterpret_cast<std::uintptr_t>(&ConsumeEffectEnd);
+    return true;
+}
+
+NATIVE_REPLACEMENT({"consume vibration (EffectConsumeAction start and end)", "rumble", Native::Kind::Custom,
+                    kEffectStart, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54},
+                    nullptr, nullptr, &InstallConsumeEffect});
 
 } // namespace

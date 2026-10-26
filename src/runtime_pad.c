@@ -453,12 +453,22 @@ static int bar_applied=-1;
 static uint16_t rumble_lo=0xffff, rumble_hi=0xffff;
 static uint64_t rumble_sent_us;
 /* A pulse the port adds to the game's own vibration (runtime_pad_pulse): both motors at their
- * levels (0..1) for the first part of its time, then fading out. */
-static struct { float large, small; uint64_t start_us, end_us; } pulse;
+ * levels (0..1). Without a rise: full for the first part of its time, then fading out. With one:
+ * from a third up to full over the rise, held, fading over its last quarter; ended early with a
+ * short fade (runtime_pad_pulse with 0 ms). */
+static struct { float large, small; uint64_t start_us, end_us, rise_us, fade_us; } pulse;
 static float pulse_level(uint64_t now) {
-    if (now>=pulse.end_us || pulse.end_us<=pulse.start_us) return 0.0f;
+    if (now>=pulse.end_us || pulse.end_us<=pulse.start_us || now<pulse.start_us) return 0.0f;
+    float level;
     const float t=(float)(now-pulse.start_us)/(float)(pulse.end_us-pulse.start_us);
-    return t<0.4f ? 1.0f : (1.0f-t)/0.6f;
+    if (!pulse.rise_us) {
+        level=t<0.4f ? 1.0f : (1.0f-t)/0.6f;
+    } else {
+        const uint64_t in=now-pulse.start_us;
+        level=in<pulse.rise_us ? 0.35f+0.65f*(float)in/(float)pulse.rise_us : t<0.75f ? 1.0f : (1.0f-t)/0.25f;
+    }
+    if (pulse.fade_us && now>=pulse.fade_us) level*=(float)(pulse.end_us-now)/(float)(pulse.end_us-pulse.fade_us);
+    return level;
 }
 static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
     if (g!=feedback_pad) { feedback_pad=g; bar_applied=-1; rumble_lo=rumble_hi=0xffff; }
@@ -737,19 +747,27 @@ static void feedback_now(void) {
     theordergpu_pad_options(&options);
     apply_feedback(current_gamepad(),&options);
 }
-void runtime_pad_pulse(int kind, float large, float small, unsigned ms) {
+void runtime_pad_pulse(int kind, float large, float small, unsigned ms, unsigned rise_ms) {
     TheOrderPadOptions options;
     theordergpu_pad_options(&options);
     if ((kind==RUNTIME_PULSE_MENU_PRESS && options.menu_vibration<1) ||
-        (kind==RUNTIME_PULSE_MENU_MOVE && options.menu_vibration<2) || options.vibration<=0 || !ms) return;
+        (kind==RUNTIME_PULSE_MENU_MOVE && options.menu_vibration<2)) return;
     pthread_mutex_lock(&lock);
     const uint64_t now=now_us();
-    /* A weaker pulse does not cut a stronger one short. */
-    const float left=pulse_level(now);
-    if (left*(pulse.large>pulse.small ? pulse.large : pulse.small) <= (large>small ? large : small)) {
-        pulse.large=large<0 ? 0 : large>1 ? 1 : large;
-        pulse.small=small<0 ? 0 : small>1 ? 1 : small;
-        pulse.start_us=now; pulse.end_us=now+(uint64_t)ms*1000;
+    if (!ms) { /* the end: a short fade from where it is */
+        if (pulse_level(now)>0.0f && !pulse.fade_us) {
+            pulse.fade_us=now;
+            if (pulse.end_us>now+150000) pulse.end_us=now+150000;
+        }
+    } else if (options.vibration>0) {
+        /* A weaker pulse does not cut a stronger one short. */
+        const float left=pulse_level(now);
+        if (left*(pulse.large>pulse.small ? pulse.large : pulse.small) <= (large>small ? large : small)) {
+            pulse.large=large<0 ? 0 : large>1 ? 1 : large;
+            pulse.small=small<0 ? 0 : small>1 ? 1 : small;
+            pulse.start_us=now; pulse.end_us=now+(uint64_t)ms*1000;
+            pulse.rise_us=(uint64_t)rise_ms*1000; pulse.fade_us=0;
+        }
     }
     apply_feedback(current_gamepad(),&options);
     pthread_mutex_unlock(&lock);

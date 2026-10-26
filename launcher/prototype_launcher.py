@@ -1276,8 +1276,9 @@ class Launcher:
         self.stepper('Vibration', 'Strength of the game\'s vibration (rumble). Off: none.', 'vibration', [(v, f'{v}%' if v else 'Off') for v in (0, 25, 50, 75, 100, 150, 200)])
         self.toggle('Light bar', 'DualSense and DualShock 4: the light bar shows the colours the game sets, '
                     'as on the PS4. Off: the controller\'s own colour.', 'light_bar')
-        self.stepper('Menu vibration', 'A short tap when you press a button in the game\'s menus (select, back), '
-                     'or also when you move between items. Consuming always vibrates (with Vibration on).',
+        self.stepper('Menu vibration', 'A short tap when you press a button in the game\'s menus (select, back) and '
+                     'scroll the main menu, or also when you move between items in every menu. Consuming '
+                     'always vibrates (with Vibration on).',
                      'menu_vibration', [(0, 'Off'), (1, 'Presses'), (2, 'All')])
         self.row_y += 20
         self.note('All work live: they are also in the game\'s own Options > Controller screen and on the '

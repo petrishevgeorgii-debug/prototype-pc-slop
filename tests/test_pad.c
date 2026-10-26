@@ -215,19 +215,29 @@ int main(void) {
     /* Pulses the port adds (menus, consuming): over the game's motors, scaled, gone after their
      * time; a menu move only with menu_vibration 2. */
     test_options.vibration=100;
-    runtime_pad_pulse(RUNTIME_PULSE_MENU_MOVE,1.0f,1.0f,200);
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_MOVE,1.0f,1.0f,200,0);
     assert(test_rumble[0]==0 && test_rumble[1]==0);
-    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,0.5f,1.0f,200);
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,0.5f,1.0f,200,0);
     assert(test_rumble[0]==128*257 && test_rumble[1]==65535);
     test_options.menu_vibration=0;
     usleep(250000);
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
-    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,1.0f,1.0f,200);
+    runtime_pad_pulse(RUNTIME_PULSE_MENU_PRESS,1.0f,1.0f,200,0);
     assert(test_rumble[0]==0);
-    runtime_pad_pulse(RUNTIME_PULSE_GAME,1.0f,0.5f,200);
+    runtime_pad_pulse(RUNTIME_PULSE_GAME,1.0f,0.5f,200,0);
     assert(test_rumble[0]==65535 && test_rumble[1]==128*257);
     usleep(250000);
+    data=read_pad();
+    assert(test_rumble[0]==0 && test_rumble[1]==0);
+    /* A swell (consuming): starts at a third, full after its rise, ended with a short fade. */
+    runtime_pad_pulse(RUNTIME_PULSE_GAME,1.0f,1.0f,2500,200);
+    assert(test_rumble[0]>65535/4 && test_rumble[0]<65535/2);
+    usleep(250000);
+    data=read_pad();
+    assert(test_rumble[0]==65535);
+    runtime_pad_pulse(RUNTIME_PULSE_GAME,0,0,0,0);
+    usleep(200000);
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
     test_options.menu_vibration=1;

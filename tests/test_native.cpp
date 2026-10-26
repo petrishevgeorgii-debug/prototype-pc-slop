@@ -37,7 +37,7 @@ int failures = 0;
         }                                                                     \
     } while (0)
 
-constexpr std::size_t kImage = 0x850000, kCode = 0x10000, kData = 0x1000;
+constexpr std::size_t kImage = 0x10a0000, kCode = 0x10000, kData = 0x1000;
 constexpr std::uint64_t kCallee = 0x1000; ///< the stand-in game function: marks byte +0 of its argument
 constexpr std::uint64_t kSite = 0x2000;   ///< a call to it
 std::uint8_t* g_base = nullptr;
@@ -59,31 +59,21 @@ constexpr std::uint64_t kLuaCalls = 0x1f000; ///< the stand-in PlaceLuaCall coun
 // The rumble switch's hand-over (game/p1/rumble.cpp) to 0x568510(on, player), which here stores
 // its arguments at kRumbleArgs.
 constexpr std::uint64_t kSwitchSite = 0x5685cb, kSetRumble = 0x568510, kRumbleArgs = 0x1f100;
-// The consume (0x849900, here: returns 7) and the calls of it the consume vibration takes over.
-constexpr std::uint64_t kConsume = 0x849900;
-struct ConsumeSite {
-    std::uint64_t at;
-    std::initializer_list<int> bytes;
-};
-const ConsumeSite kConsumeSites[] = {
-    {0x694a61, {0xe9, 0x9a, 0x4e, 0x1b, 0x00, 0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00}},
-    {0x84a0b2, {0xe8, 0x49, 0xf8, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xe0}},
-    {0x84a42a, {0xe8, 0xd1, 0xf4, 0xff, 0xff, 0x49, 0x8b, 0x07, 0x48, 0x3b, 0x45, 0xd8}},
-    {0x84a72c, {0xe8, 0xcf, 0xf1, 0xff, 0xff, 0x31, 0xc0, 0x48, 0x83, 0xc4, 0x08, 0x5b}},
-    {0x84b127, {0xe8, 0xd4, 0xe7, 0xff, 0xff, 0xc6, 0x43, 0x50, 0x01, 0xc7, 0x45, 0xd0}},
-    {0x84b28b, {0xe8, 0x70, 0xe6, 0xff, 0xff, 0xc7, 0x45, 0xc0, 0x3c, 0x00, 0x00, 0x00}},
-};
+// The consume effect's start and end (EffectConsumeAction vtable slots 6 and 7, at kEffectSlots):
+// the start's first bytes as in the game (they are checked), stand-ins put in after installing.
+constexpr std::uint64_t kEffectStart = 0x856cd0, kEffectEnd = 0x8570a0, kEffectSlots = 0x109b450;
 
 // Pulses the native layer asks the pad for.
 int g_pulses = 0, g_pulse_kind = -1;
 float g_pulse_large = 0, g_pulse_small = 0;
-unsigned g_pulse_ms = 0;
-void PadPulse(int kind, float large, float small, unsigned ms) {
+unsigned g_pulse_ms = 0, g_pulse_rise = 0;
+void PadPulse(int kind, float large, float small, unsigned ms, unsigned rise_ms) {
     ++g_pulses;
     g_pulse_kind = kind;
     g_pulse_large = large;
     g_pulse_small = small;
     g_pulse_ms = ms;
+    g_pulse_rise = rise_ms;
 }
 
 void PutRel32(std::uint64_t at, std::uint64_t target, std::uint64_t end) {
@@ -114,8 +104,10 @@ void BuildGame() {
     PutRel32(kSetRumble + 8, kRumbleArgs + 4, kSetRumble + 12);
     Put(kSwitchSite, {0xe9, 0x40, 0xff, 0xff, 0xff, 0x48, 0x3b, 0x47, 0x08, 0x75, 0x11, 0x48});
     std::memset(g_base + kRumbleArgs, 0xff, 8);
-    Put(kConsume, {0xb8, 0x07, 0x00, 0x00, 0x00, 0xc3}); // mov eax, 7; ret
-    for (const ConsumeSite& site : kConsumeSites) Put(site.at, site.bytes);
+    Put(kEffectStart, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54});
+    const std::uintptr_t slots[2] = {reinterpret_cast<std::uintptr_t>(g_base + kEffectStart),
+                                     reinterpret_cast<std::uintptr_t>(g_base + kEffectEnd)};
+    std::memcpy(g_base + kEffectSlots, slots, sizeof(slots));
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
@@ -267,16 +259,19 @@ int main() {
         CHECK(got[0] == 1 && got[1] == 3);
     }
 
-    // A consume: the game's own, then a strong pulse.
-    for (const ConsumeSite& site : kConsumeSites) {
-        using Consume = std::uint64_t(GUEST_ABI*)(std::uint64_t, std::uint64_t, std::uint64_t);
-        std::int32_t rel;
-        std::memcpy(&rel, g_base + site.at + 1, 4);
-        auto* target = g_base + site.at + 5 + rel;
-        CHECK(target != g_base + kConsume); // taken over
+    // The consume effect: its start swells the vibration, its end fades it; the game's own run too.
+    {
+        Put(kEffectStart, {0xb8, 0x05, 0x00, 0x00, 0x00, 0xc3}); // stand-ins: mov eax, 5 / 6; ret
+        Put(kEffectEnd, {0xb8, 0x06, 0x00, 0x00, 0x00, 0xc3});
+        using Slot = std::uint64_t(GUEST_ABI*)(void*);
+        std::uintptr_t slots[2];
+        std::memcpy(slots, g_base + kEffectSlots, sizeof(slots));
+        CHECK(slots[0] != reinterpret_cast<std::uintptr_t>(g_base + kEffectStart));
         const int before = g_pulses;
-        CHECK(reinterpret_cast<Consume>(target)(1, 2, 0) == 7);
-        CHECK(g_pulses == before + 1 && g_pulse_kind == 0 && g_pulse_large == 1.0f);
+        CHECK(reinterpret_cast<Slot>(slots[0])(nullptr) == 5);
+        CHECK(g_pulses == before + 1 && g_pulse_kind == 0 && g_pulse_ms > 0 && g_pulse_rise > 0);
+        CHECK(reinterpret_cast<Slot>(slots[1])(nullptr) == 6);
+        CHECK(g_pulses == before + 2 && g_pulse_ms == 0);
     }
 
     // The menus' sounds tap the controller: a press, a move, not a stop, not other calls.
@@ -287,6 +282,9 @@ int main() {
     CHECK(g_pulses == pulses + 2 && g_pulse_kind == 1);
     LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_ht_nav")});
     CHECK(g_pulses == pulses + 3 && g_pulse_kind == 2);
+    LuaCall({Str("snd_PlayPatchOverlapped"), Str("ui_fe_main_nav")}); // the main menu: a press
+    CHECK(g_pulses == pulses + 4 && g_pulse_kind == 1);
+    ++pulses;
     LuaCall({Str("snd_PlayPatch"), Str("fe_select"), Str("play")});
     CHECK(g_pulses == pulses + 4 && g_pulse_kind == 1);
     LuaCall({Str("snd_PlayPatch"), Str("ui_fe_main_select"), Str("stop")});

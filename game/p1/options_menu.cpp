@@ -197,7 +197,8 @@ bool Has(const char* text, const char* part) {
 /// The menus' sounds (protomain's soundmanager: PlaySound(id) is DoCallBack("snd_PlayPatchOverlapped",
 /// patch), a few movies call snd_PlayPatch(patch, "play")) also tap the controller: a press
 /// (select, confirm, back, tab: ui_fe_main_select, ui_fe_ht_back...) or a move (ui_fe_main_nav,
-/// ui_fe_ht_menu_end, ui_fe_ht_slider, fe_move...). The menu_vibration option picks which.
+/// ui_fe_ht_menu_end, ui_fe_ht_slider, fe_move...). The menu_vibration option picks which; moving
+/// in the main menu (ui_fe_main_nav) counts as a press.
 void MenuSound(const GfxValue* args, int argc) {
     const char* function = Text(args, argc, 0);
     if (!function || (std::strcmp(function, "snd_PlayPatchOverlapped") != 0 && std::strcmp(function, "snd_PlayPatch") != 0))
@@ -218,10 +219,12 @@ void MenuSound(const GfxValue* args, int argc) {
         Native::Pulse(Pulses::MenuPress, 0.25f, 0.5f, 90);
     else if (Has(patch, "_tab"))
         Native::Pulse(Pulses::MenuPress, 0.2f, 0.45f, 80);
+    else if (Has(patch, "ui_fe_main_nav"))  // the main menu (New game, Continue, Options...): on Presses too
+        Native::Pulse(Pulses::MenuPress, 0.15f, 0.45f, 60);
     else if (Has(patch, "menu_end") || Has(patch, "locked"))
         Native::Pulse(Pulses::MenuMove, 0.35f, 0.2f, 70);
     else if (Has(patch, "_nav") || Has(patch, "slider") || Has(patch, "fe_move"))
-        Native::Pulse(Pulses::MenuMove, 0.0f, 0.35f, 45);
+        Native::Pulse(Pulses::MenuMove, 0.15f, 0.45f, 60);
 }
 
 GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxValue* ret) {

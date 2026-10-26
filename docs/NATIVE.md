@@ -98,13 +98,14 @@ saves it on.
 
 ### Vibration on consuming and in the menus
 
-The consume moves have no vibration of their own. `0x849900(consumer, victim, how)` is the
-consume itself (it sends `ConsumeHealthGainedMessage`); its six calls (`ConsumeAction` and the
-other consume moves, and `go_Consume`'s tail call) go through native code that adds a strong
-pulse (`Native::Pulse`, `runtime_pad_pulse` in `src/runtime_pad.c`: added to the game's motors and
+The consume moves have no vibration of their own. They start and end the consume effect (the
+tendrils) with an `EffectConsumeAction`; its vtable slots 6 (start, `0x856cd0`) and 7 (end,
+`0x8570a0`) now point to native code that also starts a swelling rumble and fades it out
+(`Native::Pulse`, `runtime_pad_pulse` in `src/runtime_pad.c`: added to the game's motors and
 scaled by the Vibration setting). The menus play their sounds through PlaceLuaCall
 (`snd_PlayPatchOverlapped`, protomain's soundmanager): `options_menu.cpp` taps the controller for
-the select, back and tab sounds, and for the move sounds with Menu vibration set to All.
+the select, back and tab sounds and for scrolling the main menu, and for the other menus' move
+sounds with Menu vibration set to All.
 
 ## Next
 
