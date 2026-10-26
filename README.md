@@ -100,8 +100,7 @@ the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own scre
 A **Display** screen (a fourth category of the pause menu's options, a fourth button of the main
 menu's Options) has **Resolution**, **Frame rate** (30 / 60 FPS), **Display mode**, **V-Sync**,
 **Frame counter** and **Apply resolution**: the resolution and frame rate apply on the next start,
-or at once with *Restart now* (unsaved progress is lost). With archive dumps (`p1\*.rcf`) there is
-no Display screen yet, and Display mode and V-Sync stay on the Video screen.
+or at once with *Restart now* (unsaved progress is lost).
 
 **Options > Controller** has the gamepad's three after Target toggle: **Vibration** (off, 25% to
 200%), **Light bar** (the game's colours on a DualSense or DualShock 4, or the controller's own)

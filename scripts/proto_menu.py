@@ -18,9 +18,13 @@ keyboard...), which the PS4 skips too. Here:
   * protooptionsoverlay.gfx gets the toggles those rows use (tglPort0...), copies of the screens'
     own toggles placed in its VideoOptionsOverlay and ControllerOptionsOverlay.
 
+  * a Display screen for the port's third page (resolution, frame rate...): see "the Display
+    screen" below.
+
 The results go to <out>/p1/art/hud/, or for dumps that keep p1 in archives (art.rcf, ...) a patch
-per archive, <out>/p1/<archive>.patch (THEORDER_FILE_OVERRIDES, src/runtime_file.c). The game
-folder is only read, and nothing written here is part of a release.
+per archive, <out>/p1/<archive>.patch (THEORDER_FILE_OVERRIDES, src/runtime_file.c): the same
+movies, found by what they hold. The game folder is only read, and nothing written here is part
+of a release.
 """
 import argparse
 import hashlib
@@ -33,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 4        # of this script's output (part of the cache key)
+VERSION = 5        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -58,7 +62,6 @@ PAGES = (
          'ControllerOptionsOverlay', 'tglInvertX'),
 )
 SCREENS = tuple(screen for page in PAGES for screen in page.screens)
-MOVIES = len(SCREENS) + 1  # and the overlay
 
 
 # ---- SWF structure
@@ -415,17 +418,79 @@ def patch_sprite(data, sprite, page):
 # ---- the Display screen
 
 # The port's third page gets a screen of its own: "Display", a fourth category of the pause
-# menu's options (Video, Audio, Controller: PROTO_PAUSE_GAME, protopausegame.swf) and a fourth
-# button of the main menu's Options (PROTO_GAMEOPTION, protogameoption.swf). The game still
-# registers both screens (the PC version's Game options) but has no movie for them: the movies are
-# made from the Controller screens' own (their rows replaced by the port's), and the other
-# options screens get the category, the button and the way to it.
+# menu's options (Video, Audio, Controller: PROTO_PAUSE_GAME) and a fourth button of the main
+# menu's Options (PROTO_GAMEOPTION). The game still registers both screens (the PC version's Game
+# options) but has no movies for them (protopausegame.swf, protogameoption.swf), and a new file
+# could not be added to the archives some dumps keep p1 in. So the movies are made from the
+# Controller screens' own (their rows replaced by the port's) in place of two the PS4 game never
+# shows, the developers' pause debug screen and menu (protodebug.gfx, protodevmenu.gfx), and
+# protomain registers the two screens with those files. The other options screens get the
+# category, the button and the way to it.
 DISPLAY = Page(2, 'Display', (), 'Proto_Profile_TargetToggleEnabled', 'mControllerOptions', 'mcControllerOverlay',
                ('Proto_Profile_TargetToggleEnabled',), 'ControllerOptionsOverlay', 'tglInvertX')
 PAUSE_SCREENS = ('protopausevideo.gfx', 'protopauseaudio.gfx', 'protopausecontroller.gfx')
 MAIN_SCREENS = ('protovideooption.gfx', 'protoaudiooption.gfx', 'protocontrolleroption.gfx')
 HUB = 'protooptions.gfx'
-NEW_SCREENS = {'protopausegame.gfx': 'protopausecontroller.gfx', 'protogameoption.gfx': 'protocontrolleroption.gfx'}
+MAIN = 'protomain.gfx'
+# The Display movies: (the file they replace, the Controller screen they are made from).
+NEW_SCREENS = {'protopausegame': ('protodebug.gfx', 'protopausecontroller.gfx'),
+               'protogameoption': ('protodevmenu.gfx', 'protocontrolleroption.gfx')}
+DISPLAY_INPUTS = (*PAUSE_SCREENS, *MAIN_SCREENS, HUB, MAIN, 'protodebug.gfx', 'protodevmenu.gfx')
+
+
+def patch_main(data):
+    """protomain.gfx: the Display screens' files are the debug screens' (see above)."""
+    for screen, (target, _) in NEW_SCREENS.items():
+        old, new = f'{screen}.swf', target.replace('.gfx', '.swf')
+        data = replace_push(data, lambda a, old=old: is_push(a, old),
+                            lambda v, old=old, new=new: [new if x == old else x for x in v], f'the {old} screen')
+    return data
+
+
+# What identifies each movie (in an archive, names are only hashes): strings it holds.
+MARKERS = {
+    'protovideooption.gfx': (b'SettingVideoGammaCorrection', b'mLocalButtonStrings'),
+    'protopausevideo.gfx': (b'SettingVideoGammaCorrection', b'mCategoryNames'),
+    'protocontrolleroption.gfx': (b'Proto_Profile_TargetToggleEnabled', b'mLocalButtonStrings'),
+    'protopausecontroller.gfx': (b'Proto_Profile_TargetToggleEnabled', b'mCategoryNames'),
+    'protoaudiooption.gfx': (b'AudioOptionSelection', b'mLocalButtonStrings'),
+    'protopauseaudio.gfx': (b'PauseAudioOptionSelection', b'mCategoryNames'),
+    'protooptions.gfx': (b'GotoGame', b'GotoController', b'mWidgets'),
+    'protomain.gfx': (b'protopausegame.swf', b'protogameoption.swf', b'RegisterScreen'),
+    'protodebug.gfx': (b'MakeAlexInvulnerable', b'ActivatePowerList'),
+    'protodevmenu.gfx': (b'GotoMissionSelect', b'SELECT MISSION'),
+    OVERLAY: (b'VideoOptionsOverlay', b'ControllerOptionsOverlay', b'tglResolution'),
+}
+
+
+def identify(movie):
+    """The name of a movie this script patches, or None."""
+    found = [name for name, marks in MARKERS.items() if all(m in movie for m in marks)]
+    if len(found) == 1 and found[0] == OVERLAY:
+        try:
+            patch_overlay(movie)
+        except ValueError:
+            return None  # a screen importing the overlay
+    return found[0] if len(found) == 1 else None
+
+
+def patch_all(movies, label):
+    """{name: patched movie} from {name: movie}: the Video and Controller rows, the overlay's
+    toggles and, with `label` and every movie it needs, the Display screen."""
+    out = {}
+    for name in (*SCREENS, OVERLAY):
+        movie = movies[name]
+        out[name] = patch_overlay(movie) if name == OVERLAY else patch_screen(movie, screen_page(movie))
+    if label:
+        for name in PAUSE_SCREENS:
+            out[name] = pause_categories(out.get(name) or movies[name], label)
+        for name in MAIN_SCREENS:
+            out[name] = main_buttons(out.get(name) or movies[name], label)
+        out[HUB] = patch_hub(movies[HUB], label)
+        out[MAIN] = patch_main(movies[MAIN])
+        for screen, (target, source) in NEW_SCREENS.items():
+            out[target] = display_screen(movies[source], screen == 'protopausegame', label)
+    return out
 
 
 def display_label(language):
@@ -711,42 +776,34 @@ def unpack(member):
     return (member, packed) if member[:3] in (b'GFX', b'FWS') else (None, False)
 
 
-def patch_movie(data):
-    """The patched movie, or None when it is none of the screens and the overlay."""
-    if b'VideoOptionsOverlay' in data and b'ControllerOptionsOverlay' in data and b'tglResolution' in data:
-        try:
-            return patch_overlay(data)
-        except ValueError:
-            pass  # a screen importing the overlay
-    page = screen_page(data)
-    return patch_screen(data, page) if page else None
+def archive_movies(archives):
+    """{name: [(archive, entry offset, movie, packed)]} of the movies this script patches in
+    `archives` (a movie can be in more than one)."""
+    found = {}
+    for path in archives:
+        size = path.stat().st_size
+        with open(path, 'rb') as f:
+            for entry_at, _, offset, length in rcf_entries(f):
+                if length < 64 or offset + length > size:
+                    continue
+                f.seek(offset)
+                head = f.read(16)
+                if not (head.startswith(b'RZ\0\0') or head[:3] in (b'GFX', b'FWS', b'CFX', b'CWS')):
+                    continue
+                f.seek(offset)
+                data, packed = unpack(f.read(length))
+                if data is None:
+                    continue
+                name = identify(data)
+                if name:
+                    found.setdefault(name, []).append((path, entry_at, data, packed))
+    return found
 
 
-def patch_archive(path, target, base_patch):
-    """Writes `target` for archive `path` (with `base_patch`'s regions); returns the number of
-    movies patched (0: nothing written)."""
+def write_archive_patch(path, target, base_patch, patched):
+    """Writes `target` for archive `path`: `patched` [(entry offset, member bytes)] added past
+    its end, with `base_patch`'s regions."""
     size = path.stat().st_size
-    patched = []
-    with open(path, 'rb') as f:
-        for entry_at, _, offset, length in rcf_entries(f):
-            if length < 64 or offset + length > size:
-                continue
-            f.seek(offset)
-            head = f.read(16)
-            if not (head.startswith(b'RZ\0\0') or head[:3] in (b'GFX', b'FWS', b'CFX', b'CWS')):
-                continue
-            f.seek(offset)
-            data, packed = unpack(f.read(length))
-            if data is None:
-                continue
-            new = patch_movie(data)
-            if new is None:
-                continue
-            if packed:
-                new = b'RZ\0\0' + struct.pack('<III', 0, len(new), 0) + zlib.compress(new, 6)
-            patched.append((entry_at, new))
-    if not patched:
-        return 0
     regions, vsize = read_patch(base_patch, size) if base_patch else ([], 0)
     end = (max(size, vsize) + 0x7ff) & ~0x7ff
     for entry_at, data in patched:
@@ -765,7 +822,6 @@ def patch_archive(path, target, base_patch):
     tmp = target.with_suffix('.tmp')
     tmp.write_bytes(b'G3PATCH1' + struct.pack('<QQII', size, end, len(regions), 0) + b''.join(table) + payload)
     tmp.replace(target)
-    return len(patched)
 
 
 def fingerprint(path):
@@ -783,23 +839,6 @@ def loose_movie(path):
     return movie
 
 
-def patch_loose(hud, label):
-    """{output name: movie} for loose files; with `label`, the Display screen too."""
-    out = {}
-    for name in (*SCREENS, OVERLAY):
-        movie = loose_movie(hud / name)
-        out[name] = patch_overlay(movie) if name == OVERLAY else patch_screen(movie, screen_page(movie))
-    if label:
-        for name in PAUSE_SCREENS:
-            out[name] = pause_categories(out.get(name) or loose_movie(hud / name), label)
-        for name in MAIN_SCREENS:
-            out[name] = main_buttons(out.get(name) or loose_movie(hud / name), label)
-        out[HUB] = patch_hub(loose_movie(hud / HUB), label)
-        for name, source in NEW_SCREENS.items():
-            out[name] = display_screen(loose_movie(hud / source), name == 'protopausegame.gfx', label)
-    return out
-
-
 def made_display(out):
     """Whether the last generate() into `out` made the Display screen."""
     try:
@@ -810,21 +849,19 @@ def made_display(out):
 
 def generate(game, out, log=print, base_roots=(), language=None):
     """Writes the patched menu movies into `out` (cached); returns `out`, or None when they could
-    not be made. Loose files (p1/art/hud/*.gfx) become files, with the Display screen
-    (made_display); archives get a patch each, which includes the patch of the same archive in
-    the first of `base_roots` that has one (the keyboard prompts'): `out` must then come first in
-    THEORDER_FILE_OVERRIDES. Archives get no Display screen yet: its new movies would be loose
-    files beside them. `language`: the game's (THEORDER_LANGUAGE) for the screen's name."""
+    not be made. Loose files (p1/art/hud/*.gfx) become files; archives get a patch each, which
+    includes the patch of the same archive in the first of `base_roots` that has one (the
+    keyboard prompts'): `out` must then come first in THEORDER_FILE_OVERRIDES. The Display screen
+    is made when every movie it needs is there (made_display). `language`: the game's
+    (THEORDER_LANGUAGE), for the screen's name."""
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
-    display_sources = [hud / n for n in (*PAUSE_SCREENS, *MAIN_SCREENS, HUB)]
+    display_sources = [hud / n for n in DISPLAY_INPUTS]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
         log('Menu: neither p1/art/hud/*.gfx nor p1/*.rcf in the game folder: the game\'s screens stay')
         return None
-    display = loose and all(s.is_file() for s in display_sources)
-    label = display_label(language) if display else None
     bases = {}
     for archive in archives:
         for root in base_roots:
@@ -832,7 +869,8 @@ def generate(game, out, log=print, base_roots=(), language=None):
             if candidate.is_file():
                 bases[archive.name] = candidate
                 break
-    inputs = sorted(set(sources + (display_sources if display else [])))
+    label = display_label(language)
+    inputs = sorted(set(sources + [d for d in display_sources if d.is_file()]))
     key = hashlib.sha256(json.dumps({
         'v': VERSION, 'loose': loose, 'label': label,
         'files': [fingerprint(s) for s in (inputs if loose else archives)],
@@ -846,7 +884,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    names = [*SCREENS, OVERLAY, *PAUSE_SCREENS, *MAIN_SCREENS, HUB, *NEW_SCREENS]
+    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, 'protopausegame.gfx', 'protogameoption.gfx']
 
     def clean():
         stamp.unlink(missing_ok=True)
@@ -855,23 +893,32 @@ def generate(game, out, log=print, base_roots=(), language=None):
     clean()
     try:
         if loose:
+            movies = {s.name: loose_movie(s) for s in sources}
+            display = all(d.is_file() for d in display_sources)
+            if display:
+                movies.update({d.name: loose_movie(d) for d in display_sources})
             target.mkdir(parents=True, exist_ok=True)
-            for name, data in patch_loose(hud, label).items():
+            for name, data in patch_all(movies, label if display else None).items():
                 (target / name.lower()).write_bytes(data)
-            done = MOVIES
         else:
-            done = 0
-            for archive in archives:
-                n = patch_archive(archive, out / 'p1' / (archive.name.lower() + '.patch'), bases.get(archive.name))
-                if n:
-                    log(f'Menu: {archive.name}: {n} menu movies')
-                done += n
+            found = archive_movies(archives)
+            missing = [n for n in (*SCREENS, OVERLAY) if n not in found]
+            if missing:
+                log(f'Menu: {", ".join(missing)} not found in the archives: the game\'s options screens stay')
+                clean()
+                return None
+            display = all(n in found for n in DISPLAY_INPUTS)
+            patched = patch_all({n: places[0][2] for n, places in found.items()}, label if display else None)
+            per_archive = {}
+            for name, data in patched.items():
+                for path, entry_at, _, packed in found[name]:
+                    member = b'RZ\0\0' + struct.pack('<III', 0, len(data), 0) + zlib.compress(data, 6) if packed else data
+                    per_archive.setdefault(path, []).append((entry_at, member))
+            for path, members in per_archive.items():
+                write_archive_patch(path, out / 'p1' / (path.name.lower() + '.patch'), bases.get(path.name), members)
+                log(f'Menu: {path.name}: {len(members)} menu movies')
     except (ValueError, OSError, struct.error, StopIteration, IndexError, KeyError, zlib.error) as error:
         log(f'Menu: the game\'s options screens stay ({error})')
-        clean()
-        return None
-    if done != MOVIES:
-        log(f'Menu: {done} menu movies found, not {MOVIES}: the game\'s options screens stay')
         clean()
         return None
     stamp.write_text(json.dumps({'key': key, 'display': display}), encoding='utf-8')

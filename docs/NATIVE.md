@@ -79,12 +79,14 @@ ask for these: the Video screens (`protovideooption.gfx`, `protopausevideo.gfx`:
 a loop over the port's rows instead of the PC version's rows the PS4 hides) and the Controller
 screens (`protocontrolleroption.gfx`, `protopausecontroller.gfx`: after Target toggle, instead of
 the PS3's Rumble row and the PC's mouse and keyboard rows), and gives `protooptionsoverlay.gfx`
-the toggles they use (in `VideoOptionsOverlay` and `ControllerOptionsOverlay`). With loose game
-files it also makes a Display screen for page 2: the movies of the PC version's Game options screens
-(`protopausegame.gfx`, `protogameoption.gfx`, still registered by the game as `PROTO_PAUSE_GAME`
-and `PROTO_GAMEOPTION`) from the Controller screens' own, a fourth category in the pause options
-screens (`mCategoryNames`, `GetCategoryIndexFromScreenName`, `OnCategoryChange`) and a fourth
-button in the main menu's Options (`protooptions.gfx`'s own `GotoGame`) and its screens' lists. The files are made from the player's own when
+the toggles they use (in `VideoOptionsOverlay` and `ControllerOptionsOverlay`). It also makes a
+Display screen for page 2: the PC version's Game options screens (`PROTO_PAUSE_GAME`,
+`PROTO_GAMEOPTION`, still registered by the game, without movies) get movies made from the
+Controller screens' own, in place of the developers' pause debug screen and menu
+(`protodebug.gfx`, `protodevmenu.gfx`: archives cannot get new files), which `protomain.gfx`
+gives them; the pause options screens get a fourth category (`mCategoryNames`,
+`GetCategoryIndexFromScreenName`, `OnCategoryChange`) and the main menu's Options a fourth button
+(`protooptions.gfx`'s own `GotoGame`), its screens' lists too. The files are made from the player's own when
 the game starts and read in place of the game's (`THEORDER_FILE_OVERRIDES`).
 
 `scripts/proto_menu.py` can be run on its own (`python scripts/proto_menu.py <game> <out>`); its
