@@ -48,6 +48,14 @@ typedef struct {
     int wheel;
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
+/* Gamepad options (theorder.ini, the port menu, the launcher), read live by runtime_pad.c:
+ * vibration strength in percent (0 off), light_bar 1: the game's colours, gyro 1: gyro aiming,
+ * gyro_sensitivity: camera turn per controller turn (1.0 = the same angle). */
+typedef struct {
+    int vibration, light_bar, gyro;
+    float gyro_sensitivity;
+} TheOrderPadOptions;
+void theordergpu_pad_options(TheOrderPadOptions *out);
 /* PROTOTYPE: the view axis (unit vector, world space) of the last frame's camera, a counter that
  * grows with every new camera and its time (steady clock, ns); 0 before the first camera (it is
  * found while the camera is tracked, THEORDER_UPSCALER not "none"). For mouse look (runtime_pad.c). */

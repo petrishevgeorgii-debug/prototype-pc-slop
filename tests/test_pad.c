@@ -10,6 +10,15 @@ static int capture;
 int theordergpu_overlay_captures_input(void) { return capture; }
 static TheOrderMouse test_mouse;
 void theordergpu_mouse_take(TheOrderMouse *out) { *out=test_mouse; test_mouse.dx=test_mouse.dy=0; test_mouse.wheel=0; }
+static TheOrderPadOptions test_options={100,1,0,2.0f};
+void theordergpu_pad_options(TheOrderPadOptions *out) { *out=test_options; }
+/* What the virtual controller was asked for. */
+static Uint8 test_led[3]={1,1,1};
+static Uint16 test_rumble[2]={1,1};
+static bool test_sensors;
+static bool SDLCALL test_set_led(void *u, Uint8 r, Uint8 g, Uint8 b) { (void)u; test_led[0]=r; test_led[1]=g; test_led[2]=b; return true; }
+static bool SDLCALL test_set_rumble(void *u, Uint16 low, Uint16 high) { (void)u; test_rumble[0]=low; test_rumble[1]=high; return true; }
+static bool SDLCALL test_set_sensors(void *u, bool on) { (void)u; test_sensors=on; return true; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;
@@ -127,6 +136,12 @@ int main(void) {
     desc.product_id=0x6189;
     desc.ntouchpads=1;
     desc.touchpads=&touch;
+    SDL_VirtualJoystickSensorDesc gyro={SDL_SENSOR_GYRO,250.0f};
+    desc.nsensors=1;
+    desc.sensors=&gyro;
+    desc.SetLED=test_set_led;
+    desc.Rumble=test_set_rumble;
+    desc.SetSensorsEnabled=test_set_sensors;
     SDL_JoystickID id=SDL_AttachVirtualJoystick(&desc);
     assert(id!=0);
     SDL_Joystick *joystick=SDL_OpenJoystick(id);
@@ -186,6 +201,42 @@ int main(void) {
     usleep(220000);
     data=read_pad();
     assert(data.buttons==0 && data.touch_count==0);
+    /* Light bar and vibration: the game's colour and motors reach the controller, the motors
+     * scaled by the vibration option; the options apply on the next read. */
+    assert(pad_light_bar(1,(const uint8_t[]){200,10,20,0})==0);
+    assert(test_led[0]==200 && test_led[1]==10 && test_led[2]==20);
+    assert(pad_vibration(1,(const uint8_t[]){255,128})==0);
+    assert(test_rumble[0]==65535 && test_rumble[1]==128*257);
+    test_options.vibration=50;
+    data=read_pad();
+    assert(test_rumble[0]==65535/2 && test_rumble[1]==128*257/2);
+    assert(pad_vibration(1,(const uint8_t[]){0,0})==0);
+    assert(test_rumble[0]==0 && test_rumble[1]==0);
+    test_options.light_bar=0;
+    data=read_pad();
+    assert(test_led[0]==0 && test_led[1]==0 && test_led[2]==0x40); /* the player's blue again */
+    test_options.light_bar=1;
+    assert(pad_reset_light_bar(1)==0);
+    assert(test_led[2]==0x40);
+    /* Gyro aiming: turning the controller left (positive yaw) turns the on-foot camera left. */
+    look_original=(void *)1;
+    __atomic_store_n(&look_camera_us,now_us(),__ATOMIC_RELAXED);
+    data=read_pad();
+    assert(!test_sensors); /* off by default */
+    test_options.gyro=1;
+    data=read_pad();
+    assert(test_sensors);
+    assert(SDL_SendJoystickVirtualSensorData(joystick,SDL_SENSOR_GYRO,0,(const float[]){0.0f,1.0f,0.0f},3));
+    pump();
+    usleep(20000);
+    __atomic_store_n(&look_camera_us,now_us(),__ATOMIC_RELAXED);
+    data=read_pad();
+    assert(look_yaw<-0.01 && look_yaw>-0.2 && look_pitch==0.0);
+    test_options.gyro=0;
+    data=read_pad();
+    assert(!test_sensors);
+    look_original=NULL;
+    look_clear();
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;
@@ -226,5 +277,6 @@ int main(void) {
 
     SDL_Quit();
     unlink(path);
-    puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map");
+    puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map, "
+         "light bar, vibration, gyro");
 }

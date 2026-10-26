@@ -47,6 +47,8 @@ fix is applied in memory, and the port checks the executables against the untouc
   upscaling, sharpening, display mode and V-Sync, as the game's own rows.
 - A **port menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse, for everything else.
+- **DualSense features** — the game's light bar colours and vibration (with a strength setting), and
+  optional gyro aiming for the on-foot camera.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),

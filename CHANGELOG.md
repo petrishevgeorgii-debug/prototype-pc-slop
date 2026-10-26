@@ -3,6 +3,15 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## Unreleased
+
+### Added
+- DualSense and other gamepads:
+  - **Light bar:** the colours the game sets reach a DualSense or DualShock 4, as on the PS4 (`scePadSetLightBar`, `scePadResetLightBar`; they were ignored).
+  - **Vibration** runs as long as the game asks, as on the PS4 (it stopped after a second), with a strength setting from off to 200%.
+  - **Gyro aiming** (off by default): turning the controller turns the on-foot camera, through the same path as mouse look, with a sensitivity setting. Any controller with a gyro that SDL reads.
+  - Settings: the launcher's new CONTROLLER page and the port menu's new CONTROLLER page (live); `theorder.ini` keys `vibration`, `light_bar`, `gyro`, `gyro_sensitivity`.
+
 ## 1.0.3 — October 26, 2026 ([notes](docs/releases/v1.0.3.md))
 
 ### Fixed

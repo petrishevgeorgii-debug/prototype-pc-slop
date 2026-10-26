@@ -818,6 +818,9 @@ void ButtonGlyph(ImDrawList* dl, ImVec2 c, float r, int symbol, ImU32 color) {
     }
 }
 
+/// Gyro aiming speeds the menu offers, in percent.
+constexpr int kGyroSpeeds[] = {25, 50, 75, 100, 150, 200, 250, 300, 400, 500};
+
 struct Option {
     const char* label;
     const char* help;
@@ -844,10 +847,10 @@ void PrototypeMenu() {
 
     // ---- the options of each category
     static const char* const categories_en[] = {"UPSCALING", "IMAGE", "DISPLAY", "FSR TESTS",
-                                                "SHADERS"};
+                                                "SHADERS", "CONTROLLER"};
     static const char* const categories_ru[] = {"АПСКЕЙЛИНГ", "ИЗОБРАЖЕНИЕ", "ЭКРАН", "ТЕСТЫ FSR",
-                                                "ШЕЙДЕРЫ"};
-    constexpr int CategoryCount = 5;
+                                                "ШЕЙДЕРЫ", "КОНТРОЛЛЕР"};
+    constexpr int CategoryCount = 6;
     auto toggle_on = [](u64 bit) {
         return (__atomic_load_n(&runtime_disabled_optimizations, __ATOMIC_RELAXED) & bit) != 0;
     };
@@ -1026,6 +1029,39 @@ void PrototypeMenu() {
         options.push_back({T("FOLDER", "ПАПКА"), "", 2, {folder}, 0, true});
         break;
     }
+    case 5: {
+        // Gamepads (runtime_pad.c): the game's vibration and light bar, gyro aiming.
+        Option vibration{T("VIBRATION", "ВИБРАЦИЯ"),
+                         T("Strength of the game's vibration. Off: none.", "Сила вибрации игры. Выкл: без вибрации."),
+                         0, {}, 0};
+        for (int i = 0; i <= 8; ++i) {
+            vibration.values.push_back(i ? std::to_string(i * 25) + "%" : off);
+            if (s.vibration.load() >= i * 25) vibration.value = i;
+        }
+        options.push_back(vibration);
+        options.push_back({T("LIGHT BAR", "СВЕТОВАЯ ПАНЕЛЬ"),
+                           T("DualSense / DualShock 4: the light bar shows the colours the game sets, as on the "
+                             "PS4. Off: the controller's own colour.",
+                             "DualSense / DualShock 4: световая панель показывает цвета игры, как на PS4. Выкл: "
+                             "обычный цвет контроллера."),
+                           0, {off, on}, s.light_bar ? 1 : 0});
+        options.push_back({T("GYRO AIMING", "ГИРОСКОП"),
+                           T("Turn the controller to turn the camera on foot, together with the right stick "
+                             "(controllers with a gyro: DualSense, DualShock 4, Switch Pro...).",
+                             "Поворот контроллера поворачивает камеру (пешком), вместе с правым стиком "
+                             "(контроллеры с гироскопом: DualSense, DualShock 4, Switch Pro...)."),
+                           0, {off, on}, s.gyro ? 1 : 0});
+        Option speed{T("GYRO SENSITIVITY", "ЧУВСТВИТЕЛЬНОСТЬ ГИРОСКОПА"),
+                     T("How far the camera turns for a turn of the controller: 100% the same angle.",
+                       "Насколько поворачивается камера на поворот контроллера: 100% на тот же угол."),
+                     0, {}, 0, s.gyro.load()};
+        for (size_t i = 0; i < std::size(kGyroSpeeds); ++i) {
+            speed.values.push_back(std::to_string(kGyroSpeeds[i]) + "%");
+            if (s.gyro_sensitivity.load() >= kGyroSpeeds[i]) speed.value = int(i);
+        }
+        options.push_back(speed);
+        break;
+    }
     default:
         options.push_back({T("DISPLAY MODE", "РЕЖИМ ЭКРАНА"),
                            T("Windowed, borderless window or exclusive fullscreen.",
@@ -1086,6 +1122,10 @@ void PrototypeMenu() {
         case 65: PortShaderMods::SetHidden(shader_pick, value == 1); break;
         case 66: PortShaderMods::ShowAll(); break;
         case 67: PortShaderMods::Export(shader_pick); break;
+        case 80: s.vibration = value * 25; break;
+        case 81: s.light_bar = value == 1; break;
+        case 82: s.gyro = value == 1; break;
+        case 83: s.gyro_sensitivity = kGyroSpeeds[value]; break;
         default: break;
         }
     };
@@ -1122,6 +1162,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.gyro = false; s.gyro_sensitivity = 200; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
@@ -1280,6 +1321,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.gyro = false; s.gyro_sensitivity = 200; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;

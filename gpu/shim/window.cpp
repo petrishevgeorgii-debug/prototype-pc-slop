@@ -28,6 +28,14 @@ extern "C" void theordergpu_mouse_take(TheOrderMouse* out) {
     mouse.wheel = 0;
 }
 
+extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {
+    const auto& s = PortSettings::Get();
+    out->vibration = s.vibration;
+    out->light_bar = s.light_bar ? 1 : 0;
+    out->gyro = s.gyro ? 1 : 0;
+    out->gyro_sensitivity = s.gyro_sensitivity / 100.0f;
+}
+
 namespace Frontend {
 
 WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}, height{height_} {

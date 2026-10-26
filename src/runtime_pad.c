@@ -441,6 +441,59 @@ static bool key_source_down(const bool *k, int source) {
     return mouse_held & SDL_BUTTON_MASK(source-SRC_MOUSE);
 }
 
+/* Feedback the game asks for, kept applied by apply_feedback (also after a reconnect or a change of
+ * the options): the light bar colour (scePadSetLightBar; reset: the controller's own player blue)
+ * and the two motors (scePadSetVibration: they run until the game changes them, as on the PS4; SDL
+ * stops a rumble after its duration, so a running one is sent again every few seconds), scaled by
+ * the vibration option. Called under lock. */
+static struct { uint8_t r, g, b; int set; } bar_game;
+static uint8_t rumble_large, rumble_small;
+static SDL_Gamepad *feedback_pad;
+static int bar_applied=-1;
+static uint16_t rumble_lo=0xffff, rumble_hi=0xffff;
+static uint64_t rumble_sent_us;
+static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
+    if (g!=feedback_pad) { feedback_pad=g; bar_applied=-1; rumble_lo=rumble_hi=0xffff; }
+    if (!g) return;
+    const int want=o->light_bar && bar_game.set ? bar_game.r<<16 | bar_game.g<<8 | bar_game.b
+                   : bar_applied<0 ? -1 : 0x000040; /* untouched until the game sets a colour */
+    if (want>=0 && want!=bar_applied) {
+        SDL_SetGamepadLED(g,(uint8_t)(want>>16),(uint8_t)(want>>8),(uint8_t)want);
+        bar_applied=want;
+    }
+    const int strength=o->vibration<0 ? 0 : o->vibration>200 ? 200 : o->vibration;
+    const int lo=rumble_large*257*strength/100, hi=rumble_small*257*strength/100;
+    const uint16_t l=(uint16_t)(lo>65535 ? 65535 : lo), h=(uint16_t)(hi>65535 ? 65535 : hi);
+    const uint64_t now=now_us();
+    if (l!=rumble_lo || h!=rumble_hi || ((l || h) && now-rumble_sent_us>5000000)) {
+        SDL_RumbleGamepad(g,l,h,10000);
+        rumble_lo=l; rumble_hi=h; rumble_sent_us=now;
+    }
+}
+/* Gyro aiming: the controller's turn (rad/s, SDL's axes: x pitch, y yaw, counter-clockwise
+ * positive) times the option's speed turns the on-foot camera like the mouse does (look_add),
+ * with a small dead band for the sensor's noise. Vehicles and menus are left to the sticks. */
+static uint64_t gyro_us;
+static double gyro_band(double v) { const double band=0.012; return v>band ? v-band : v<-band ? v+band : 0.0; }
+static void gyro_input(SDL_Gamepad *g, const TheOrderPadOptions *o) {
+    if (!g || !o->gyro || !SDL_GamepadHasSensor(g,SDL_SENSOR_GYRO)) {
+        if (g && gyro_us && SDL_GamepadHasSensor(g,SDL_SENSOR_GYRO)) SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_GYRO,false);
+        gyro_us=0;
+        return;
+    }
+    if (!SDL_GamepadSensorEnabled(g,SDL_SENSOR_GYRO)) {
+        SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_GYRO,true);
+        puts("Runtime: gyro aiming on");
+    }
+    float rate[3]={0,0,0};
+    const uint64_t now=now_us();
+    const double dt=gyro_us ? (double)(now-gyro_us)/1e6 : 0.0;
+    gyro_us=now;
+    if (!SDL_GetGamepadSensorData(g,SDL_SENSOR_GYRO,rate,3) || dt<=0.0 || dt>0.1) return;
+    const double k=o->gyro_sensitivity*dt;
+    const double yaw=-gyro_band(rate[1])*k, pitch=-gyro_band(rate[0])*k;
+    if ((yaw!=0.0 || pitch!=0.0) && direct_look(now)) look_add(yaw,pitch,now);
+}
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
@@ -454,6 +507,8 @@ static void sample_host(PadData *d) {
     if (theordergpu_overlay_captures_input()) return; /* settings menu open: neutral input */
     const bool *k=SDL_WasInit(SDL_INIT_VIDEO) ? SDL_GetKeyboardState(NULL) : NULL;
     load_button_maps();
+    TheOrderPadOptions options;
+    theordergpu_pad_options(&options);
     if (g) {
         for (size_t i=0;i<pad_map.count;++i)
             if (SDL_GetGamepadButton(g,(SDL_GamepadButton)pad_map.entries[i].source)) d->buttons|=pad_map.entries[i].ps;
@@ -468,6 +523,7 @@ static void sample_host(PadData *d) {
         const int moved=abs(d->left_x-128)>64 || abs(d->left_y-128)>64 || abs(d->right_x-128)>64 ||
                         abs(d->right_y-128)>64;
         if (d->buttons || d->l2>60 || d->r2>60 || moved) note_device(2);
+        apply_feedback(g,&options);
         if (SDL_GetNumGamepadTouchpads(g)>0) {
             const int fingers=SDL_GetNumGamepadTouchpadFingers(g,0);
             for (int finger=0;finger<fingers && d->touch_count<2;++finger) {
@@ -480,7 +536,8 @@ static void sample_host(PadData *d) {
             }
         }
     }
-    mouse_input(d);
+    mouse_input(d); /* first: without a captured mouse it drops the camera turn not yet given */
+    gyro_input(g,&options);
     /* The keyboard and mouse work with or without a gamepad: their buttons add to the pad's, and a
      * stick follows the keys only while one of them is held. */
     uint32_t keys=0;
@@ -685,12 +742,22 @@ static ABI int32_t pad_info(int32_t handle, ControllerInfo *info) {
     pthread_mutex_unlock(&lock);
     return 0;
 }
+static void feedback_now(void) {
+    TheOrderPadOptions options;
+    theordergpu_pad_options(&options);
+    apply_feedback(current_gamepad(),&options);
+}
 static ABI int32_t pad_vibration(int32_t handle, const uint8_t *param) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;
-    if (!param) return ERR_INVALID_ARG;
+    if (!param) return ERR_INVALID_ARG; /* OrbisPadVibrationParam: large motor, small motor */
     pthread_mutex_lock(&lock);
-    SDL_Gamepad *g=current_gamepad();
-    if (g) SDL_RumbleGamepad(g,(uint16_t)(param[0]*257),(uint16_t)(param[1]*257),1000);
+    static int logged;
+    if ((param[0]!=rumble_large || param[1]!=rumble_small) && logged<12) {
+        ++logged;
+        printf("Runtime: pad vibration %u %u\n",param[0],param[1]);
+    }
+    rumble_large=param[0]; rumble_small=param[1];
+    feedback_now();
     pthread_mutex_unlock(&lock);
     return 0;
 }
@@ -699,10 +766,28 @@ static ABI int32_t pad_ok_handle_flag(int32_t handle, uint8_t flag) { (void)flag
 
 static ABI int32_t pad_light_bar(int32_t handle, const uint8_t *rgb) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;
-    (void)rgb; return 0;
+    if (!rgb) return ERR_INVALID_ARG; /* OrbisPadLightBarParam: r, g, b */
+    pthread_mutex_lock(&lock);
+    static int logged;
+    if ((!bar_game.set || rgb[0]!=bar_game.r || rgb[1]!=bar_game.g || rgb[2]!=bar_game.b) && logged<12) {
+        ++logged;
+        printf("Runtime: pad light bar %u %u %u\n",rgb[0],rgb[1],rgb[2]);
+    }
+    bar_game.r=rgb[0]; bar_game.g=rgb[1]; bar_game.b=rgb[2]; bar_game.set=1;
+    feedback_now();
+    pthread_mutex_unlock(&lock);
+    return 0;
+}
+static ABI int32_t pad_reset_light_bar(int32_t handle) {
+    if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;
+    pthread_mutex_lock(&lock);
+    bar_game.r=0x00; bar_game.g=0x00; bar_game.b=0x40; bar_game.set=1; /* the PS4's player 1 blue */
+    feedback_now();
+    pthread_mutex_unlock(&lock);
+    return 0;
 }
 static const RuntimeExport exports[]={
-    {"scePadSetLightBar",pad_light_bar}, {"scePadResetLightBar",pad_ok_handle},
+    {"scePadSetLightBar",pad_light_bar}, {"scePadResetLightBar",pad_reset_light_bar},
     {"scePadInit",pad_init}, {"scePadOpen",pad_open}, {"scePadClose",pad_close},
     {"scePadReadState",pad_read_state}, {"scePadRead",pad_read},
     {"scePadGetControllerInformation",pad_info}, {"scePadSetVibration",pad_vibration},
