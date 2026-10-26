@@ -65,15 +65,15 @@ void BuildGame() {
     Put(kPlaceLuaCall, {0xc7, 0x01, 0x05, 0x00, 0x00, 0x00, 0xc3}); // mov dword [rcx], 5; ret
 }
 
-// ---- a stand-in menu of two rows
-int g_values[2] = {1, 0}, g_saved = 0;
-int MenuCount() { return 2; }
-const char* MenuLabel(int row) { return row ? "B" : "A"; }
-int MenuChoices(int row) { return row ? 2 : 3; }
-const char* MenuChoice(int row, int index) { return row == 0 && index == 2 ? "THIRD" : "X"; }
-int MenuGet(int row) { return g_values[row]; }
-void MenuSet(int row, int index) { g_values[row] = index; }
-void MenuReset(int row) { g_values[row] = 0; }
+// ---- a stand-in menu: two Video rows, one Controller row
+int g_values[2][2] = {{1, 0}, {4, 0}}, g_saved = 0;
+int MenuCount(int page) { return page == 0 ? 2 : page == 1 ? 1 : 0; }
+const char* MenuLabel(int page, int row) { return page ? "PAD" : row ? "B" : "A"; }
+int MenuChoices(int page, int row) { return page ? 9 : row ? 2 : 3; }
+const char* MenuChoice(int page, int row, int index) { return !page && row == 0 && index == 2 ? "THIRD" : "X"; }
+int MenuGet(int page, int row) { return g_values[page][row]; }
+void MenuSet(int page, int row, int index) { g_values[page][row] = index; }
+void MenuReset(int page, int row) { g_values[page][row] = 0; }
 void MenuSave() { ++g_saved; }
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave};
 
@@ -154,7 +154,7 @@ int main() {
     native_game_install(&host);
     CHECK(reinterpret_cast<std::uint8_t*>(CallTarget(kSite)) == g_base + kCallee);
 
-    // The Video screen's rows: answered from the menu; the game's own calls go to its Lua. The
+    // The Video and Controller screens' rows: answered from the menu; the game's own calls go to its Lua. The
     // loader's host is a local that is gone when the game runs: so is this one.
     BuildGame();
     {
@@ -163,28 +163,44 @@ int main() {
         native_game_install(local);
         std::memset(static_cast<void*>(local), 0xff, sizeof(*local)); // (kept allocated: reads see the poison)
     }
-    Value r = LuaCall({Str("port_Count")});
+    Value r = LuaCall({Str("port_Count"), Num(0)});
     CHECK(r.type == 3 && r.number == 2);
-    r = LuaCall({Str("port_Label"), Num(1)});
-    CHECK(r.type == 4 && !std::strcmp(r.string, "B"));
-    r = LuaCall({Str("port_Choices"), Num(0)});
-    CHECK(r.type == 3 && r.number == 3);
-    r = LuaCall({Str("port_Choice"), Num(0), Num(2)});
-    CHECK(r.type == 4 && !std::strcmp(r.string, "THIRD"));
-    r = LuaCall({Str("db_GetInt"), Str("PortSetting0"), Num(0), Num(0)});
+    r = LuaCall({Str("port_Count"), Num(1)});
     CHECK(r.type == 3 && r.number == 1);
-    r = LuaCall({Str("db_SetInt"), Str("PortSetting1"), Num(0), Num(1), Num(0)});
-    CHECK(g_values[1] == 1 && g_saved == 1 && r.type != 5);
-    r = LuaCall({Str("fe_RestoreGameDBDefault"), Str("PortSetting0"), Num(0)});
-    CHECK(g_values[0] == 0 && g_saved == 2);
+    r = LuaCall({Str("port_Count"), Num(2)});
+    CHECK(r.type == 3 && r.number == 0); // no such page
+    r = LuaCall({Str("port_Label"), Num(0), Num(1)});
+    CHECK(r.type == 4 && !std::strcmp(r.string, "B"));
+    r = LuaCall({Str("port_Label"), Num(1), Num(0)});
+    CHECK(r.type == 4 && !std::strcmp(r.string, "PAD"));
+    r = LuaCall({Str("port_Choices"), Num(0), Num(0)});
+    CHECK(r.type == 3 && r.number == 3);
+    r = LuaCall({Str("port_Choices"), Num(1), Num(0)});
+    CHECK(r.type == 3 && r.number == 9);
+    r = LuaCall({Str("port_Choice"), Num(0), Num(0), Num(2)});
+    CHECK(r.type == 4 && !std::strcmp(r.string, "THIRD"));
+    r = LuaCall({Str("db_GetInt"), Str("PortSetting0_0"), Num(0), Num(0)});
+    CHECK(r.type == 3 && r.number == 1);
+    r = LuaCall({Str("db_GetInt"), Str("PortSetting1_0"), Num(0), Num(0)});
+    CHECK(r.type == 3 && r.number == 4);
+    r = LuaCall({Str("db_SetInt"), Str("PortSetting0_1"), Num(0), Num(1), Num(0)});
+    CHECK(g_values[0][1] == 1 && g_saved == 1 && r.type != 5);
+    r = LuaCall({Str("db_SetInt"), Str("PortSetting1_0"), Num(0), Num(2), Num(0)});
+    CHECK(g_values[1][0] == 2 && g_saved == 2 && r.type != 5);
+    r = LuaCall({Str("fe_RestoreGameDBDefault"), Str("PortSetting0_0"), Num(0)});
+    CHECK(g_values[0][0] == 0 && g_saved == 3);
     CHECK(LuaCall({Str("db_GetInt"), Str("SettingVideoGammaCorrection"), Num(0), Num(0)}).type == 5);
-    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting7"), Num(0), Num(0)}).type == 5); // no such row
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0_7"), Num(0), Num(0)}).type == 5); // no such row
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting1_1"), Num(0), Num(0)}).type == 5);
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting2_0"), Num(0), Num(0)}).type == 5); // no such page
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0"), Num(0), Num(0)}).type == 5);   // not a name of ours
+    CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0_0x"), Num(0), Num(0)}).type == 5);
     CHECK(LuaCall({Str("fe_IsStorageAvailable")}).type == 5);
 
     // Without the port's menu every call goes to the game.
     BuildGame();
     native_game_install(&host);
-    CHECK(LuaCall({Str("port_Count")}).type == 5);
+    CHECK(LuaCall({Str("port_Count"), Num(0)}).type == 5);
 
     if (failures) {
         std::fprintf(stderr, "native test: %d failures\n", failures);

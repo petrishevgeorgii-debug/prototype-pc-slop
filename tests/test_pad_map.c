@@ -4,7 +4,7 @@
 #include "../src/runtime_pad.c"
 
 int theordergpu_overlay_captures_input(void) { return 0; }
-void theordergpu_pad_options(TheOrderPadOptions *out) { out->vibration=100; out->light_bar=1; out->gyro=0; out->gyro_sensitivity=2.0f; }
+void theordergpu_pad_options(TheOrderPadOptions *out) { out->vibration=100; out->light_bar=1; }
 void theordergpu_mouse_take(TheOrderMouse *out) { memset(out,0,sizeof(*out)); }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;

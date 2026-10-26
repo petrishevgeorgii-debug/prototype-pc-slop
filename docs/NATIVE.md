@@ -68,15 +68,18 @@ the movie's ExternalInterface handler (`0x1caf0`) hands `PlaceLuaCall` on to `0x
 call, which runs the Lua function of that name. That hand-over now goes through native code
 first. It answers:
 
-- `port_Count`, `port_Label(row)`, `port_Choices(row)`, `port_Choice(row, index)`: the port's
-  settings rows (`gpu/shim/port_game_menu.cpp`, `TheOrderGameMenu` in `gpu/theordergpu.h`);
+- `port_Count(page)`, `port_Label(page, row)`, `port_Choices(page, row)`,
+  `port_Choice(page, row, index)`: the port's settings rows of a page, 0 Video and 1 Controller
+  (`gpu/shim/port_game_menu.cpp`, `TheOrderGameMenu` in `gpu/theordergpu.h`);
 - `db_GetInt`, `db_SetInt` and `fe_RestoreGameDBDefault` for the game database names
-  `PortSetting<row>`: the settings themselves.
+  `PortSetting<page>_<row>`: the settings themselves.
 
-Everything else goes to the game's Lua as before. `scripts/proto_menu.py` makes the Video
-screens that ask for these (`protovideooption.gfx` and `protopausevideo.gfx`: after Brightness, a
-loop over the port's rows instead of the PC version's rows the PS4 hides) and gives
-`protooptionsoverlay.gfx` the toggles they use. The files are made from the player's own when
+Everything else goes to the game's Lua as before. `scripts/proto_menu.py` makes the screens that
+ask for these: the Video screens (`protovideooption.gfx`, `protopausevideo.gfx`: after Brightness,
+a loop over the port's rows instead of the PC version's rows the PS4 hides) and the Controller
+screens (`protocontrolleroption.gfx`, `protopausecontroller.gfx`: after Target toggle, instead of
+the PS3's Rumble row and the PC's mouse and keyboard rows), and gives `protooptionsoverlay.gfx`
+the toggles they use (in `VideoOptionsOverlay` and `ControllerOptionsOverlay`). The files are made from the player's own when
 the game starts and read in place of the game's (`THEORDER_FILE_OVERRIDES`).
 
 `scripts/proto_menu.py` can be run on its own (`python scripts/proto_menu.py <game> <out>`); its

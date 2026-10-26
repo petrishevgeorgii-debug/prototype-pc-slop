@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// PROTOTYPE: the port's settings in the game's own Options > Video screen (docs/NATIVE.md).
+// PROTOTYPE: the port's settings in the game's own Options > Video and Options > Controller
+// screens (docs/NATIVE.md).
 //
 // The game's menus are Scaleform movies. Their ActionScript reaches the game's code through
 // ExternalInterface.call("PlaceLuaCall", function, arguments...) (commonregisters.DoCallBack):
 // the movie's ExternalInterface handler (0x1caf0) sees the method name and hands PlaceLuaCall to
 // 0x1cd90, which calls the Lua function of that name and returns its result to the movie.
 //
-// scripts/proto_menu.py rewrites the Video screens (protovideooption.gfx, protopausevideo.gfx) so
-// that after Brightness they ask for the port's rows: port_Count, port_Label(row),
-// port_Choices(row), port_Choice(row, index), and add a game toggle per row whose game database
-// name is "PortSetting<row>". Here the hand-over to 0x1cd90 (a tail call) goes through native
-// code that answers those, and the screen's db_GetInt / db_SetInt / fe_RestoreGameDBDefault for
-// PortSetting names, from the port's settings (gpu/shim/port_game_menu.cpp). Everything else goes
-// to the game's Lua as before. Without the rewritten screens nothing asks for these names.
+// scripts/proto_menu.py rewrites the Video screens (protovideooption.gfx, protopausevideo.gfx)
+// and the Controller screens (protocontrolleroption.gfx, protopausecontroller.gfx) so that after
+// Brightness / Target toggle they ask for the port's rows of their page (0 Video, 1 Controller):
+// port_Count(page), port_Label(page, row), port_Choices(page, row), port_Choice(page, row, index),
+// and add a game toggle per row whose game database name is "PortSetting<page>_<row>". Here the
+// hand-over to 0x1cd90 (a tail call) goes through native code that answers those, and the
+// screens' db_GetInt / db_SetInt / fe_RestoreGameDBDefault for PortSetting names, from the port's
+// settings (gpu/shim/port_game_menu.cpp). Everything else goes to the game's Lua as before.
+// Without the rewritten screens nothing asks for these names.
 
 #include <cstdint>
 #include <cstdio>
@@ -68,11 +71,28 @@ void ReturnText(GfxValue* ret, const char* text) {
     ret->string = buffer;
 }
 
-/// The row of a "PortSetting<row>" database name, or -1.
-int Row(const char* name, int count) {
-    if (!name || std::strncmp(name, "PortSetting", 11) != 0 || name[11] < '0' || name[11] > '9') return -1;
-    const int row = std::atoi(name + 11);
-    return row < count ? row : -1;
+struct Setting {
+    int page = -1, row = -1;
+};
+
+bool Digits(const char*& at, int& value) {
+    if (*at < '0' || *at > '9') return false;
+    value = 0;
+    while (*at >= '0' && *at <= '9' && value < 1000) value = value * 10 + (*at++ - '0');
+    return true;
+}
+
+/// The page and row of a "PortSetting<page>_<row>" database name (page -1: not one).
+Setting Parse(const char* name, const TheOrderGameMenu* menu) {
+    Setting s;
+    if (!name || std::strncmp(name, "PortSetting", 11) != 0) return s;
+    const char* at = name + 11;
+    int page = 0, row = 0;
+    if (!Digits(at, page) || *at++ != '_' || !Digits(at, row) || *at) return s;
+    if (page >= THEORDER_MENU_PAGES || row >= menu->count(page)) return s;
+    s.page = page;
+    s.row = row;
+    return s;
 }
 
 /// The port's answer to a PlaceLuaCall, or false for the game's Lua.
@@ -80,36 +100,38 @@ bool Answer(const GfxValue* args, int argc, GfxValue* ret) {
     const TheOrderGameMenu* menu = Native::Menu();
     const char* function = Text(args, argc, 0);
     if (!menu || !function || !ret) return false;
-    const int count = menu->count();
     if (std::strncmp(function, "port_", 5) == 0) {
-        const int row = Int(args, argc, 1);
+        const int page = Int(args, argc, 1);
+        const int count = page >= 0 && page < THEORDER_MENU_PAGES ? menu->count(page) : 0;
+        const int row = Int(args, argc, 2);
         const bool valid = row >= 0 && row < count;
-        static bool logged = false;
-        if (!logged) {
-            logged = true;
-            std::printf("Menu: the Video screen shows the port's %d settings\n", count);
+        static bool logged[THEORDER_MENU_PAGES] = {};
+        if (!std::strcmp(function, "port_Count") && count && !logged[page]) {
+            logged[page] = true;
+            std::printf("Menu: the %s screen shows the port's %d settings\n", page ? "Controller" : "Video", count);
             std::fflush(stdout);
         }
         if (!std::strcmp(function, "port_Count")) ReturnNumber(ret, count);
-        else if (!std::strcmp(function, "port_Label")) ReturnText(ret, valid ? menu->label(row) : "");
-        else if (!std::strcmp(function, "port_Choices")) ReturnNumber(ret, valid ? menu->choices(row) : 0);
+        else if (!std::strcmp(function, "port_Label")) ReturnText(ret, valid ? menu->label(page, row) : "");
+        else if (!std::strcmp(function, "port_Choices")) ReturnNumber(ret, valid ? menu->choices(page, row) : 0);
         else if (!std::strcmp(function, "port_Choice"))
-            ReturnText(ret, valid ? menu->choice(row, Int(args, argc, 2)) : "");
+            ReturnText(ret, valid ? menu->choice(page, row, Int(args, argc, 3)) : "");
         else ret->type = GfxValue::Undefined;
         return true;
     }
     // db_GetInt(name, profile, index), db_SetInt(name, profile, value, index),
     // fe_RestoreGameDBDefault(name, profile)
-    const int row = Row(Text(args, argc, 1), count);
-    if (row < 0) return false;
+    const Setting setting = Parse(Text(args, argc, 1), menu);
+    if (setting.page < 0) return false;
+    const int page = setting.page, row = setting.row;
     if (!std::strcmp(function, "db_GetInt")) {
-        ReturnNumber(ret, menu->get(row));
+        ReturnNumber(ret, menu->get(page, row));
     } else if (!std::strcmp(function, "db_SetInt")) {
-        menu->set(row, Int(args, argc, 3));
+        menu->set(page, row, Int(args, argc, 3));
         menu->save();
         ret->type = GfxValue::Null;
     } else if (!std::strcmp(function, "fe_RestoreGameDBDefault")) {
-        menu->reset(row);
+        menu->reset(page, row);
         menu->save();
         ret->type = GfxValue::Null;
     } else {
@@ -123,7 +145,7 @@ GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxVa
     Guest::Call<void>(g_place_lua_call, handler, args, argc, ret);
 }
 
-NATIVE_REPLACEMENT({"Scaleform PlaceLuaCall (the Video screen's port settings)", "menu", Native::Kind::CallSite,
+NATIVE_REPLACEMENT({"Scaleform PlaceLuaCall (the port's settings in Options > Video, Controller)", "menu", Native::Kind::CallSite,
                     kHandOver, {0xe9, 0x99, 0x01, 0x00, 0x00, 0x49, 0x81, 0xc5, 0x40, 0x02, 0x00, 0x00},
                     reinterpret_cast<void*>(&PlaceLuaCall), &g_place_lua_call});
 

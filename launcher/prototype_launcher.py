@@ -129,7 +129,7 @@ DEFAULTS = {
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
-    'vibration': 100, 'light_bar': True, 'gyro': False, 'gyro_sensitivity': 200,
+    'vibration': 100, 'light_bar': True,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -159,13 +159,15 @@ def load_settings():
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
-                          ('light_bar', bool), ('gyro', bool), ('gyro_sensitivity', int)):
+                          ('light_bar', bool)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
     except Exception:
         pass
     values.pop('ssr', None)  # water reflections: no setting since 1.0.1
+    values.pop('gyro', None)  # gyro aiming: removed before release
+    values.pop('gyro_sensitivity', None)
     if not isinstance(values.get('controls'), dict):
         values['controls'] = {}
     if values.get('game') not in GAMES:
@@ -214,7 +216,6 @@ def write_ini(values):
             'rcas_strength': int(values['rcas_strength']),
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
             'vibration': int(values['vibration']), 'light_bar': int(values['light_bar']),
-            'gyro': int(values['gyro']), 'gyro_sensitivity': int(values['gyro_sensitivity']),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -1271,20 +1272,13 @@ class Launcher:
 
     def tab_controller(self):
         self.section('GAMEPAD  ·  DUALSENSE, DUALSHOCK 4 AND OTHERS', first=True)
-        self.stepper('Vibration', 'Strength of the game\'s vibration (rumble). Off: none. Also in the port '
-                     'menu in game.', 'vibration', [(v, f'{v}%' if v else 'Off') for v in (0, 25, 50, 75, 100, 150, 200)])
+        self.stepper('Vibration', 'Strength of the game\'s vibration (rumble). Off: none.', 'vibration', [(v, f'{v}%' if v else 'Off') for v in (0, 25, 50, 75, 100, 150, 200)])
         self.toggle('Light bar', 'DualSense and DualShock 4: the light bar shows the colours the game sets, '
                     'as on the PS4. Off: the controller\'s own colour.', 'light_bar')
-        self.toggle('Gyro aiming', 'Turn the controller to turn the camera on foot, together with the right '
-                    'stick. Needs a controller with a gyro (DualSense, DualShock 4, Switch Pro and others). '
-                    'Vehicles and menus use the sticks.', 'gyro')
-        self.stepper('Gyro sensitivity', 'How far the camera turns for a turn of the controller: 100% turns it '
-                     'by the same angle.', 'gyro_sensitivity',
-                     [(v, f'{v}%') for v in (25, 50, 75, 100, 150, 200, 250, 300, 400, 500)],
-                     locked=not self.values.get('gyro'))
         self.row_y += 20
-        self.note('All of these work live: the port menu (Insert or R3 + L2) has them on its CONTROLLER page. '
-                  'Keyboard keys and mouse are on the CONTROLS page.', C['dim'], height=48)
+        self.note('Both work live: they are also in the game\'s own Options > Controller screen and on the '
+                  'port menu\'s CONTROLLER page (Insert or R3 + L2). Keyboard keys and mouse are on the CONTROLS '
+                  'page.', C['dim'], height=64)
 
     @staticmethod
     def key_text(key):

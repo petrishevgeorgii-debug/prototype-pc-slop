@@ -48,31 +48,30 @@ typedef struct {
     int wheel;
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
-/* Gamepad options (theorder.ini, the port menu, the launcher), read live by runtime_pad.c:
- * vibration strength in percent (0 off), light_bar 1: the game's colours, gyro 1: gyro aiming,
- * gyro_sensitivity: camera turn per controller turn (1.0 = the same angle). */
+/* Gamepad options (theorder.ini, the port menu, the game's Controller screen, the launcher), read
+ * live by runtime_pad.c: vibration strength in percent (0 off), light_bar 1: the game's colours. */
 typedef struct {
-    int vibration, light_bar, gyro;
-    float gyro_sensitivity;
+    int vibration, light_bar;
 } TheOrderPadOptions;
 void theordergpu_pad_options(TheOrderPadOptions *out);
 /* PROTOTYPE: the view axis (unit vector, world space) of the last frame's camera, a counter that
  * grows with every new camera and its time (steady clock, ns); 0 before the first camera (it is
  * found while the camera is tracked, THEORDER_UPSCALER not "none"). For mouse look (runtime_pad.c). */
 int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
-/* PROTOTYPE: the port's settings as rows of the game's own Options > Video screen
- * (scripts/proto_menu.py adds the rows, game/p1/options_menu.cpp answers the screen's calls).
- * Every row is a choice: `choices` texts, the current one `get`, `set` applies one (live) and
- * `reset` the default; `save` writes the settings file. Texts are in the game's language. Called
- * on the game's thread. */
+/* PROTOTYPE: the port's settings as rows of the game's own options screens, page 0 Options > Video
+ * and page 1 Options > Controller (scripts/proto_menu.py adds the rows,
+ * game/p1/options_menu.cpp answers the screens' calls). Every row is a choice: `choices` texts,
+ * the current one `get`, `set` applies one (live) and `reset` the default; `save` writes the
+ * settings file. Texts are in the game's language. Called on the game's thread. */
+enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_PAGES = 2 };
 typedef struct TheOrderGameMenu {
-    int (*count)(void);
-    const char *(*label)(int row);
-    int (*choices)(int row);
-    const char *(*choice)(int row, int index);
-    int (*get)(int row);
-    void (*set)(int row, int index);
-    void (*reset)(int row);
+    int (*count)(int page);
+    const char *(*label)(int page, int row);
+    int (*choices)(int page, int row);
+    const char *(*choice)(int page, int row, int index);
+    int (*get)(int page, int row);
+    void (*set)(int page, int row, int index);
+    void (*reset)(int page, int row);
     void (*save)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);

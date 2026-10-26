@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""PROTOTYPE: the port's settings in the game's own Options > Video screen, made from the player's
-own game files.
+"""PROTOTYPE: the port's settings in the game's own Options > Video and Options > Controller
+screens, made from the player's own game files.
 
 The game's menus are Scaleform movies (p1/art/hud/*.gfx, SWF with ActionScript 2). The Video
 screen (protovideooption.gfx, and protopausevideo.gfx in the pause menu) still holds the PC
 version's rows (resolution, anti-aliasing, V-Sync...) behind `_global.PLATFORM == RAD_WIN32`, so
-the PS4 shows only Brightness. Here:
+the PS4 shows only Brightness; the Controller screen (protocontrolleroption.gfx,
+protopausecontroller.gfx) ends with the PS3's Rumble row and the PC's rows (mouse sensitivity,
+keyboard...), which the PS4 skips too. Here:
 
-  * the screens' code after the Brightness row is replaced: it asks the port for its rows
-    (commonregisters.DoCallBack, the game's own way to call native code) and adds one game
-    toggle per row. The port answers those calls itself (game/p1/options_menu.cpp, rows in
-    gpu/shim/port_game_menu.cpp); without it the loop adds nothing and the screen is the PS4's.
-  * protooptionsoverlay.gfx gets the toggles those rows use (tglPort0...), copies of the screen's
-    own toggle placed in its VideoOptionsOverlay.
+  * the screens' code after Brightness (Video) or Target toggle (Controller) is replaced: it asks
+    the port for its rows of that page (commonregisters.DoCallBack, the game's own way to call
+    native code) and adds one game toggle per row. The port answers those calls itself
+    (game/p1/options_menu.cpp, rows in gpu/shim/port_game_menu.cpp); without it the loop adds
+    nothing and the screen is the PS4's.
+  * protooptionsoverlay.gfx gets the toggles those rows use (tglPort0...), copies of the screens'
+    own toggles placed in its VideoOptionsOverlay and ControllerOptionsOverlay.
 
 The results go to <out>/p1/art/hud/, or for dumps that keep p1 in archives (art.rcf, ...) a patch
 per archive, <out>/p1/<archive>.patch (THEORDER_FILE_OVERRIDES, src/runtime_file.c). The game
@@ -28,10 +31,34 @@ import sys
 import zlib
 
 HUD = Path('p1') / 'art' / 'hud'
-SCREENS = ('protovideooption.gfx', 'protopausevideo.gfx')
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 2        # of this script's output (part of the cache key)
+VERSION = 3        # of this script's output (part of the cache key)
+
+
+class Page:
+    """A screen the port adds rows to: `page` is the port's page number (port_Count(page)...)."""
+
+    def __init__(self, page, name, screens, after, options, overlay, removed, sprite, toggle):
+        self.page, self.name, self.screens = page, name, screens
+        self.after = after          # the game database name of the row the port's rows follow
+        self.options = options      # the screen's array of rows
+        self.overlay = overlay      # the screen's variable for its overlay sprite
+        self.removed = removed      # names the replaced (non-PS4) rows must hold
+        self.sprite, self.toggle = sprite, toggle  # the overlay sprite and the toggle copied
+
+
+PAGES = (
+    Page(0, 'Video', ('protovideooption.gfx', 'protopausevideo.gfx'), 'SettingVideoGammaCorrection',
+         'mVideoOptions', 'mcVideoOverlay', ('SettingVideoVSyncEnabled', 'SettingVideoGraphicQuality'),
+         'VideoOptionsOverlay', 'tglResolution'),
+    Page(1, 'Controller', ('protocontrolleroption.gfx', 'protopausecontroller.gfx'),
+         'Proto_Profile_TargetToggleEnabled', 'mControllerOptions', 'mcControllerOverlay',
+         ('Proto_Profile_GamepadRumbleEnabled', 'SettingsMouseSensitivity'),
+         'ControllerOptionsOverlay', 'tglInvertX'),
+)
+SCREENS = tuple(screen for page in PAGES for screen in page.screens)
+MOVIES = len(SCREENS) + 1  # and the overlay
 
 
 # ---- SWF structure
@@ -172,72 +199,124 @@ class Asm:
 
     def callback(self, function, *args):
         """commonregisters.DoCallBack(function, args...): the value is left on the stack. args are
-        variable names (str) pushed with GetVariable."""
+        variable names (str, pushed with GetVariable) or numbers."""
         for a in reversed(args):
-            self.get(a)
+            if isinstance(a, str):
+                self.get(a)
+            else:
+                self.push(a)
         self.push(function, len(args) + 1, 'commonregisters'); self.op('GetVariable')
         self.push('DoCallBack'); self.op('CallMethod')
 
 
-def port_rows():
-    """The code that adds the port's rows to mVideoOptions (after the game's Brightness row)."""
+def port_rows(page):
+    """The code that adds the port's rows of `page` to the screen's rows."""
     a = Asm()
-    # var __pn = commonregisters.DoCallBack("port_Count"); var __pi = 0;
-    a.push('__pn'); a.callback('port_Count'); a.op('DefineLocal')
+    n = page.page
+    # var __pn = commonregisters.DoCallBack("port_Count", page); var __pi = 0;
+    a.push('__pn'); a.callback('port_Count', n); a.op('DefineLocal')
     a.push('__pi', 0); a.op('DefineLocal')
     a.label('row')
     a.get('__pi'); a.get('__pn'); a.op('Less2', 'Not'); a.branch('If', 'done')
-    # var __pv = new Array(); var __pc = DoCallBack("port_Choices", __pi); var __pj = 0;
+    # var __pv = new Array(); var __pc = DoCallBack("port_Choices", page, __pi); var __pj = 0;
     a.push('__pv', 0, 'Array'); a.op('NewObject', 'DefineLocal')
-    a.push('__pc'); a.callback('port_Choices', '__pi'); a.op('DefineLocal')
+    a.push('__pc'); a.callback('port_Choices', n, '__pi'); a.op('DefineLocal')
     a.push('__pj', 0); a.op('DefineLocal')
     a.label('choice')
     a.get('__pj'); a.get('__pc'); a.op('Less2', 'Not'); a.branch('If', 'choices_done')
-    # __pv.push({mLabel: DoCallBack("port_Choice", __pi, __pj), mValue: __pj});
-    a.push('mLabel'); a.callback('port_Choice', '__pi', '__pj')
+    # __pv.push({mLabel: DoCallBack("port_Choice", page, __pi, __pj), mValue: __pj});
+    a.push('mLabel'); a.callback('port_Choice', n, '__pi', '__pj')
     a.push('mValue'); a.get('__pj')
     a.push(2); a.op('InitObject')
     a.push(1); a.get('__pv'); a.push('push'); a.op('CallMethod', 'Pop')
     a.push('__pj'); a.get('__pj'); a.op('Increment', 'SetVariable')
     a.branch('Jump', 'choice')
     a.label('choices_done')
-    # mVideoOptions.push(new optionscontainer(mcVideoOverlay["tglPort" + __pi], "PortSetting" + __pi,
-    #     optionscontainer.DBTYPE_INT, DoCallBack("port_Label", __pi), __pv));
+    # <options>.push(new optionscontainer(<overlay>["tglPort" + __pi], "PortSetting<page>_" + __pi,
+    #     optionscontainer.DBTYPE_INT, DoCallBack("port_Label", page, __pi), __pv));
     a.get('__pv')
-    a.callback('port_Label', '__pi')
+    a.callback('port_Label', n, '__pi')
     a.get('optionscontainer'); a.push('DBTYPE_INT'); a.op('GetMember')
-    a.push('PortSetting'); a.get('__pi'); a.op('Add2')
-    a.get('mcVideoOverlay'); a.push('tglPort'); a.get('__pi'); a.op('Add2', 'GetMember')
+    a.push(f'PortSetting{n}_'); a.get('__pi'); a.op('Add2')
+    a.get(page.overlay); a.push('tglPort'); a.get('__pi'); a.op('Add2', 'GetMember')
     a.push(5, 'optionscontainer'); a.op('NewObject')
-    a.push(1); a.get('mVideoOptions'); a.push('push'); a.op('CallMethod', 'Pop')
+    a.push(1); a.get(page.options); a.push('push'); a.op('CallMethod', 'Pop')
     a.push('__pi'); a.get('__pi'); a.op('Increment', 'SetVariable')
     a.branch('Jump', 'row')
     a.label('done')
     return a.bytes()
 
 
-def patch_screen(data):
-    """protovideooption.gfx / protopausevideo.gfx: the rows after Brightness come from the port."""
+def splice(code, acts, lo, hi, new):
+    """code[lo:hi] replaced by `new`, with the branches and the function, With and Try sizes
+    around it moved to match. A branch from outside into the replaced code is an error."""
+    delta = len(new) - (hi - lo)
+    out = bytearray(code[:lo] + new + code[hi:])
+
+    def at(offset):  # an offset in the old code -> in the new
+        return offset if offset < hi else offset + delta
+
+    for pos, op, body, length, _ in acts:
+        if lo <= pos < hi:
+            continue
+        if op in (0x99, 0x9D):  # Jump, If
+            after = pos + 5
+            target = after + struct.unpack_from('<h', code, body)[0]
+            if lo < target < hi:
+                raise ValueError('a branch into the replaced rows')
+            moved = at(target) - at(after)
+            if not -0x8000 <= moved < 0x8000:
+                raise ValueError('a branch too far')
+            struct.pack_into('<h', out, at(body), moved)
+        elif op in (0x9B, 0x8E, 0x94, 0x8F):  # DefineFunction(2), With, Try: sized blocks after them
+            if op == 0x8F:  # flags, then the try, catch and finally sizes
+                total = sum(struct.unpack_from('<HHH', code, body + 1))
+                if body + length < hi and lo < body + length + total:
+                    raise ValueError('a Try block around the replaced rows')
+                continue
+            field = body if op == 0x94 else body + length - 2
+            start, size = body + length, struct.unpack_from('<H', code, field)[0]
+            if start <= lo and hi <= start + size:
+                if not 0 <= size + delta < 0x10000:
+                    raise ValueError('a function too large')
+                struct.pack_into('<H', out, at(field), size + delta)
+            elif start < hi and lo < start + size:
+                raise ValueError('a function across the replaced rows')
+    return bytes(out)
+
+
+def patch_screen(data, page):
+    """A Video or Controller screen: the rows after Brightness / Target toggle come from the port."""
     start = movie_start(data)
     for code, head, body, end in tags(data, start, len(data)):
         if code != 12:  # DoAction
             continue
         pool = []
         acts = actions(data, body, end, pool)
-        gamma = next((i for i, a in enumerate(acts) if a[1] == 0x96 and a[4] and 'SettingVideoGammaCorrection' in a[4]), None)
-        if gamma is None:
+        anchor = next((i for i, a in enumerate(acts) if a[1] == 0x96 and a[4] and page.after in a[4]), None)
+        if anchor is None:
             continue
-        first = next(i for i in range(gamma, len(acts)) if acts[i][1] == 0x17) + 1   # after the row's Pop
+        first = next(i for i in range(anchor, len(acts)) if acts[i][1] == 0x17) + 1   # after the row's Pop
         last = next((i for i in range(first, len(acts)) if acts[i][1] == 0x96 and acts[i][4] and acts[i][4][0] == 'mConfirmParams'), None)
         if last is None:
-            raise ValueError('the end of the Video rows was not found')
+            raise ValueError(f'the end of the {page.name} rows was not found')
         names = [v for a in acts[first:last] if a[1] == 0x96 and a[4] for v in a[4]]
-        if 'SettingVideoVSyncEnabled' not in names or 'SettingVideoGraphicQuality' not in names:
-            raise ValueError('the PC rows are not where they were expected')
-        lo, hi = acts[first][0], acts[last][0]
-        code_bytes = data[body:lo] + port_rows() + data[hi:end]
+        if not all(name in names for name in page.removed):
+            raise ValueError(f'the {page.name} screen\'s other rows are not where they were expected')
+        lo, hi = acts[first][0] - body, acts[last][0] - body
+        code_bytes = data[body:end]
+        rel = [(pos - body, op, b - body, length, v) for pos, op, b, length, v in acts]
+        code_bytes = splice(code_bytes, rel, lo, hi, port_rows(page))
         return with_length(data[:head] + tag(12, code_bytes) + data[end:])
-    raise ValueError('the Brightness row was not found')
+    raise ValueError(f'the {page.name} screen\'s row {page.after} was not found')
+
+
+def screen_page(data):
+    """The page of a screen movie (by the rows it makes), or None."""
+    for page in PAGES:
+        if page.after.encode() in data and page.options.encode() in data:
+            return page
+    return None
 
 
 def matrix(tx, ty):
@@ -254,10 +333,10 @@ def place(depth, character, name, tx, ty):
 
 
 def patch_overlay(data):
-    """protooptionsoverlay.gfx: toggles tglPort0... in VideoOptionsOverlay, below its list."""
+    """protooptionsoverlay.gfx: toggles tglPort0... in each page's overlay sprite, below its list."""
     start = movie_start(data)
     top = tags(data, start, len(data))
-    exported = None
+    exported = {}
     for code, head, body, end in top:
         if code == 56:
             n = struct.unpack_from('<H', data, body)[0]
@@ -265,13 +344,18 @@ def patch_overlay(data):
             for _ in range(n):
                 cid = struct.unpack_from('<H', data, p)[0]
                 e = data.index(b'\0', p + 2)
-                if data[p + 2:e] == b'VideoOptionsOverlay':
-                    exported = cid
+                exported[data[p + 2:e].decode('latin-1')] = cid
                 p = e + 1
-    if exported is None:
-        raise ValueError('VideoOptionsOverlay not found')
-    for code, head, body, end in top:
-        if code != 39 or struct.unpack_from('<H', data, body)[0] != exported:
+    for page in PAGES:
+        if page.sprite not in exported:
+            raise ValueError(f'{page.sprite} not found')
+        data = patch_sprite(data, exported[page.sprite], page)
+    return data
+
+
+def patch_sprite(data, sprite, page):
+    for code, head, body, end in tags(data, movie_start(data), len(data)):
+        if code != 39 or struct.unpack_from('<H', data, body)[0] != sprite:
             continue
         inner = tags(data, body + 4, end)
         toggle = depth_list = None
@@ -283,7 +367,7 @@ def patch_overlay(data):
                 if flags & 0x02:
                     cid = struct.unpack_from('<H', data, b + 3)[0]
                     text = data[b:e]  # the instance name is the tag's last string
-                    if b'tglResolution\0' in text:
+                    if page.toggle.encode() + b'\0' in text:
                         toggle = cid
                     if b'mcList\0' in text:
                         depth_list = depth
@@ -295,10 +379,12 @@ def patch_overlay(data):
                 toggle = None
             out += chunk
         if depth_list is None:
-            raise ValueError('mcList not found in VideoOptionsOverlay')
-        sprite = data[body:body + 4] + out
-        return with_length(data[:head] + tag(39, sprite) + data[end:])
-    raise ValueError('VideoOptionsOverlay sprite not found')
+            raise ValueError(f'mcList not found in {page.sprite}')
+        if b'tglPort0' not in out:
+            raise ValueError(f'{page.toggle} not found in {page.sprite}')
+        sprite_body = data[body:body + 4] + out
+        return with_length(data[:head] + tag(39, sprite_body) + data[end:])
+    raise ValueError(f'{page.sprite} sprite not found')
 
 
 # ---- archives
@@ -359,15 +445,14 @@ def unpack(member):
 
 
 def patch_movie(data):
-    """The patched movie, or None when it is none of the three."""
-    if b'VideoOptionsOverlay' in data and b'tglResolution' in data:
+    """The patched movie, or None when it is none of the screens and the overlay."""
+    if b'VideoOptionsOverlay' in data and b'ControllerOptionsOverlay' in data and b'tglResolution' in data:
         try:
             return patch_overlay(data)
         except ValueError:
             pass  # a screen importing the overlay
-    if b'SettingVideoGammaCorrection' in data and b'mVideoOptions' in data:
-        return patch_screen(data)
-    return None
+    page = screen_page(data)
+    return patch_screen(data, page) if page else None
 
 
 def patch_archive(path, target, base_patch):
@@ -434,7 +519,7 @@ def generate(game, out, log=print, base_roots=()):
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
-        log('Menu: neither p1/art/hud/*.gfx nor p1/*.rcf in the game folder: the game\'s Video screen stays')
+        log('Menu: neither p1/art/hud/*.gfx nor p1/*.rcf in the game folder: the game\'s screens stay')
         return None
     bases = {}
     for archive in archives:
@@ -465,9 +550,9 @@ def generate(game, out, log=print, base_roots=()):
                 movie, _ = unpack(s.read_bytes())
                 if movie is None:
                     raise ValueError(f'{s.name} is not a movie')
-                data = (patch_overlay if s.name == OVERLAY else patch_screen)(movie)
+                data = patch_overlay(movie) if s.name == OVERLAY else patch_screen(movie, screen_page(movie))
                 (target / s.name.lower()).write_bytes(data)
-            done = 3
+            done = MOVIES
         else:
             done = 0
             for archive in archives:
@@ -476,17 +561,17 @@ def generate(game, out, log=print, base_roots=()):
                     log(f'Menu: {archive.name}: {n} menu movies')
                 done += n
     except (ValueError, OSError, struct.error, StopIteration, IndexError, zlib.error) as error:
-        log(f'Menu: the game\'s Video screen stays ({error})')
+        log(f'Menu: the game\'s Video and Controller screens stay ({error})')
         for old in [*(target / s.name.lower() for s in sources), *(out / 'p1').glob('*.rcf.patch')]:
             old.unlink(missing_ok=True)
         return None
-    if done < 3:
-        log(f'Menu: only {done} of the 3 Video screen movies found: the game\'s Video screen stays')
+    if done != MOVIES:
+        log(f'Menu: {done} menu movies found, not {MOVIES}: the game\'s Video and Controller screens stay')
         for old in (out / 'p1').glob('*.rcf.patch'):
             old.unlink(missing_ok=True)
         return None
     stamp.write_text(json.dumps({'key': key}), encoding='utf-8')
-    log(f'Menu: the port\'s settings in Options > Video ({"loose files" if loose else "archive patches"})')
+    log(f'Menu: the port\'s settings in Options > Video and Controller ({"loose files" if loose else "archive patches"})')
     return out
 
 

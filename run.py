@@ -251,8 +251,8 @@ def prototype_controls(env, probe, game, out, derived, prompts=True):
 
 
 def prototype_menu(env, game, out, derived):
-    """PROTOTYPE: the port's settings in the game's own Options > Video screen (files made from the
-    game's own, scripts/proto_menu.py). THEORDER_GAME_MENU=0 keeps the game's screen."""
+    """PROTOTYPE: the port's settings in the game's own Options > Video and Controller screens (files
+    made from the game's own, scripts/proto_menu.py). THEORDER_GAME_MENU=0 keeps the game's screens."""
     if get_env(env, 'GAME_MENU', '1') == '0':
         return
     import proto_menu
@@ -262,7 +262,7 @@ def prototype_menu(env, game, out, derived):
     try:
         root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True), base_roots=others)
     except (OSError, ValueError, ImportError) as error:
-        print(f'Menu: the game\'s Video screen stays ({error})', flush=True)
+        print(f'Menu: the game\'s Video and Controller screens stay ({error})', flush=True)
         return
     if root:
         # First: an archive's patch here includes the prompts' patch of it.

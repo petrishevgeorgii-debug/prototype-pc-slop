@@ -67,12 +67,9 @@ struct Values {
     std::atomic<bool> mouse_look{true};
     std::atomic<int> mouse_sensitivity{100};
     /// Gamepads (runtime_pad.c, theordergpu_pad_options): vibration strength in percent (0 off),
-    /// the game's light bar colours on a DualSense / DualShock 4 (off: the controller's own),
-    /// gyro aiming (the controller's turn turns the on-foot camera) and its speed in percent.
+    /// the game's light bar colours on a DualSense / DualShock 4 (off: the controller's own).
     std::atomic<int> vibration{100};
     std::atomic<bool> light_bar{true};
-    std::atomic<bool> gyro{false};
-    std::atomic<int> gyro_sensitivity{200};
     /// Field of view in percent of the game's (tangent of the half angle); live.
     std::atomic<int> fov{100};
     /// Anisotropic filtering forced on mipmapped textures: 0 as the game asks, else 2..16.

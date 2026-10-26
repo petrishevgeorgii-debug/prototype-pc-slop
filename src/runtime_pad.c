@@ -470,30 +470,6 @@ static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
         rumble_lo=l; rumble_hi=h; rumble_sent_us=now;
     }
 }
-/* Gyro aiming: the controller's turn (rad/s, SDL's axes: x pitch, y yaw, counter-clockwise
- * positive) times the option's speed turns the on-foot camera like the mouse does (look_add),
- * with a small dead band for the sensor's noise. Vehicles and menus are left to the sticks. */
-static uint64_t gyro_us;
-static double gyro_band(double v) { const double band=0.012; return v>band ? v-band : v<-band ? v+band : 0.0; }
-static void gyro_input(SDL_Gamepad *g, const TheOrderPadOptions *o) {
-    if (!g || !o->gyro || !SDL_GamepadHasSensor(g,SDL_SENSOR_GYRO)) {
-        if (g && gyro_us && SDL_GamepadHasSensor(g,SDL_SENSOR_GYRO)) SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_GYRO,false);
-        gyro_us=0;
-        return;
-    }
-    if (!SDL_GamepadSensorEnabled(g,SDL_SENSOR_GYRO)) {
-        SDL_SetGamepadSensorEnabled(g,SDL_SENSOR_GYRO,true);
-        puts("Runtime: gyro aiming on");
-    }
-    float rate[3]={0,0,0};
-    const uint64_t now=now_us();
-    const double dt=gyro_us ? (double)(now-gyro_us)/1e6 : 0.0;
-    gyro_us=now;
-    if (!SDL_GetGamepadSensorData(g,SDL_SENSOR_GYRO,rate,3) || dt<=0.0 || dt>0.1) return;
-    const double k=o->gyro_sensitivity*dt;
-    const double yaw=-gyro_band(rate[1])*k, pitch=-gyro_band(rate[0])*k;
-    if ((yaw!=0.0 || pitch!=0.0) && direct_look(now)) look_add(yaw,pitch,now);
-}
 static void key_axis(uint8_t *axis, bool negative, bool positive) {
     if (negative || positive) *axis=(uint8_t)(128-(negative ? 128 : 0)+(positive ? 127 : 0));
 }
@@ -537,7 +513,6 @@ static void sample_host(PadData *d) {
         }
     }
     mouse_input(d); /* first: without a captured mouse it drops the camera turn not yet given */
-    gyro_input(g,&options);
     /* The keyboard and mouse work with or without a gamepad: their buttons add to the pad's, and a
      * stick follows the keys only while one of them is held. */
     uint32_t keys=0;
