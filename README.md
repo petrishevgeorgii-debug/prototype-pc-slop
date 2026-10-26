@@ -44,7 +44,7 @@ fix is applied in memory, and the port checks the executables against the untouc
   *Performance*, *Ultra Performance*, switchable while playing. FSR 4 needs a Radeon RX 9000 GPU.
 - **FSR 1** scaling to the window, **RCAS** sharpening, **anisotropic filtering** up to 16×.
 - **The port's settings in the game's own Options > Video screen** (main menu and pause menu):
-  upscaling, sharpening, display mode, V-Sync and the frame counter, as the game's own rows.
+  upscaling, sharpening, display mode and V-Sync, as the game's own rows.
 - A **port menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse, for everything else.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
@@ -89,8 +89,8 @@ folder is not changed. A controller works at any time.
 
 PROTOTYPE's **Options > Video** (from the main menu or the pause menu) has the port's settings
 under Brightness, as the game's own rows: **Upscaling** (off, FSR 3.1, FSR 4 on a Radeon RX
-9000), **Upscaling quality**, **Sharpening**, **FSR 1 scaling**, **Display mode**, **V-Sync** and
-**Frame counter**. They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
+9000), **Upscaling quality**, **Sharpening**, **Display mode** and **V-Sync** (the screen has room
+for five; FSR 1 and the frame counter are in the port menu). They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
 them too. The port makes this screen from your game's own menu files when the game starts (only
 in memory: the game folder is not changed). `THEORDER_GAME_MENU=0` keeps the game's own screen.
 

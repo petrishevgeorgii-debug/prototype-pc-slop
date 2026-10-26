@@ -2,7 +2,8 @@
 // PROTOTYPE: the port's settings as rows of the game's own Options > Video screen (theordergpu.h
 // TheOrderGameMenu; scripts/proto_menu.py adds the rows, game/p1/options_menu.cpp answers the
 // screen). The same settings as the port menu's (port_overlay.cpp), applied live; the port menu
-// keeps its FSR tests and the shader browser.
+// keeps the rest (FSR 1, the frame counter, FSR tests, the shader browser). The screen has room
+// for six rows, Brightness and five of these: the pause menu's cuts off the seventh.
 
 #include <algorithm>
 #include <cmath>
@@ -28,7 +29,7 @@ const char* T(const char* en, const char* ru) {
     return Russian() ? ru : en;
 }
 
-enum Row { Upscaler, Quality, Sharpening, Fsr1, DisplayMode, VSync, FrameCounter, RowCount };
+enum Row { Upscaler, Quality, Sharpening, DisplayMode, VSync, RowCount };
 
 /// The upscalers this PC can use, in menu order.
 std::vector<int> Providers() {
@@ -52,10 +53,8 @@ const char* Label(int row) {
     case Upscaler: return T("UPSCALING", "АПСКЕЙЛИНГ");
     case Quality: return T("UPSCALING QUALITY", "КАЧЕСТВО АПСКЕЙЛА");
     case Sharpening: return T("SHARPENING", "РЕЗКОСТЬ");
-    case Fsr1: return T("FSR 1 SCALING", "МАСШТАБ FSR 1");
     case DisplayMode: return T("DISPLAY MODE", "РЕЖИМ ЭКРАНА");
     case VSync: return T("V-SYNC", "ВЕРТ. СИНХРОНИЗАЦИЯ");
-    case FrameCounter: return T("FRAME COUNTER", "СЧЁТЧИК КАДРОВ");
     default: return "";
     }
 }
@@ -66,9 +65,7 @@ int Choices(int row) {
     case Quality: return 5;
     case Sharpening: return 11;
     case DisplayMode: return 3;
-    case Fsr1:
-    case VSync:
-    case FrameCounter: return 2;
+    case VSync: return 2;
     default: return 0;
     }
 }
@@ -102,9 +99,7 @@ const char* Choice(int row, int index) {
         index = std::clamp(index, 0, 2);
         return Russian() ? ru[index] : en[index];
     }
-    case Fsr1:
-    case VSync:
-    case FrameCounter: return OnOff(index);
+    case VSync: return OnOff(index);
     default: return "";
     }
 }
@@ -119,10 +114,8 @@ int Get(int row) {
     }
     case Quality: return std::clamp(s.preset.load(), 0, 4);
     case Sharpening: return s.rcas ? std::clamp(int(std::lround(s.rcas_strength.load() / 10.0)), 1, 10) : 0;
-    case Fsr1: return s.fsr1 ? 1 : 0;
     case DisplayMode: return std::clamp(s.display_mode.load(), 0, 2);
     case VSync: return s.vsync ? 1 : 0;
-    case FrameCounter: return s.show_fps ? 1 : 0;
     default: return 0;
     }
 }
@@ -140,10 +133,8 @@ void Set(int row, int index) {
         s.rcas = index > 0;
         if (index > 0) s.rcas_strength = std::min(index, 10) * 10;
         break;
-    case Fsr1: s.fsr1 = index != 0; break;
     case DisplayMode: s.display_mode = std::clamp(index, 0, 2); break;
     case VSync: s.vsync = index != 0; break;
-    case FrameCounter: s.show_fps = index != 0; break;
     default: break;
     }
 }
@@ -155,10 +146,8 @@ void Reset(int row) {
     case Upscaler: s.upscaler = PortSettings::UpscalerOff; break;
     case Quality: s.preset = 0; break;
     case Sharpening: s.rcas = true; s.rcas_strength = 60; break;
-    case Fsr1: s.fsr1 = false; break;
     case DisplayMode: s.display_mode = 1; break;
     case VSync: s.vsync = true; break;
-    case FrameCounter: s.show_fps = false; break;
     default: break;
     }
 }
