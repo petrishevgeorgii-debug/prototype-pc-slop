@@ -60,7 +60,7 @@ fix is applied in memory, and the port checks the executables against the untouc
 
 ## Playing
 
-1. Download `PROTOTYPE-PC-Port-v1.0.3.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
+1. Download `PROTOTYPE-PC-Port-v1.0.4.zip` from [Releases](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases/latest)
    and unpack it anywhere (or build the port, below).
 2. Start **Prototype.exe**, choose your game folder (the one with `eboot.bin`, `sce_sys`,
    `sce_module`, `p1`, `p2`), pick **PROTOTYPE** or **PROTOTYPE 2** (the file tabs at the top left) and press **PLAY** or Enter. The first start prepares the game (about a

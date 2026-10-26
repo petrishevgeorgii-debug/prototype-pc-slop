@@ -3,7 +3,7 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
-## Unreleased
+## 1.0.4 — October 26, 2026 ([notes](docs/releases/v1.0.4.md))
 
 ### Added
 - **A Display screen in the game's own options**, in the pause menu (a fourth category after Video, Audio and Controller) and in the main menu's Options (a fourth button): **Resolution** (1280×720 to 3840×2160), **Frame rate** (30 or 60 FPS), **Display mode**, **V-Sync**, **Frame counter** and **Apply resolution**.
