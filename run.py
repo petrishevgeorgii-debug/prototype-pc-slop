@@ -505,9 +505,18 @@ def main():
         env.setdefault('THEORDER_READBACK_LINEAR', '1')
         patches_val = get_env(env, 'PATCHES', '')
         patches_only = get_env(env, 'PATCHES_ONLY') == '1'
+        if is_prototype:
+            # The render resolution and 60 FPS patches come from the settings below, never from the
+            # list: a restart from the game's Display screen inherits the previous start's list,
+            # whose old resolution would otherwise stay (or come twice).
+            patches_val = ';'.join(n for n in (n.strip() for n in patches_val.split(';'))
+                                   if n and not n.startswith('Render Resolution - ')
+                                   and n not in ('Prototype 60 FPS', 'Prototype 2 60 FPS'))
         if profile and patch_xml:
             names = selected_patches(patch_xml, profile[2], patches_val, patches_only)
             names = graphics_options.patch_names(names, graphics)
+            if is_prototype:  # The Order's engine frame rate patches: PROTOTYPE has its own
+                names = [n for n in names if not n.startswith(graphics_options.FPS_PREFIX)]
             if profile[3] == 'The Order 1886':
                 for auto_patch in ('Unlock All Languages', 'Unlock The Armoury Menu'):
                     if auto_patch not in names:

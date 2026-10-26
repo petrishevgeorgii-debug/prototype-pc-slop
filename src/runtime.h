@@ -128,10 +128,11 @@ ABI int32_t runtime_event_reset(void *event,uint32_t n);
  * of its stick helper (original) to runtime_chase_camera_input. */
 void runtime_set_chase_camera_input(void *original);
 /* A vibration the port adds to the game's (runtime_pad.c), as the vibration options allow: kind
- * RUNTIME_PULSE_GAME (a game event: always), RUNTIME_PULSE_MENU_PRESS / _MENU_MOVE (the game's
- * menus: menu_vibration). Motor levels 0..1, length in ms, rise_ms 0: a tap, else a swell that
- * rises over rise_ms and holds; ms 0 ends the current one with a short fade. */
+ * RUNTIME_PULSE_GAME (the port's game effects: extra_vibration), RUNTIME_PULSE_MENU_PRESS /
+ * _MENU_MOVE (the game's menus: menu_vibration). id 0: a one-off; else the effect with that id is
+ * replaced, and ended (a short fade) with ms 0. Motor levels 0..1, length in ms; rise_ms 0: a tap,
+ * else a swell that rises over rise_ms and holds; period_ms: a beat every period. */
 enum { RUNTIME_PULSE_GAME=0, RUNTIME_PULSE_MENU_PRESS=1, RUNTIME_PULSE_MENU_MOVE=2 };
-void runtime_pad_pulse(int kind,float large,float small,unsigned ms,unsigned rise_ms);
+void runtime_pad_effect(int kind,int id,float large,float small,unsigned ms,unsigned rise_ms,unsigned period_ms);
 ABI uint8_t runtime_chase_camera_input(void *input,float *x,float *y,float *boost);
 #endif

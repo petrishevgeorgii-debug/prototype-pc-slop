@@ -50,7 +50,7 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 
 APP_NAME = 'PROTOTYPE'
-VERSION = '1.0.4-beta2'
+VERSION = '1.0.4-beta3'
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -129,7 +129,7 @@ DEFAULTS = {
     'rcas': True, 'rcas_strength': 60, 'display_mode': 'borderless', 'vsync': True,
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
-    'vibration': 100, 'light_bar': True, 'menu_vibration': 1,
+    'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -159,7 +159,7 @@ def load_settings():
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
-                          ('light_bar', bool), ('menu_vibration', int)):
+                          ('light_bar', bool), ('menu_vibration', int), ('extra_vibration', bool)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -227,6 +227,7 @@ def write_ini(values):
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
             'vibration': int(values['vibration']), 'light_bar': int(values['light_bar']),
             'menu_vibration': int(values['menu_vibration']),
+            'extra_vibration': int(bool(values['extra_vibration'])),
             # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
             'proto_res': values['per_game']['p1']['render_res'],
             'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
@@ -1168,7 +1169,8 @@ class Launcher:
         else:
             self.stepper('Render resolution', 'Experimental. The resolution the game renders at; 1920 × 1080 is '
                          'the PS4\'s. Higher supersamples (sharper, heavier); lower is scaled up by FSR 1. If the '
-                         'game misbehaves, set it back to 1920 × 1080.', 'game.render_res', res)
+                         'game misbehaves, set it back to 1920 × 1080. Also the window\'s size (Windowed) and '
+                         'the screen mode (Fullscreen).', 'game.render_res', res)
             self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.',
                          'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
@@ -1224,7 +1226,8 @@ class Launcher:
 
     def tab_display(self):
         self.section('WINDOW', first=True)
-        self.stepper('Display mode', 'Borderless fills the screen and switches instantly with Alt+Tab.',
+        self.stepper('Display mode', 'Borderless fills the screen and switches instantly with Alt+Tab. PROTOTYPE: '
+                     'Windowed is a window of the render resolution, Fullscreen switches the screen to it.',
                      'display_mode', [('windowed', 'Windowed'), ('borderless', 'Borderless'), ('fullscreen', 'Fullscreen')])
         self.toggle('V-Sync', 'Waits for the display refresh: no tearing.', 'vsync')
         self.toggle('Frame counter', 'Shows the frame rate in a corner of the screen.', 'show_fps')
@@ -1292,9 +1295,11 @@ class Launcher:
         self.toggle('Light bar', 'DualSense and DualShock 4: the light bar shows the colours the game sets, '
                     'as on the PS4. Off: the controller\'s own colour.', 'light_bar')
         self.stepper('Menu vibration', 'A short tap when you press a button in the game\'s menus (select, back) and '
-                     'scroll the main menu, or also when you move between items in every menu. Consuming '
-                     'always vibrates (with Vibration on).',
+                     'scroll the main menu, or also when you move between items in every menu.',
                      'menu_vibration', [(0, 'Off'), (1, 'Presses'), (2, 'All')])
+        self.toggle('Action vibration', 'The port\'s own vibration in the game: consuming, the whipfist, wall '
+                    'running, powers, landings, explosions, blows, getting hit. Off: only the game\'s own.',
+                    'extra_vibration')
         self.row_y += 20
         self.note('All work live: they are also in the game\'s own Options > Controller screen and on the '
                   'port menu\'s CONTROLLER page (Insert or R3 + L2). Keyboard keys and mouse are on the CONTROLS '

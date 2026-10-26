@@ -1,4 +1,5 @@
 // port: SDL3 window for the Vulkan swapchain (X11 or Wayland).
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -33,6 +34,7 @@ extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {
     out->vibration = s.vibration;
     out->light_bar = s.light_bar ? 1 : 0;
     out->menu_vibration = s.menu_vibration;
+    out->extra_vibration = s.extra_vibration ? 1 : 0;
 }
 
 namespace Frontend {
@@ -96,22 +98,61 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, const char* title) : width{width_}
     LOG_INFO(Frontend, "Window {}x{} on {}", w, h, driver);
 }
 
-// Windowed, borderless (desktop-sized, no mode change) or exclusive fullscreen at the desktop
-// mode. Window thread only (SDL). The swapchain follows the size events.
+namespace {
+/// PROTOTYPE's Resolution setting (Options > Display, the launcher) as a size, or false when it
+/// has none (The Order: the window keeps its size).
+bool ChosenSize(int& w, int& h) {
+    const int r = PortSettings::Get().proto_res;
+    return r >= 0 && r < PortSettings::ProtoResolutionCount &&
+           std::sscanf(PortSettings::ProtoResolutions[r], "%dx%d", &w, &h) == 2 && w > 0 && h > 0;
+}
+} // namespace
+
+// Windowed (the chosen resolution's size, made to fit the screen), borderless (desktop-sized, no
+// mode change) or exclusive fullscreen (the display mode closest to the chosen resolution, else
+// the desktop's). Window thread only (SDL). The swapchain follows the size events.
 void WindowSDL::ApplyDisplayMode(int mode) {
     display_mode = mode;
+    const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+    int w = 0, h = 0;
+    const bool chosen = ChosenSize(w, h);
+    applied_size = chosen ? w * 100000 + h : 0;
     if (mode == PortGraphics::Windowed) {
         SDL_SetWindowFullscreen(window, false);
+        if (chosen) {
+            // A window as large as the screen would look like borderless: it fits the usable area
+            // with room for its title bar, keeping the resolution's shape.
+            SDL_Rect usable{};
+            if (SDL_GetDisplayUsableBounds(display, &usable) && usable.w > 0 && usable.h > 64) {
+                const double fit = std::min({1.0, 0.92 * usable.w / w, 0.92 * (usable.h - 48) / h});
+                w = static_cast<int>(w * fit);
+                h = static_cast<int>(h * fit);
+            }
+            SDL_SetWindowSize(window, w, h);
+            SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED_DISPLAY(display),
+                                  SDL_WINDOWPOS_CENTERED_DISPLAY(display));
+        }
     } else {
-        const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(window));
-        const bool exclusive = mode == PortGraphics::Fullscreen && desktop;
-        if (!SDL_SetWindowFullscreenMode(window, exclusive ? desktop : nullptr)) {
+        const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
+        SDL_DisplayMode closest{};
+        const SDL_DisplayMode* exclusive = nullptr;
+        if (mode == PortGraphics::Fullscreen) {
+            exclusive = desktop;
+            if (chosen && SDL_GetClosestFullscreenDisplayMode(display, w, h, desktop ? desktop->refresh_rate : 0.0f,
+                                                               false, &closest)) {
+                exclusive = &closest;
+            }
+        }
+        if (!SDL_SetWindowFullscreenMode(window, exclusive)) {
             LOG_WARNING(Frontend, "Fullscreen mode: {}", SDL_GetError());
         }
         SDL_SetWindowFullscreen(window, true);
     }
     SDL_SyncWindow(window);
-    std::printf("Window: %s\n", PortGraphics::DisplayModeNames[mode]);
+    int pw = 0, ph = 0;
+    SDL_GetWindowSizeInPixels(window, &pw, &ph);
+    std::printf("Window: %s, %dx%d\n", PortGraphics::DisplayModeNames[mode], pw, ph);
+    std::fflush(stdout);
 }
 
 WindowSDL::~WindowSDL() {
@@ -152,7 +193,11 @@ bool WindowSDL::PollEvents() {
     if (!text_active) {
         PortOverlay::UpdateTextInput(window);
     }
+    // The display mode, and the window's size when the Resolution setting changes (windowed and
+    // exclusive fullscreen follow it; the render resolution itself on the next start).
     if (const int mode = PortSettings::Get().display_mode; mode != display_mode) {
+        ApplyDisplayMode(mode);
+    } else if (int w = 0, h = 0; mode != PortGraphics::Borderless && ChosenSize(w, h) && w * 100000 + h != applied_size) {
         ApplyDisplayMode(mode);
     }
     SDL_Event event;

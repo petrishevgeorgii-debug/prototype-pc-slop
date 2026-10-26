@@ -38,14 +38,19 @@ IN GAME
   The launcher's GAME page has each game's own render resolution and 30/60 FPS. FSR 1,
   sharpening, texture filtering, display mode, V-Sync and the controls are shared.
 
-WHAT'S NEW IN 1.0.4 BETA 2 (a test build; all versions: CHANGELOG.md)
+WHAT'S NEW IN 1.0.4 BETA 3 (a test build; all versions: CHANGELOG.md)
   - Options > Display (pause menu: a fourth category; main menu: a fourth Options button):
     resolution, frame rate (30/60), display mode, V-Sync, frame counter. Resolution and frame
     rate apply on the next start, or at once with Apply > Restart now (unsaved progress is
     lost). With loose game files and with p1\*.rcf archives alike.
+  - Beta 3: Resolution also sizes the window (windowed: that size, fitted to your screen;
+    fullscreen: the closest display mode), at once. Restart now no longer keeps the old
+    resolution or the 60 FPS patch.
   - DualSense and other gamepads: the game's light bar colours and vibration (it never
-    vibrated: the PS4 profile's rumble switch is kept on), a vibration strength, vibration
-    on consuming and in the menus. Options > Controller has Vibration, Light bar and Menu
+    vibrated: the PS4 profile's rumble switch is kept on), a vibration strength, menu vibration.
+  - Beta 3: action vibration: consuming, the whipfist, wall running, devastators, the shield,
+    air dash and dives, grabs, throws, hits you land and take, landings, explosions and other
+    camera shakes. Options > Controller has Vibration, Light bar, Menu vibration and Action
     vibration; so do the launcher's CONTROLLER page and the port menu.
   - 1.0.3: Fixed: Options > Video showed only Brightness with dumps that keep the game's files in
     archives (p1\*.rcf). The port's rows now appear with every dump.

@@ -103,16 +103,25 @@ setting (`src/runtime_pad.c`). The Controller screen's Vibration row is also lin
 switch (`TheOrderGameMenu::linked`): it sets it with the game's own `db_SetInt`, so the profile
 saves it on.
 
-### Vibration on consuming and in the menus
+### Vibration on the player's moves, on camera shakes and in the menus
 
-The consume moves have no vibration of their own. They start and end the consume effect (the
-tendrils) with an `EffectConsumeAction`; its vtable slots 6 (start, `0x856cd0`) and 7 (end,
-`0x8570a0`) now point to native code that also starts a swelling rumble and fades it out
-(`Native::Pulse`, `runtime_pad_pulse` in `src/runtime_pad.c`: added to the game's motors and
-scaled by the Vibration setting). The menus play their sounds through PlaceLuaCall
-(`snd_PlayPatchOverlapped`, protomain's soundmanager): `options_menu.cpp` taps the controller for
-the select, back and tab sounds and for scrolling the main menu, and for the other menus' move
-sounds with Menu vibration set to All.
+The game vibrates for few things itself. Every move is a `proto::fightitems::motion::*Action`
+whose vtable slot 6 starts it and slot 7 ends it; `game/p1/rumble.cpp` points those slots of
+about thirty moves (consuming, the whipfist, wall running, devastators, the shield, air moves,
+grabs, throws, hits, falls...) to native functions that start an effect and call the game's own
+(each slot is checked to hold the game's function first). Moves anyone can make vibrate only for
+the player: the action's owner handle (at an offset per class) is compared with the player's
+(`0x13491c0`, `Native::IsPlayer`). Camera shakes: the CameraManager (pointer at `0x135c5f0`)
+applies a requested shake at `0x70c2ed` (`call 0x103e90` per part of it); the call now also
+vibrates by the shake's strength (`[manager+0x94]`, its level times its nearness).
+
+Effects (`Native::Effect`, `runtime_pad_effect` in `src/runtime_pad.c`) are taps, swells or
+rhythms on eight channels whose motor levels are added to the game's by taking the larger, scaled
+by the Vibration setting; one with an id lasts until the same id ends it (a wall run's steps until
+the wall run ends). The Action vibration setting turns them off. The menus play their sounds
+through PlaceLuaCall (`snd_PlayPatchOverlapped`, protomain's soundmanager): `options_menu.cpp`
+taps the controller for the select, back and tab sounds and for scrolling the main menu, and for
+the other menus' move sounds with Menu vibration set to All.
 
 ## Next
 

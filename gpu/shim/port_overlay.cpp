@@ -1048,6 +1048,12 @@ void PrototypeMenu() {
                              "Короткий толчок при нажатии в меню игры (выбор, назад) или также при переходе между "
                              "пунктами."),
                            0, {off, T("PRESSES", "НАЖАТИЯ"), T("ALL", "ВСЕ")}, std::clamp(s.menu_vibration.load(), 0, 2)});
+        options.push_back({T("ACTION VIBRATION", "ВИБРАЦИЯ ДЕЙСТВИЙ"),
+                           T("The port's own vibration in the game: consuming, the whipfist, wall running, "
+                             "powers, landings, explosions, blows, getting hit... Off: only the game's own.",
+                             "Вибрация порта в игре: поглощение, хлыст, бег по стенам, способности, "
+                             "приземления, взрывы, удары, попадания по вам... Выкл: только вибрация самой игры."),
+                           0, {off, on}, s.extra_vibration ? 1 : 0});
         break;
     }
     default:
@@ -1113,6 +1119,7 @@ void PrototypeMenu() {
         case 80: s.vibration = value * 25; break;
         case 81: s.light_bar = value == 1; break;
         case 82: s.menu_vibration = value; break;
+        case 83: s.extra_vibration = value == 1; break;
         default: break;
         }
     };
@@ -1149,7 +1156,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
@@ -1308,7 +1315,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;

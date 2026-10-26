@@ -41,6 +41,7 @@ private:
     std::mutex text_mutex;
     bool text_requested{}, text_active{};
     int display_mode = -1; ///< applied PortSettings display mode (window thread)
+    int applied_size = 0;  ///< the Resolution setting it was applied with (w * 100000 + h; 0 none)
     void ApplyDisplayMode(int mode);
     int text_state{};
     std::string text, text_prompt, base_title;

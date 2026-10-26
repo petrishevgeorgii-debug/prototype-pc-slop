@@ -179,6 +179,10 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     } else if (!std::strcmp(function, "db_SetInt")) {
         menu->set(page, row, Int(args, argc, 3));
         menu->save();
+        static const char* const pages[] = {"Video", "Controller", "Display"};
+        std::printf("Menu: %s > %s set to %s\n", page < 3 ? pages[page] : "?", menu->label(page, row),
+                    menu->choice(page, row, menu->get(page, row)));
+        std::fflush(stdout);
         Link(handler, linked, menu->get(page, row) != 0, true, Arg(args, argc, 2), Arg(args, argc, 4));
         ret->type = GfxValue::Null;
     } else if (!std::strcmp(function, "fe_RestoreGameDBDefault")) {

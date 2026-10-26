@@ -18,7 +18,7 @@ namespace {
 std::uint8_t* g_image = nullptr;
 const NativeHost* g_host = nullptr; ///< during installation only: the loader's host lives on its stack
 const TheOrderGameMenu* g_menu = nullptr;
-void (*g_pad_pulse)(int, float, float, unsigned, unsigned) = nullptr;
+void (*g_pad_effect)(int, int, float, float, unsigned, unsigned, unsigned) = nullptr;
 std::size_t g_data_used = 0;
 
 std::vector<Native::Replacement>& Registry() {
@@ -149,7 +149,17 @@ const TheOrderGameMenu* Menu() {
 }
 
 void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms) {
-    if (g_pad_pulse) g_pad_pulse(static_cast<int>(kind), large, small, ms, rise_ms);
+    Effect(kind, 0, large, small, ms, rise_ms, 0);
+}
+
+void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms) {
+    if (g_pad_effect) g_pad_effect(static_cast<int>(kind), id, large, small, ms, rise_ms, period_ms);
+}
+
+bool IsPlayer(std::uint32_t handle) {
+    // PROTOTYPE: the player's object handle (u16 index, u16 generation) is kept at 0x13491c0.
+    return g_image && handle != 0xffffffffu && (handle & 0xffff) != 0xffff &&
+           handle == *reinterpret_cast<const std::uint32_t*>(g_image + 0x13491c0);
 }
 
 } // namespace Native
@@ -161,7 +171,7 @@ extern "C" void native_game_install(const NativeHost* host) {
     g_host = host;
     g_image = host->image;
     g_menu = host->menu; // kept: the host itself is gone once the game runs
-    g_pad_pulse = host->pad_pulse;
+    g_pad_effect = host->pad_effect;
     unsigned installed = 0, skipped = 0;
     bool all_off = false;
     for (const auto& r : Registry()) {

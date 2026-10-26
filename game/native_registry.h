@@ -55,6 +55,14 @@ enum class Pulses { Game = 0, MenuPress = 1, MenuMove = 2 };
 /// rising over that time. `ms` 0 ends the current one. Nothing without a host for it.
 void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms = 0);
 
+/// The same with an id (the next effect with it replaces it; `ms` 0 ends it with a short fade) and
+/// a rhythm: a beat every `period_ms` over a steady 40%.
+void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms = 0, unsigned period_ms = 0);
+
+/// PROTOTYPE: whether an object handle (u16 index, u16 generation, as the game keeps them) is the
+/// player's.
+bool IsPlayer(std::uint32_t handle);
+
 struct Registrar {
     explicit Registrar(const Replacement& replacement) { Register(replacement); }
 };

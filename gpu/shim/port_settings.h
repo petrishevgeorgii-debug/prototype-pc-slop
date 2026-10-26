@@ -76,6 +76,8 @@ struct Values {
     std::atomic<int> vibration{100};
     std::atomic<bool> light_bar{true};
     std::atomic<int> menu_vibration{1};
+    /// The port's own vibration for the game (consuming, the whip fist, wall running, impacts...).
+    std::atomic<bool> extra_vibration{true};
     /// PROTOTYPE's render resolution (index into ProtoResolutions) and 60 FPS patch: run.py turns
     /// them into patches at start (THEORDER_PROTO_RES, THEORDER_FPS60), so they apply on the next
     /// start; startup_*: what this launch runs with. -1: not known (another game).

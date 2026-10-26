@@ -50,9 +50,10 @@ typedef struct {
 void theordergpu_mouse_take(TheOrderMouse *out);
 /* Gamepad options (theorder.ini, the port menu, the game's Controller screen, the launcher), read
  * live by runtime_pad.c: vibration strength in percent (0 off), light_bar 1: the game's colours,
- * menu_vibration: a tap in the game's menus, 0 off, 1 on pressing, 2 also on moving. */
+ * menu_vibration: a tap in the game's menus, 0 off, 1 on pressing, 2 also on moving;
+ * extra_vibration 1: the port's own effects in the game (consuming, the whip fist...). */
 typedef struct {
-    int vibration, light_bar, menu_vibration;
+    int vibration, light_bar, menu_vibration, extra_vibration;
 } TheOrderPadOptions;
 void theordergpu_pad_options(TheOrderPadOptions *out);
 /* PROTOTYPE: the view axis (unit vector, world space) of the last frame's camera, a counter that

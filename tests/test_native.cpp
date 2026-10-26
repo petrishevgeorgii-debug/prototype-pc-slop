@@ -37,7 +37,7 @@ int failures = 0;
         }                                                                     \
     } while (0)
 
-constexpr std::size_t kImage = 0x10a0000, kCode = 0x10000, kData = 0x1000;
+constexpr std::size_t kImage = 0x1360000, kCode = 0x10000, kData = 0x1000;
 constexpr std::uint64_t kCallee = 0x1000; ///< the stand-in game function: marks byte +0 of its argument
 constexpr std::uint64_t kSite = 0x2000;   ///< a call to it
 std::uint8_t* g_base = nullptr;
@@ -59,17 +59,24 @@ constexpr std::uint64_t kLuaCalls = 0x1f000; ///< the stand-in PlaceLuaCall coun
 // The rumble switch's hand-over (game/p1/rumble.cpp) to 0x568510(on, player), which here stores
 // its arguments at kRumbleArgs.
 constexpr std::uint64_t kSwitchSite = 0x5685cb, kSetRumble = 0x568510, kRumbleArgs = 0x1f100;
-// The consume effect's start and end (EffectConsumeAction vtable slots 6 and 7, at kEffectSlots):
-// the start's first bytes as in the game (they are checked), stand-ins put in after installing.
+// Moves (game/p1/rumble.cpp): the first move's first bytes as in the game (they are checked), and
+// vtable slots 6 and 7 of the consume effect, slot 6 of the whipfist's lash and of the hit reaction
+// (its owner handle at +0xc8) holding the game's functions: stand-ins put in after installing.
 constexpr std::uint64_t kEffectStart = 0x856cd0, kEffectEnd = 0x8570a0, kEffectSlots = 0x109b450;
+constexpr std::uint64_t kLash = 0x8ac8d0, kLashSlot = 0x109fd30 + 0x30;
+constexpr std::uint64_t kHit = 0x8683c0, kHitSlot = 0x109c8a0 + 0x30, kPlayer = 0x13491c0;
+// The camera shake: the CameraManager's call (to kApplyShake), its pointer at kCameraManager to a
+// stand-in manager at kManager.
+constexpr std::uint64_t kShakeCall = 0x70c2ed, kApplyShake = 0x103e90, kCameraManager = 0x135c5f0, kManager = 0x1f200;
 
 // Pulses the native layer asks the pad for.
-int g_pulses = 0, g_pulse_kind = -1;
+int g_pulses = 0, g_pulse_kind = -1, g_pulse_id = 0;
 float g_pulse_large = 0, g_pulse_small = 0;
 unsigned g_pulse_ms = 0, g_pulse_rise = 0;
-void PadPulse(int kind, float large, float small, unsigned ms, unsigned rise_ms) {
+void PadEffect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned) {
     ++g_pulses;
     g_pulse_kind = kind;
+    g_pulse_id = id;
     g_pulse_large = large;
     g_pulse_small = small;
     g_pulse_ms = ms;
@@ -108,6 +115,17 @@ void BuildGame() {
     const std::uintptr_t slots[2] = {reinterpret_cast<std::uintptr_t>(g_base + kEffectStart),
                                      reinterpret_cast<std::uintptr_t>(g_base + kEffectEnd)};
     std::memcpy(g_base + kEffectSlots, slots, sizeof(slots));
+    Put(kLash, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x53, 0x48, 0x81, 0xec});
+    const std::uintptr_t lash = reinterpret_cast<std::uintptr_t>(g_base + kLash),
+                         hit = reinterpret_cast<std::uintptr_t>(g_base + kHit);
+    std::memcpy(g_base + kLashSlot, &lash, 8);
+    std::memcpy(g_base + kHitSlot, &hit, 8);
+    const std::uint32_t player = 0x00070012;
+    std::memcpy(g_base + kPlayer, &player, 4);
+    Put(kShakeCall, {0xe8, 0x9e, 0x7b, 0x9f, 0xff, 0x49, 0x83, 0xc4, 0x24, 0xff, 0xcb, 0x0f});
+    Put(kApplyShake, {0xc3});
+    std::uint8_t* manager = g_base + kManager;
+    std::memcpy(g_base + kCameraManager, &manager, 8);
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
@@ -172,7 +190,7 @@ int main() {
     g_base = static_cast<std::uint8_t*>(mmap(nullptr, kImage + kCode + kData, PROT_READ | PROT_WRITE | PROT_EXEC,
                                              MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (g_base == MAP_FAILED) return 2;
-    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr, PadPulse};
+    NativeHost host{g_base, kImage, AllocCode, g_base + kImage + kCode, kData, nullptr, PadEffect};
 
     // Off: nothing changes.
     BuildGame();
@@ -259,19 +277,59 @@ int main() {
         CHECK(got[0] == 1 && got[1] == 3);
     }
 
-    // The consume effect: its start swells the vibration, its end fades it; the game's own run too.
+    // Moves: the consume effect's start swells the vibration, its end fades it; the game's own run too.
     {
-        Put(kEffectStart, {0xb8, 0x05, 0x00, 0x00, 0x00, 0xc3}); // stand-ins: mov eax, 5 / 6; ret
+        Put(kEffectStart, {0xb8, 0x05, 0x00, 0x00, 0x00, 0xc3}); // stand-ins: mov eax, 5 / 6 / 7 / 8; ret
         Put(kEffectEnd, {0xb8, 0x06, 0x00, 0x00, 0x00, 0xc3});
+        Put(kLash, {0xb8, 0x07, 0x00, 0x00, 0x00, 0xc3});
+        Put(kHit, {0xb8, 0x08, 0x00, 0x00, 0x00, 0xc3});
         using Slot = std::uint64_t(GUEST_ABI*)(void*);
         std::uintptr_t slots[2];
         std::memcpy(slots, g_base + kEffectSlots, sizeof(slots));
         CHECK(slots[0] != reinterpret_cast<std::uintptr_t>(g_base + kEffectStart));
-        const int before = g_pulses;
+        int before = g_pulses;
         CHECK(reinterpret_cast<Slot>(slots[0])(nullptr) == 5);
-        CHECK(g_pulses == before + 1 && g_pulse_kind == 0 && g_pulse_ms > 0 && g_pulse_rise > 0);
+        CHECK(g_pulses == before + 1 && g_pulse_kind == 0 && g_pulse_id != 0 && g_pulse_ms > 0 && g_pulse_rise > 0);
+        const int consume = g_pulse_id;
         CHECK(reinterpret_cast<Slot>(slots[1])(nullptr) == 6);
-        CHECK(g_pulses == before + 2 && g_pulse_ms == 0);
+        CHECK(g_pulses == before + 2 && g_pulse_ms == 0 && g_pulse_id == consume);
+
+        // The whipfist's lash: a tap, whoever's.
+        std::uintptr_t slot;
+        std::memcpy(&slot, g_base + kLashSlot, 8);
+        CHECK(reinterpret_cast<Slot>(slot)(nullptr) == 7);
+        CHECK(g_pulses == before + 3 && g_pulse_id == 0 && g_pulse_ms > 0 && g_pulse_small > g_pulse_large);
+
+        // A hit reaction: only the player's.
+        std::uint8_t action[0x100] = {};
+        std::memcpy(&slot, g_base + kHitSlot, 8);
+        const std::uint32_t other = 0x00070013, player = 0x00070012;
+        std::memcpy(action + 0xc8, &other, 4);
+        CHECK(reinterpret_cast<Slot>(slot)(action) == 8);
+        CHECK(g_pulses == before + 3);
+        std::memcpy(action + 0xc8, &player, 4);
+        CHECK(reinterpret_cast<Slot>(slot)(action) == 8);
+        CHECK(g_pulses == before + 4 && g_pulse_large > 0.5f);
+
+        // A camera shake vibrates by its strength, once for all its parts, and is still applied.
+        using Apply = void(GUEST_ABI*)(void*, void*, void*, float, float, float, float);
+        CHECK(reinterpret_cast<std::uint8_t*>(CallTarget(kShakeCall)) != g_base + kApplyShake);
+        std::uint8_t camera[16] = {};
+        std::uint8_t* manager = g_base + kManager;
+        void* cam = camera;
+        const std::int32_t level = 2;
+        const float strength = 3.0f;
+        std::memcpy(manager + 0x18, &cam, 8);
+        std::memcpy(manager + 0x90, &level, 4);
+        std::memcpy(manager + 0x94, &strength, 4);
+        before = g_pulses;
+        reinterpret_cast<Apply>(CallTarget(kShakeCall))(camera, nullptr, nullptr, 1, 2, 3, 4);
+        reinterpret_cast<Apply>(CallTarget(kShakeCall))(camera, nullptr, nullptr, 1, 2, 3, 4);
+        CHECK(g_pulses == before + 1 && g_pulse_large == 1.0f);
+        const std::int32_t none = -1;
+        std::memcpy(manager + 0x90, &none, 4); // the Lua's shakes: no level
+        reinterpret_cast<Apply>(CallTarget(kShakeCall))(camera, nullptr, nullptr, 1, 2, 3, 4);
+        CHECK(g_pulses == before + 1);
     }
 
     // The menus' sounds tap the controller: a press, a move, not a stop, not other calls.

@@ -452,22 +452,25 @@ static SDL_Gamepad *feedback_pad;
 static int bar_applied=-1;
 static uint16_t rumble_lo=0xffff, rumble_hi=0xffff;
 static uint64_t rumble_sent_us;
-/* A pulse the port adds to the game's own vibration (runtime_pad_pulse): both motors at their
- * levels (0..1). Without a rise: full for the first part of its time, then fading out. With one:
- * from a third up to full over the rise, held, fading over its last quarter; ended early with a
- * short fade (runtime_pad_pulse with 0 ms). */
-static struct { float large, small; uint64_t start_us, end_us, rise_us, fade_us; } pulse;
-static float pulse_level(uint64_t now) {
-    if (now>=pulse.end_us || pulse.end_us<=pulse.start_us || now<pulse.start_us) return 0.0f;
+/* Effects the port adds to the game's own vibration (runtime_pad_effect): channels whose motor
+ * levels (0..1) combine with the game's by taking the larger. A tap (no rise): full for the first
+ * part of its time, then fading out. A swell (rise): from a third up to full over the rise, held,
+ * fading over its last quarter. A rhythm (period): a beat at the start of every period over a
+ * steady 40%. An effect with an id is replaced by the next one with that id, and ended with a
+ * short fade by one with no time. */
+#define EFFECTS 8
+typedef struct { int id; float large, small; uint64_t start_us, end_us, rise_us, fade_us, period_us; } Effect;
+static Effect effects[EFFECTS];
+static float effect_level(const Effect *e, uint64_t now) {
+    if (now>=e->end_us || e->end_us<=e->start_us || now<e->start_us) return 0.0f;
     float level;
-    const float t=(float)(now-pulse.start_us)/(float)(pulse.end_us-pulse.start_us);
-    if (!pulse.rise_us) {
-        level=t<0.4f ? 1.0f : (1.0f-t)/0.6f;
-    } else {
-        const uint64_t in=now-pulse.start_us;
-        level=in<pulse.rise_us ? 0.35f+0.65f*(float)in/(float)pulse.rise_us : t<0.75f ? 1.0f : (1.0f-t)/0.25f;
-    }
-    if (pulse.fade_us && now>=pulse.fade_us) level*=(float)(pulse.end_us-now)/(float)(pulse.end_us-pulse.fade_us);
+    const uint64_t in=now-e->start_us;
+    const float t=(float)in/(float)(e->end_us-e->start_us);
+    if (!e->rise_us && !e->period_us) level=t<0.4f ? 1.0f : (1.0f-t)/0.6f;
+    else if (in<e->rise_us) level=0.35f+0.65f*(float)in/(float)e->rise_us;
+    else level=t<0.75f ? 1.0f : (1.0f-t)/0.25f;
+    if (e->period_us && (in%e->period_us)*100>=e->period_us*35) level*=0.4f;
+    if (e->fade_us && now>=e->fade_us) level*=(float)(e->end_us-now)/(float)(e->end_us-e->fade_us);
     return level;
 }
 static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
@@ -481,10 +484,11 @@ static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
     }
     const int strength=o->vibration<0 ? 0 : o->vibration>200 ? 200 : o->vibration;
     const uint64_t now=now_us();
-    const float level=pulse_level(now);
     int large=rumble_large, small=rumble_small;
-    if (level>0.0f) {
-        const int pl=(int)(pulse.large*level*255.0f+0.5f), ps=(int)(pulse.small*level*255.0f+0.5f);
+    for (int i=0;i<EFFECTS;++i) {
+        const float level=effect_level(&effects[i],now);
+        if (level<=0.0f) continue;
+        const int pl=(int)(effects[i].large*level*255.0f+0.5f), ps=(int)(effects[i].small*level*255.0f+0.5f);
         if (pl>large) large=pl;
         if (ps>small) small=ps;
     }
@@ -747,27 +751,34 @@ static void feedback_now(void) {
     theordergpu_pad_options(&options);
     apply_feedback(current_gamepad(),&options);
 }
-void runtime_pad_pulse(int kind, float large, float small, unsigned ms, unsigned rise_ms) {
+void runtime_pad_effect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms) {
     TheOrderPadOptions options;
     theordergpu_pad_options(&options);
     if ((kind==RUNTIME_PULSE_MENU_PRESS && options.menu_vibration<1) ||
-        (kind==RUNTIME_PULSE_MENU_MOVE && options.menu_vibration<2)) return;
+        (kind==RUNTIME_PULSE_MENU_MOVE && options.menu_vibration<2) ||
+        (kind==RUNTIME_PULSE_GAME && !options.extra_vibration && ms)) return;
     pthread_mutex_lock(&lock);
     const uint64_t now=now_us();
+    Effect *slot=NULL;
+    if (id) for (int i=0;i<EFFECTS;++i) if (effects[i].id==id) { slot=&effects[i]; break; }
     if (!ms) { /* the end: a short fade from where it is */
-        if (pulse_level(now)>0.0f && !pulse.fade_us) {
-            pulse.fade_us=now;
-            if (pulse.end_us>now+150000) pulse.end_us=now+150000;
+        if (slot && effect_level(slot,now)>0.0f && !slot->fade_us) {
+            slot->fade_us=now;
+            if (slot->end_us>now+150000) slot->end_us=now+150000;
         }
     } else if (options.vibration>0) {
-        /* A weaker pulse does not cut a stronger one short. */
-        const float left=pulse_level(now);
-        if (left*(pulse.large>pulse.small ? pulse.large : pulse.small) <= (large>small ? large : small)) {
-            pulse.large=large<0 ? 0 : large>1 ? 1 : large;
-            pulse.small=small<0 ? 0 : small>1 ? 1 : small;
-            pulse.start_us=now; pulse.end_us=now+(uint64_t)ms*1000;
-            pulse.rise_us=(uint64_t)rise_ms*1000; pulse.fade_us=0;
+        if (!slot) { /* a free channel, else the one with the least left */
+            float least=2.0f;
+            for (int i=0;i<EFFECTS;++i) {
+                const float left=effect_level(&effects[i],now)*(effects[i].large>effects[i].small ? effects[i].large : effects[i].small);
+                if (left<least) { least=left; slot=&effects[i]; }
+            }
         }
+        slot->id=id;
+        slot->large=large<0 ? 0 : large>1 ? 1 : large;
+        slot->small=small<0 ? 0 : small>1 ? 1 : small;
+        slot->start_us=now; slot->end_us=now+(uint64_t)ms*1000;
+        slot->rise_us=(uint64_t)rise_ms*1000; slot->period_us=(uint64_t)period_ms*1000; slot->fade_us=0;
     }
     apply_feedback(current_gamepad(),&options);
     pthread_mutex_unlock(&lock);

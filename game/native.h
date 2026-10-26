@@ -24,9 +24,9 @@ typedef struct NativeHost {
     size_t data_size;
     /* The port's settings for the game's own menus (gpu/theordergpu.h), or NULL. */
     const struct TheOrderGameMenu *menu;
-    /* A vibration added to the game's (runtime_pad_pulse: kind, motor levels 0..1, ms, rise ms),
-     * or NULL. */
-    void (*pad_pulse)(int kind, float large, float small, unsigned ms, unsigned rise_ms);
+    /* A vibration added to the game's (runtime_pad_effect: kind, id, motor levels 0..1, ms, rise
+     * ms, period ms), or NULL. */
+    void (*pad_effect)(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms);
 } NativeHost;
 
 /* Installs every native replacement whose original code is found unchanged; prints what it did.

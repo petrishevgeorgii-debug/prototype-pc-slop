@@ -111,6 +111,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.light_bar = i != 0;
     } else if (key == "menu_vibration") {
         v.menu_vibration = std::clamp(i, 0, 2);
+    } else if (key == "extra_vibration") {
+        v.extra_vibration = i != 0;
     } else if (key == "proto_res") {
         for (int r = 0; r < ProtoResolutionCount; ++r) {
             if (value == ProtoResolutions[r]) v.proto_res = r;
@@ -305,8 +307,8 @@ void Save() {
                  int(v.restart_unconfirmed.load()));
     std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\n",
                  v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
-    std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\n", v.vibration.load(), int(v.light_bar.load()),
-                 v.menu_vibration.load());
+    std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\nextra_vibration=%d\n", v.vibration.load(),
+                 int(v.light_bar.load()), v.menu_vibration.load(), int(v.extra_vibration.load()));
     // PROTOTYPE's render resolution and frame rate: read by run.py and the launcher at start.
     if (v.proto_res >= 0 && v.proto_res < ProtoResolutionCount) std::fprintf(file, "proto_res=%s\n", ProtoResolutions[v.proto_res]);
     if (v.proto_fps60 >= 0) std::fprintf(file, "proto_fps60=%d\n", v.proto_fps60.load());
