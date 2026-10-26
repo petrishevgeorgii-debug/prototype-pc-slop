@@ -4,6 +4,10 @@
 #include <math.h>
 #include "../src/runtime_audio.c"
 
+void runtime_haptics_feed(const void *frames, int count, int channels, int is_float) {
+    (void)frames; (void)count; (void)channels; (void)is_float;
+}
+
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

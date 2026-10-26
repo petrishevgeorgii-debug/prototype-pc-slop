@@ -5,6 +5,12 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 
 ## Unreleased
 
+### Added
+- **DualSense HD haptics** (USB cable): all vibration plays on the controller's haptic motors as waveforms instead of the imitated rumble motors, each with a feel of its own: the whipfist's crack and tug, footfalls while running up a wall, a rough scrape sliding down, landings and ground spikes as a boom that drops in pitch, a wavering swell while consuming or charging a devastator, a crunch on hits, crisp ticks in the menus. The game's own rumble plays on them too.
+  - **Sound haptics:** the game's sound is felt as well: its main mix low-passed, keeping only what rises suddenly over the last half second (explosions, impacts, gunfire, tanks), not the music or the city's steady hum. Off, Low, Medium (default) or High.
+  - On USB the DualSense is also a 4-channel sound card whose channels 3 and 4 drive the haptic motors (`src/runtime_haptics.c` finds it by name and plays there; the plain rumble is held at 0 meanwhile, since the controller mutes the haptics while it runs). Bluetooth, other controllers, or Windows having the controller's speaker set to stereo (the log says to set it to 4.0 / Quadraphonic): the plain rumble, as before.
+  - Settings **HD haptics** and **Sound haptics** in Options > Controller, the launcher's and the port menu's CONTROLLER pages; `haptics`, `haptics_sound` in `theorder.ini`.
+
 ### Fixed
 - **The mouse could not choose a power on the power wheel** (hold Tab): the wheel selects with the right stick, but the mouse turns PROTOTYPE's camera directly, so it never reached the stick. While the power wheel is held, the mouse now points the right stick (a short move towards a power chooses it, and it stays chosen until you move again or let go).
 

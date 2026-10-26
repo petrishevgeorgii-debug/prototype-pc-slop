@@ -18,7 +18,7 @@ namespace {
 std::uint8_t* g_image = nullptr;
 const NativeHost* g_host = nullptr; ///< during installation only: the loader's host lives on its stack
 const TheOrderGameMenu* g_menu = nullptr;
-void (*g_pad_effect)(int, int, float, float, unsigned, unsigned, unsigned) = nullptr;
+void (*g_pad_effect)(int, int, float, float, unsigned, unsigned, unsigned, int) = nullptr;
 std::size_t g_data_used = 0;
 
 std::vector<Native::Replacement>& Registry() {
@@ -148,12 +148,14 @@ const TheOrderGameMenu* Menu() {
     return g_menu;
 }
 
-void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms) {
-    Effect(kind, 0, large, small, ms, rise_ms, 0);
+void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms, Texture texture) {
+    Effect(kind, 0, large, small, ms, rise_ms, 0, texture);
 }
 
-void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms) {
-    if (g_pad_effect) g_pad_effect(static_cast<int>(kind), id, large, small, ms, rise_ms, period_ms);
+void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms,
+            Texture texture) {
+    if (g_pad_effect)
+        g_pad_effect(static_cast<int>(kind), id, large, small, ms, rise_ms, period_ms, static_cast<int>(texture));
 }
 
 bool IsPlayer(std::uint32_t handle) {

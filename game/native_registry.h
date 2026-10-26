@@ -50,14 +50,19 @@ const TheOrderGameMenu* Menu();
 /// What a vibration pulse is for: the player's options decide which ones are felt.
 enum class Pulses { Game = 0, MenuPress = 1, MenuMove = 2 };
 
-/// A vibration added to the game's own (src/runtime_pad.c runtime_pad_pulse): motor levels 0..1
+/// How a vibration feels on a DualSense's HD haptics (USB, src/runtime_haptics.c); the plain
+/// rumble motors only follow its levels. As src/runtime.h RUNTIME_TEXTURE_*.
+enum class Texture { Plain = 0, Crack, Thud, Tug, Step, Scrape, Swell, Hit, Click };
+
+/// A vibration added to the game's own (src/runtime_pad.c runtime_pad_effect): motor levels 0..1
 /// (large: the low rumble, small: the high one), `ms` long; `rise_ms` 0: a tap, else a swell
 /// rising over that time. `ms` 0 ends the current one. Nothing without a host for it.
-void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms = 0);
+void Pulse(Pulses kind, float large, float small, unsigned ms, unsigned rise_ms = 0, Texture texture = Texture::Plain);
 
 /// The same with an id (the next effect with it replaces it; `ms` 0 ends it with a short fade) and
 /// a rhythm: a beat every `period_ms` over a steady 40%.
-void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms = 0, unsigned period_ms = 0);
+void Effect(Pulses kind, int id, float large, float small, unsigned ms, unsigned rise_ms = 0, unsigned period_ms = 0,
+            Texture texture = Texture::Plain);
 
 /// PROTOTYPE: whether an object handle (u16 index, u16 generation, as the game keeps them) is the
 /// player's.

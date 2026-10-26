@@ -130,6 +130,7 @@ DEFAULTS = {
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
+    'haptics': True, 'haptics_sound': 2,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -159,7 +160,8 @@ def load_settings():
         for key, kind in (('display_mode', str), ('vsync', bool), ('show_fps', bool), ('fsr1', bool),
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
-                          ('light_bar', bool), ('menu_vibration', int), ('extra_vibration', bool)):
+                          ('light_bar', bool), ('menu_vibration', int), ('extra_vibration', bool),
+                          ('haptics', bool), ('haptics_sound', int)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -228,6 +230,7 @@ def write_ini(values):
             'vibration': int(values['vibration']), 'light_bar': int(values['light_bar']),
             'menu_vibration': int(values['menu_vibration']),
             'extra_vibration': int(bool(values['extra_vibration'])),
+            'haptics': int(bool(values['haptics'])), 'haptics_sound': int(values['haptics_sound']),
             # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
             'proto_res': values['per_game']['p1']['render_res'],
             'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
@@ -1300,6 +1303,11 @@ class Launcher:
         self.toggle('Action vibration', 'The port\'s own vibration in the game: consuming, the whipfist, wall '
                     'running, powers, landings, explosions, blows, getting hit. Off: only the game\'s own.',
                     'extra_vibration')
+        self.toggle('HD haptics', 'DualSense on a USB cable: all vibration plays on its haptic motors, with a feel '
+                    'of its own for each move (a whip\'s crack, steps on a wall, landings). Bluetooth: the plain '
+                    'rumble.', 'haptics')
+        self.stepper('Sound haptics', 'HD haptics also play the game\'s sound: explosions, impacts, gunfire, '
+                     'tanks (not the music).', 'haptics_sound', [(0, 'Off'), (1, 'Low'), (2, 'Medium'), (3, 'High')])
         self.row_y += 20
         self.note('All work live: they are also in the game\'s own Options > Controller screen and on the '
                   'port menu\'s CONTROLLER page (Insert or R3 + L2). Keyboard keys and mouse are on the CONTROLS '

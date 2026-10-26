@@ -193,6 +193,8 @@ static int32_t output_port(int32_t handle, const void *data, int pace) {
             if (p->is_float) { float v; memcpy(&v,(const char *)data+from*4,4); v*=gain; memcpy(converted+to*4,&v,4); }
             else { int16_t v; memcpy(&v,(const char *)data+from*2,2); v=(int16_t)((float)v*gain); memcpy(converted+to*2,&v,2); }
         }
+        /* DualSense HD haptics play the main mix's impacts (one port: a single feed) */
+        if (p==&ports[0]) runtime_haptics_feed(converted,p->frames,p->channels,p->is_float);
         if (p->downmix) bytes=downmix_stereo(converted,(size_t)p->frames,p->is_float);
         if (p->dump) fwrite(converted,1,bytes,p->dump);
         if (p->stats) {

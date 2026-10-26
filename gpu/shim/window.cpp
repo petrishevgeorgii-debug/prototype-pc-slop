@@ -35,6 +35,8 @@ extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {
     out->light_bar = s.light_bar ? 1 : 0;
     out->menu_vibration = s.menu_vibration;
     out->extra_vibration = s.extra_vibration ? 1 : 0;
+    out->haptics = s.haptics ? 1 : 0;
+    out->haptics_sound = s.haptics_sound;
 }
 
 namespace Frontend {

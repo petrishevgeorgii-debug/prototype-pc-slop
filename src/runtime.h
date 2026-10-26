@@ -133,6 +133,24 @@ void runtime_set_chase_camera_input(void *original);
  * replaced, and ended (a short fade) with ms 0. Motor levels 0..1, length in ms; rise_ms 0: a tap,
  * else a swell that rises over rise_ms and holds; period_ms: a beat every period. */
 enum { RUNTIME_PULSE_GAME=0, RUNTIME_PULSE_MENU_PRESS=1, RUNTIME_PULSE_MENU_MOVE=2 };
-void runtime_pad_effect(int kind,int id,float large,float small,unsigned ms,unsigned rise_ms,unsigned period_ms);
+/* How an effect feels on DualSense HD haptics (runtime_haptics.c); the rumble motors only follow
+ * its levels. As game/native_registry.h Native::Texture. */
+enum { RUNTIME_TEXTURE_PLAIN=0, RUNTIME_TEXTURE_CRACK, RUNTIME_TEXTURE_THUD, RUNTIME_TEXTURE_TUG,
+       RUNTIME_TEXTURE_STEP, RUNTIME_TEXTURE_SCRAPE, RUNTIME_TEXTURE_SWELL, RUNTIME_TEXTURE_HIT,
+       RUNTIME_TEXTURE_CLICK, RUNTIME_TEXTURES };
+void runtime_pad_effect(int kind,int id,float large,float small,unsigned ms,unsigned rise_ms,unsigned period_ms,
+                        int texture);
+/* What the haptics play now (runtime_pad.c, for runtime_haptics.c): the port's effects and the
+ * game's own rumble, their motor levels already scaled by the Vibration setting and their
+ * envelopes (`level` without a rhythm's beat: a Step texture beats by itself). */
+typedef struct { int slot, texture; float large, small; double age_s, period_s; } RuntimeHapticVoice;
+int runtime_pad_haptic_voices(RuntimeHapticVoice *out,int max,float *game_large,float *game_small);
+/* DualSense HD haptics over USB (runtime_haptics.c): the controller's audio device (4 channels,
+ * the haptic actuators on 3 and 4). poll (the pad thread) opens or closes it as the setting and the
+ * controller come and go; active: it plays (the rumble motors stay still then); feed: the game's
+ * main mix (SDL channel order, after its volume), whose impacts the haptics also play. */
+void runtime_haptics_poll(void);
+int runtime_haptics_active(void);
+void runtime_haptics_feed(const void *frames,int count,int channels,int is_float);
 ABI uint8_t runtime_chase_camera_input(void *input,float *x,float *y,float *boost);
 #endif

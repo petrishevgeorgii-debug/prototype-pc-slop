@@ -1054,6 +1054,21 @@ void PrototypeMenu() {
                              "Вибрация порта в игре: поглощение, хлыст, бег по стенам, способности, "
                              "приземления, взрывы, удары, попадания по вам... Выкл: только вибрация самой игры."),
                            0, {off, on}, s.extra_vibration ? 1 : 0});
+        options.push_back({T("HD HAPTICS", "HD-ВИБРАЦИЯ"),
+                           T("DualSense on a USB cable: all vibration plays on its haptic motors, with a feel of "
+                             "its own for each move (a whip's crack, steps on a wall, landings). Off: the plain "
+                             "rumble. Bluetooth: always the plain rumble.",
+                             "DualSense по USB-кабелю: вся вибрация идёт через его тактильные моторы, у каждого "
+                             "движения своё ощущение (щелчок хлыста, шаги по стене, приземления). Выкл: обычная "
+                             "вибрация. По Bluetooth всегда обычная."),
+                           0, {off, on}, s.haptics ? 1 : 0});
+        options.push_back({T("SOUND HAPTICS", "ЗВУК В ВИБРАЦИИ"),
+                           T("HD haptics also play the game's sound: explosions, impacts, gunfire, tanks (not the "
+                             "music or the city's hum).",
+                             "HD-вибрация передаёт и звук игры: взрывы, удары, стрельбу, танки (не музыку и не "
+                             "шум города)."),
+                           0, {off, T("LOW", "СЛАБО"), T("MEDIUM", "СРЕДНЕ"), T("HIGH", "СИЛЬНО")},
+                           std::clamp(s.haptics_sound.load(), 0, 3)});
         break;
     }
     default:
@@ -1120,6 +1135,8 @@ void PrototypeMenu() {
         case 81: s.light_bar = value == 1; break;
         case 82: s.menu_vibration = value; break;
         case 83: s.extra_vibration = value == 1; break;
+        case 84: s.haptics = value == 1; break;
+        case 85: s.haptics_sound = value; break;
         default: break;
         }
     };
@@ -1156,7 +1173,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; s.haptics = true; s.haptics_sound = 2; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;
@@ -1315,7 +1332,7 @@ void PrototypeMenu() {
         if (category == 1) { s.fsr1 = false; s.rcas = true; s.rcas_strength = 60; }
         if (category == 2) { s.display_mode = 1; s.vsync = true; s.show_fps = false; }
         if (category == 4) { PortShaderMods::ShowAll(); }
-        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; }
+        if (category == 5) { s.vibration = 100; s.light_bar = true; s.menu_vibration = 1; s.extra_vibration = true; s.haptics = true; s.haptics_sound = 2; }
         if (category == 3) {
             s.jitter = true;
             s.debug_view = PortSettings::DebugNone;

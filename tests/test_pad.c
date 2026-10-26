@@ -1,7 +1,9 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <unistd.h>
+#include <math.h>
 #include "../src/runtime_pad.c"
+#include "../src/runtime_haptics.c"
 #ifdef _WIN32
 #define setenv(name, value, overwrite) _putenv_s(name, value)
 #endif
@@ -10,7 +12,7 @@ static int capture;
 int theordergpu_overlay_captures_input(void) { return capture; }
 static TheOrderMouse test_mouse;
 void theordergpu_mouse_take(TheOrderMouse *out) { *out=test_mouse; test_mouse.dx=test_mouse.dy=0; test_mouse.wheel=0; }
-static TheOrderPadOptions test_options={100,1,1,1};
+static TheOrderPadOptions test_options={100,1,1,1,0,0};
 void theordergpu_pad_options(TheOrderPadOptions *out) { *out=test_options; }
 /* What the virtual controller was asked for. */
 static Uint8 test_led[3]={1,1,1};
@@ -215,47 +217,47 @@ int main(void) {
     /* Pulses the port adds (menus, consuming): over the game's motors, scaled, gone after their
      * time; a menu move only with menu_vibration 2. */
     test_options.vibration=100;
-    runtime_pad_effect(RUNTIME_PULSE_MENU_MOVE,0,1.0f,1.0f,200,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_MENU_MOVE,0,1.0f,1.0f,200,0,0,0);
     assert(test_rumble[0]==0 && test_rumble[1]==0);
-    runtime_pad_effect(RUNTIME_PULSE_MENU_PRESS,0,0.5f,1.0f,200,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_MENU_PRESS,0,0.5f,1.0f,200,0,0,0);
     assert(test_rumble[0]==128*257 && test_rumble[1]==65535);
     test_options.menu_vibration=0;
     usleep(250000);
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
-    runtime_pad_effect(RUNTIME_PULSE_MENU_PRESS,0,1.0f,1.0f,200,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_MENU_PRESS,0,1.0f,1.0f,200,0,0,0);
     assert(test_rumble[0]==0);
-    runtime_pad_effect(RUNTIME_PULSE_GAME,0,1.0f,0.5f,200,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,0,1.0f,0.5f,200,0,0,0);
     assert(test_rumble[0]==65535 && test_rumble[1]==128*257);
     usleep(250000);
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
     /* A swell (consuming): starts at a third, full after its rise, ended with a short fade. */
-    runtime_pad_effect(RUNTIME_PULSE_GAME,1,1.0f,1.0f,2500,200,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,1,1.0f,1.0f,2500,200,0,0);
     assert(test_rumble[0]>65535/4 && test_rumble[0]<65535/2);
     usleep(250000);
     data=read_pad();
     assert(test_rumble[0]==65535);
-    runtime_pad_effect(RUNTIME_PULSE_GAME,1,0,0,0,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,1,0,0,0,0,0,0);
     usleep(200000);
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
     /* Effects at once take the larger of each motor; one with an id is ended on its own; a
      * rhythm beats over a steady 40%. */
-    runtime_pad_effect(RUNTIME_PULSE_GAME,2,1.0f,0.2f,3000,0,200);
-    runtime_pad_effect(RUNTIME_PULSE_GAME,0,0.1f,0.8f,3000,100,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,2,1.0f,0.2f,3000,0,200,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,0,0.1f,0.8f,3000,100,0,0);
     data=read_pad();
     assert(test_rumble[0]==65535 && test_rumble[1]>65535/4);
     usleep(120000);
     data=read_pad();
     assert(test_rumble[0]>65535*3/10 && test_rumble[0]<65535/2);
-    runtime_pad_effect(RUNTIME_PULSE_GAME,2,0,0,0,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,2,0,0,0,0,0,0);
     usleep(200000);
     data=read_pad();
     assert(test_rumble[0]==26*257 && test_rumble[1]==204*257);
     /* Game effects off: none start (one already going still ends). */
     test_options.extra_vibration=0;
-    runtime_pad_effect(RUNTIME_PULSE_GAME,3,1.0f,1.0f,2000,0,0);
+    runtime_pad_effect(RUNTIME_PULSE_GAME,3,1.0f,1.0f,2000,0,0,0);
     data=read_pad();
     assert(test_rumble[0]==26*257);
     test_options.extra_vibration=1;
@@ -263,6 +265,48 @@ int main(void) {
     data=read_pad();
     assert(test_rumble[0]==0 && test_rumble[1]==0);
     test_options.menu_vibration=1;
+    /* DualSense HD haptics (runtime_haptics.c): while they play, the rumble motors stay still and the
+     * effects come out of channels 3 and 4 only, with their textures; the game's sound adds its
+     * sudden loud parts, not a steady tone. */
+    {
+        SDL_SetHint(SDL_HINT_AUDIO_DRIVER,"dummy");
+        assert(SDL_InitSubSystem(SDL_INIT_AUDIO));
+        const SDL_AudioSpec spec={SDL_AUDIO_F32,4,48000};
+        SDL_AudioStream *haptic=SDL_CreateAudioStream(&spec,&spec);
+        assert(haptic);
+        atomic_store(&active,1);
+        runtime_pad_effect(RUNTIME_PULSE_GAME,0,1.0f,1.0f,300,0,0,RUNTIME_TEXTURE_CRACK);
+        data=read_pad();
+        assert(test_rumble[0]==0 && test_rumble[1]==0);
+        static float out[480*4];
+        haptics_callback(NULL,haptic,(int)sizeof(out),(int)sizeof(out));
+        assert(SDL_GetAudioStreamData(haptic,out,(int)sizeof(out))==(int)sizeof(out));
+        float speaker=0.0f, actuators=0.0f;
+        for (int f=0;f<480;++f) {
+            speaker+=fabsf(out[f*4])+fabsf(out[f*4+1]);
+            actuators+=fabsf(out[f*4+2]);
+            assert(out[f*4+2]==out[f*4+3] && out[f*4+2]>=-1.0f && out[f*4+2]<=1.0f);
+        }
+        assert(speaker==0.0f && actuators>10.0f);
+        /* the game's sound: a steady tone gives nothing once settled, a sudden boom does */
+        atomic_store(&sound_level,2);
+        static float tone[4800*2];
+        for (int f=0;f<4800;++f) tone[f*2]=tone[f*2+1]=0.1f*sinf((float)f*6.2831853f*60.0f/48000.0f);
+        for (int i=0;i<20;++i) runtime_haptics_feed(tone,4800,2,1);
+        unsigned w=atomic_load(&ring_write);
+        float steady=0.0f;
+        for (int f=0;f<960;++f) steady+=fabsf(ring[(w-1-f) & (RING-1)]);
+        for (int f=0;f<4800;++f) tone[f*2]=tone[f*2+1]=0.9f*sinf((float)f*6.2831853f*60.0f/48000.0f);
+        runtime_haptics_feed(tone,4800,2,1);
+        w=atomic_load(&ring_write);
+        float boom=0.0f;
+        for (int f=0;f<960;++f) boom+=fabsf(ring[(w-3840+f) & (RING-1)]);
+        assert(steady<1.0f && boom>20.0f);
+        atomic_store(&active,0);
+        atomic_store(&sound_level,0);
+        SDL_DestroyAudioStream(haptic);
+        runtime_pad_effect(RUNTIME_PULSE_GAME,0,0.0f,0.0f,1,0,0,0);
+    }
     SDL_CloseJoystick(joystick);
     if (gamepad) SDL_CloseGamepad(gamepad);
     gamepad=NULL;
@@ -326,5 +370,5 @@ int main(void) {
     SDL_Quit();
     unlink(path);
     puts("PASS: pad ABI, staged left/right clicks, L1 chord, SDL touch coordinates, overlay capture, key map, "
-         "light bar, vibration, pulses, power wheel");
+         "light bar, vibration, pulses, power wheel, HD haptics");
 }

@@ -36,7 +36,7 @@ const char* T(const char* en, const char* ru) {
 
 enum Row { Upscaler, Quality, Sharpening, RowCount };
 enum DisplayRow { Resolution, FrameRate, DisplayMode, VSync, FrameCounter, Apply, DisplayRowCount };
-enum PadRow { Vibration, LightBar, MenuVibration, GameEffects, PadRowCount };
+enum PadRow { Vibration, LightBar, MenuVibration, GameEffects, Haptics, SoundHaptics, PadRowCount };
 constexpr int kVibrationSteps = 8; ///< 0 off, then 25% steps up to 200% (the port menu's)
 
 /// The upscalers this PC can use, in menu order.
@@ -153,6 +153,8 @@ const char* PadLabel(int row) {
     case LightBar: return T("LIGHT BAR", "СВЕТОВАЯ ПАНЕЛЬ");
     case MenuVibration: return T("MENU VIBRATION", "ВИБРАЦИЯ В МЕНЮ");
     case GameEffects: return T("ACTION VIBRATION", "ВИБРАЦИЯ ДЕЙСТВИЙ");
+    case Haptics: return T("HD HAPTICS", "HD-ВИБРАЦИЯ");
+    case SoundHaptics: return T("SOUND HAPTICS", "ЗВУК В ВИБРАЦИИ");
     default: return "";
     }
 }
@@ -163,6 +165,8 @@ int PadChoices(int row) {
     case LightBar: return 2;
     case MenuVibration: return 3;
     case GameEffects: return 2;
+    case Haptics: return 2;
+    case SoundHaptics: return 4;
     default: return 0;
     }
 }
@@ -175,7 +179,14 @@ const char* PadChoice(int row, int index) {
         text = std::to_string(std::min(index, kVibrationSteps) * 25) + "%";
         return text.c_str();
     case LightBar:
-    case GameEffects: return OnOff(index);
+    case GameEffects:
+    case Haptics: return OnOff(index);
+    case SoundHaptics: {
+        static const char* const en[] = {"OFF", "LOW", "MEDIUM", "HIGH"};
+        static const char* const ru[] = {"ВЫКЛ", "СЛАБО", "СРЕДНЕ", "СИЛЬНО"};
+        index = std::clamp(index, 0, 3);
+        return Russian() ? ru[index] : en[index];
+    }
     case MenuVibration: {
         static const char* const en[] = {"OFF", "PRESSES", "ALL"};
         static const char* const ru[] = {"ВЫКЛ", "НАЖАТИЯ", "ВСЕ"};
@@ -193,6 +204,8 @@ int PadGet(int row) {
     case LightBar: return s.light_bar ? 1 : 0;
     case MenuVibration: return std::clamp(s.menu_vibration.load(), 0, 2);
     case GameEffects: return s.extra_vibration ? 1 : 0;
+    case Haptics: return s.haptics ? 1 : 0;
+    case SoundHaptics: return std::clamp(s.haptics_sound.load(), 0, 3);
     default: return 0;
     }
 }
@@ -204,6 +217,8 @@ void PadSet(int row, int index) {
     case LightBar: s.light_bar = index != 0; break;
     case MenuVibration: s.menu_vibration = std::clamp(index, 0, 2); break;
     case GameEffects: s.extra_vibration = index != 0; break;
+    case Haptics: s.haptics = index != 0; break;
+    case SoundHaptics: s.haptics_sound = std::clamp(index, 0, 3); break;
     default: break;
     }
 }
@@ -215,6 +230,8 @@ void PadReset(int row) {
     case LightBar: s.light_bar = true; break;
     case MenuVibration: s.menu_vibration = 1; break;
     case GameEffects: s.extra_vibration = true; break;
+    case Haptics: s.haptics = true; break;
+    case SoundHaptics: s.haptics_sound = 2; break;
     default: break;
     }
 }

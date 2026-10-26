@@ -220,17 +220,17 @@ void MenuSound(const GfxValue* args, int argc) {
     }
     using Native::Pulses;
     if (Has(patch, "select") || Has(patch, "confirm") || Has(patch, "start_game") || Has(patch, "start_screen_exit"))
-        Native::Pulse(Pulses::MenuPress, 0.45f, 0.6f, 110);
+        Native::Pulse(Pulses::MenuPress, 0.45f, 0.6f, 110, 0, Native::Texture::Click);
     else if (Has(patch, "_back"))
-        Native::Pulse(Pulses::MenuPress, 0.25f, 0.5f, 90);
+        Native::Pulse(Pulses::MenuPress, 0.25f, 0.5f, 90, 0, Native::Texture::Click);
     else if (Has(patch, "_tab"))
-        Native::Pulse(Pulses::MenuPress, 0.2f, 0.45f, 80);
+        Native::Pulse(Pulses::MenuPress, 0.2f, 0.45f, 80, 0, Native::Texture::Click);
     else if (Has(patch, "ui_fe_main_nav"))  // the main menu (New game, Continue, Options...): on Presses too
-        Native::Pulse(Pulses::MenuPress, 0.15f, 0.45f, 60);
+        Native::Pulse(Pulses::MenuPress, 0.15f, 0.45f, 60, 0, Native::Texture::Click);
     else if (Has(patch, "menu_end") || Has(patch, "locked"))
-        Native::Pulse(Pulses::MenuMove, 0.35f, 0.2f, 70);
+        Native::Pulse(Pulses::MenuMove, 0.35f, 0.2f, 70, 0, Native::Texture::Click);
     else if (Has(patch, "_nav") || Has(patch, "slider") || Has(patch, "fe_move"))
-        Native::Pulse(Pulses::MenuMove, 0.15f, 0.45f, 60);
+        Native::Pulse(Pulses::MenuMove, 0.15f, 0.45f, 60, 0, Native::Texture::Click);
 }
 
 GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxValue* ret) {

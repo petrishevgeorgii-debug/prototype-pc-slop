@@ -55,6 +55,7 @@ NATIVE_REPLACEMENT({"rumble switch (the profile's GamepadRumbleEnabled, kept on)
 using Native::Effect;
 using Native::Pulse;
 constexpr auto kGame = Native::Pulses::Game;
+using kT = Native::Texture; ///< how each one feels on DualSense HD haptics
 
 /// Effects that last (they end with the move): one channel each, so the end finds them.
 enum Ids { kConsume = 1, kWhipPull, kWallRun, kWallSlide, kDevastator };
@@ -86,45 +87,45 @@ std::uint64_t g_fall_start = 0;
 // setting). Times in ms.
 constexpr Hook kHooks[] = {
     // Consuming: swells while the tendrils pull the victim in.
-    {"consume start", 0x109b420, 6, 0x856cd0, Who::Anyone, 0, [] { Effect(kGame, kConsume, 0.9f, 0.55f, 2500, 500); }},
+    {"consume start", 0x109b420, 6, 0x856cd0, Who::Anyone, 0, [] { Effect(kGame, kConsume, 0.9f, 0.55f, 2500, 500, 0, kT::Swell); }},
     {"consume end", 0x109b420, 7, 0x8570a0, Who::Anyone, 0, [] { Effect(kGame, kConsume, 0, 0, 0); }},
     // Whipfist: a crack when it lashes out, a tug when it catches, a pull while it drags Alex.
-    {"whipfist lash", 0x109fd30, 6, 0x8ac8d0, Who::Anyone, 0, [] { Pulse(kGame, 0.3f, 0.9f, 110); }},
-    {"whipfist catch", 0x109fdf0, 6, 0x8ad3e0, Who::Anyone, 0, [] { Pulse(kGame, 0.75f, 0.5f, 150); }},
+    {"whipfist lash", 0x109fd30, 6, 0x8ac8d0, Who::Anyone, 0, [] { Pulse(kGame, 0.3f, 0.9f, 110, 0, kT::Crack); }},
+    {"whipfist catch", 0x109fdf0, 6, 0x8ad3e0, Who::Anyone, 0, [] { Pulse(kGame, 0.75f, 0.5f, 150, 0, kT::Tug); }},
     {"whipfist pull start", 0x109ff10, 6, 0x8ae5f0, Who::Anyone, 0,
-     [] { Effect(kGame, kWhipPull, 0.55f, 0.35f, 1500, 250); }},
+     [] { Effect(kGame, kWhipPull, 0.55f, 0.35f, 1500, 250, 0, kT::Swell); }},
     {"whipfist pull end", 0x109ff10, 7, 0x8aebf0, Who::Anyone, 0, [] { Effect(kGame, kWhipPull, 0, 0, 0); }},
-    {"whipfist retract", 0x109fd90, 6, 0x8acf70, Who::Anyone, 0, [] { Pulse(kGame, 0.12f, 0.4f, 90); }},
+    {"whipfist retract", 0x109fd90, 6, 0x8acf70, Who::Anyone, 0, [] { Pulse(kGame, 0.12f, 0.4f, 90, 0, kT::Click); }},
     // Wall running: a thump onto the wall, then steps while running, a push off it on a jump.
-    {"wall run enter", 0x109fa10, 6, 0x8a68d0, Who::Anyone, 0, [] { Pulse(kGame, 0.75f, 0.4f, 160); }},
+    {"wall run enter", 0x109fa10, 6, 0x8a68d0, Who::Anyone, 0, [] { Pulse(kGame, 0.75f, 0.4f, 160, 0, kT::Thud); }},
     {"wall run start", 0x109f9b0, 6, 0x8a4a60, Who::Anyone, 0,
-     [] { Effect(kGame, kWallRun, 0.34f, 0.22f, 30000, 0, 190); }},
+     [] { Effect(kGame, kWallRun, 0.34f, 0.22f, 30000, 0, 190, kT::Step); }},
     {"wall run end", 0x109f9b0, 7, 0x8a63a0, Who::Anyone, 0, [] { Effect(kGame, kWallRun, 0, 0, 0); }},
-    {"wall jump", 0x109f8b0, 6, 0x8a1aa0, Who::Anyone, 0, [] { Pulse(kGame, 0.6f, 0.45f, 150); }},
-    {"wall jump up", 0x109f910, 6, 0x8a2e00, Who::Anyone, 0, [] { Pulse(kGame, 0.6f, 0.45f, 150); }},
+    {"wall jump", 0x109f8b0, 6, 0x8a1aa0, Who::Anyone, 0, [] { Pulse(kGame, 0.6f, 0.45f, 150, 0, kT::Thud); }},
+    {"wall jump up", 0x109f910, 6, 0x8a2e00, Who::Anyone, 0, [] { Pulse(kGame, 0.6f, 0.45f, 150, 0, kT::Thud); }},
     {"wall slide start", 0x109fb30, 6, 0x8a8040, Who::Anyone, 0,
-     [] { Effect(kGame, kWallSlide, 0.12f, 0.3f, 8000, 200); }},
+     [] { Effect(kGame, kWallSlide, 0.12f, 0.3f, 8000, 200, 0, kT::Scrape); }},
     {"wall slide end", 0x109fb30, 7, 0x8a8580, Who::Anyone, 0, [] { Effect(kGame, kWallSlide, 0, 0, 0); }},
     // In the air: the air dash, air attacks, and the dive's landing.
-    {"air dash", 0x109b620, 6, 0x859b70, Who::Anyone, 0, [] { Pulse(kGame, 0.45f, 0.6f, 180); }},
-    {"air attack", 0x109b520, 6, 0x858680, Who::Anyone, 0, [] { Pulse(kGame, 0.4f, 0.5f, 140); }},
-    {"air dive start", 0x109b6a0, 6, 0x85a590, Who::Anyone, 0, [] { Pulse(kGame, 0.25f, 0.35f, 120); }},
-    {"air dive landing", 0x109b6a0, 7, 0x85ac80, Who::Anyone, 0, [] { Pulse(kGame, 1.0f, 0.6f, 350); }},
+    {"air dash", 0x109b620, 6, 0x859b70, Who::Anyone, 0, [] { Pulse(kGame, 0.45f, 0.6f, 180, 0, kT::Tug); }},
+    {"air attack", 0x109b520, 6, 0x858680, Who::Anyone, 0, [] { Pulse(kGame, 0.4f, 0.5f, 140, 0, kT::Hit); }},
+    {"air dive start", 0x109b6a0, 6, 0x85a590, Who::Anyone, 0, [] { Pulse(kGame, 0.25f, 0.35f, 120, 0, kT::Tug); }},
+    {"air dive landing", 0x109b6a0, 7, 0x85ac80, Who::Anyone, 0, [] { Pulse(kGame, 1.0f, 0.6f, 350, 0, kT::Thud); }},
     // Devastators: build up, and each burst of ground spikes.
     {"devastator start", 0x109af00, 6, 0x850ba0, Who::Anyone, 0,
-     [] { Effect(kGame, kDevastator, 1.0f, 0.7f, 2400, 900); }},
+     [] { Effect(kGame, kDevastator, 1.0f, 0.7f, 2400, 900, 0, kT::Swell); }},
     {"devastator end", 0x109af00, 7, 0x852e10, Who::Anyone, 0, [] { Effect(kGame, kDevastator, 0, 0, 0); }},
-    {"ground spikes", 0x10713f0, 6, 0x5dca90, Who::Anyone, 0, [] { Pulse(kGame, 0.85f, 0.5f, 220); }},
+    {"ground spikes", 0x10713f0, 6, 0x5dca90, Who::Anyone, 0, [] { Pulse(kGame, 0.85f, 0.5f, 220, 0, kT::Thud); }},
     // Shield: raising it, and a blow it turns away.
-    {"shield up", 0x10723a0, 6, 0x5ef270, Who::Anyone, 0, [] { Pulse(kGame, 0.55f, 0.3f, 200); }},
-    {"shield block", 0x1072400, 6, 0x5ef5f0, Who::Anyone, 0, [] { Pulse(kGame, 0.4f, 0.8f, 120); }},
+    {"shield up", 0x10723a0, 6, 0x5ef270, Who::Anyone, 0, [] { Pulse(kGame, 0.55f, 0.3f, 200, 0, kT::Tug); }},
+    {"shield block", 0x1072400, 6, 0x5ef5f0, Who::Anyone, 0, [] { Pulse(kGame, 0.4f, 0.8f, 120, 0, kT::Hit); }},
     // Moves anyone makes: only the player's.
-    {"throw", 0x109eeb0, 6, 0x89a200, Who::Player, 0x40, [] { Pulse(kGame, 0.6f, 0.4f, 160); }},
-    {"grab", 0x109baa0, 6, 0x85ead0, Who::Player, 0x40, [] { Pulse(kGame, 0.5f, 0.3f, 120); }},
-    {"hit taken", 0x109c8a0, 6, 0x8683c0, Who::Player, 0xc8, [] { Pulse(kGame, 0.85f, 0.6f, 260); }},
-    {"hit landed", 0x109b7a0, 6, 0x85b5d0, Who::Player, 0x40, [] { Pulse(kGame, 0.5f, 0.75f, 90); }},
-    {"heavy step", 0x109b720, 6, 0x85af20, Who::Player, 0x28, [] { Pulse(kGame, 0.4f, 0.2f, 120); }},
-    {"jump", 0x109d0e0, 6, 0x872900, Who::Player, 0x40, [] { Pulse(kGame, 0.15f, 0.25f, 70); }},
+    {"throw", 0x109eeb0, 6, 0x89a200, Who::Player, 0x40, [] { Pulse(kGame, 0.6f, 0.4f, 160, 0, kT::Tug); }},
+    {"grab", 0x109baa0, 6, 0x85ead0, Who::Player, 0x40, [] { Pulse(kGame, 0.5f, 0.3f, 120, 0, kT::Tug); }},
+    {"hit taken", 0x109c8a0, 6, 0x8683c0, Who::Player, 0xc8, [] { Pulse(kGame, 0.85f, 0.6f, 260, 0, kT::Hit); }},
+    {"hit landed", 0x109b7a0, 6, 0x85b5d0, Who::Player, 0x40, [] { Pulse(kGame, 0.5f, 0.75f, 90, 0, kT::Hit); }},
+    {"heavy step", 0x109b720, 6, 0x85af20, Who::Player, 0x28, [] { Pulse(kGame, 0.4f, 0.2f, 120, 0, kT::Thud); }},
+    {"jump", 0x109d0e0, 6, 0x872900, Who::Player, 0x40, [] { Pulse(kGame, 0.15f, 0.25f, 70, 0, kT::Click); }},
     {"fall start", 0x109b4a0, 6, 0x8574e0, Who::Player, 0x28, [] { g_fall_start = NowMs(); }},
     {"fall landing", 0x109b4a0, 7, 0x858290, Who::Player, 0x28,
      [] {
@@ -134,7 +135,7 @@ constexpr Hook kHooks[] = {
          g_fall_start = 0;
          if (seconds < 0.35f) return;
          const float f = seconds >= 2.0f ? 1.0f : (seconds - 0.35f) / 1.65f;
-         Pulse(kGame, 0.35f + 0.65f * f, 0.2f + 0.4f * f, static_cast<unsigned>(140 + 260 * f));
+         Pulse(kGame, 0.35f + 0.65f * f, 0.2f + 0.4f * f, static_cast<unsigned>(140 + 260 * f), 0, kT::Thud);
      }},
 };
 constexpr std::size_t kHookCount = sizeof(kHooks) / sizeof(kHooks[0]);
@@ -226,7 +227,8 @@ GUEST_ABI void ApplyShake(void* camera, void* rotation, void* position, float a,
                 std::printf("Rumble: camera shake (level %d, strength %.2f)\n", level, s);
                 std::fflush(stdout);
             }
-            if (s > 0.04f) Pulse(kGame, 0.25f + 0.75f * s, 0.15f + 0.5f * s, static_cast<unsigned>(120 + 280 * s));
+            if (s > 0.04f)
+                Pulse(kGame, 0.25f + 0.75f * s, 0.15f + 0.5f * s, static_cast<unsigned>(120 + 280 * s), 0, kT::Thud);
         }
     }
     Guest::Call<void>(g_apply_shake, camera, rotation, position, a, b, c, d);

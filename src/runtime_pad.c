@@ -488,9 +488,10 @@ static uint64_t rumble_sent_us;
  * steady 40%. An effect with an id is replaced by the next one with that id, and ended with a
  * short fade by one with no time. */
 #define EFFECTS 8
-typedef struct { int id; float large, small; uint64_t start_us, end_us, rise_us, fade_us, period_us; } Effect;
+typedef struct { int id, texture; float large, small; uint64_t start_us, end_us, rise_us, fade_us, period_us; } Effect;
 static Effect effects[EFFECTS];
-static float effect_level(const Effect *e, uint64_t now) {
+/* `beat` 0: without a rhythm's beat (the haptics' Step texture makes its own). */
+static float effect_envelope(const Effect *e, uint64_t now, int beat) {
     if (now>=e->end_us || e->end_us<=e->start_us || now<e->start_us) return 0.0f;
     float level;
     const uint64_t in=now-e->start_us;
@@ -498,10 +499,12 @@ static float effect_level(const Effect *e, uint64_t now) {
     if (!e->rise_us && !e->period_us) level=t<0.4f ? 1.0f : (1.0f-t)/0.6f;
     else if (in<e->rise_us) level=0.35f+0.65f*(float)in/(float)e->rise_us;
     else level=t<0.75f ? 1.0f : (1.0f-t)/0.25f;
-    if (e->period_us && (in%e->period_us)*100>=e->period_us*35) level*=0.4f;
+    if (beat && e->period_us && (in%e->period_us)*100>=e->period_us*35) level*=0.4f;
     if (e->fade_us && now>=e->fade_us) level*=(float)(e->end_us-now)/(float)(e->end_us-e->fade_us);
     return level;
 }
+static float effect_level(const Effect *e, uint64_t now) { return effect_envelope(e,now,1); }
+static int vibration_strength(const TheOrderPadOptions *o) { return o->vibration<0 ? 0 : o->vibration>200 ? 200 : o->vibration; }
 static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
     if (g!=feedback_pad) { feedback_pad=g; bar_applied=-1; rumble_lo=rumble_hi=0xffff; }
     if (!g) return;
@@ -511,10 +514,13 @@ static void apply_feedback(SDL_Gamepad *g, const TheOrderPadOptions *o) {
         SDL_SetGamepadLED(g,(uint8_t)(want>>16),(uint8_t)(want>>8),(uint8_t)want);
         bar_applied=want;
     }
-    const int strength=o->vibration<0 ? 0 : o->vibration>200 ? 200 : o->vibration;
+    const int strength=vibration_strength(o);
     const uint64_t now=now_us();
     int large=rumble_large, small=rumble_small;
-    for (int i=0;i<EFFECTS;++i) {
+    /* DualSense HD haptics (USB) play all of it, the game's rumble too: the controller mutes its
+     * haptics while the rumble motors' emulation runs. */
+    if (runtime_haptics_active()) large=small=0;
+    else for (int i=0;i<EFFECTS;++i) {
         const float level=effect_level(&effects[i],now);
         if (level<=0.0f) continue;
         const int pl=(int)(effects[i].large*level*255.0f+0.5f), ps=(int)(effects[i].small*level*255.0f+0.5f);
@@ -746,6 +752,7 @@ static ABI int32_t pad_close(int32_t handle) {
 static ABI int32_t pad_read_state(int32_t handle, PadData *data) {
     if (handle <= 0) return ERR_INVALID_HANDLE;
     if (!data) return ERR_INVALID_ARG;
+    runtime_haptics_poll(); /* outside the lock: the haptics' audio thread takes it */
     pthread_mutex_lock(&lock);
     sample(data);
     static int key_trace=-1;
@@ -781,7 +788,8 @@ static void feedback_now(void) {
     theordergpu_pad_options(&options);
     apply_feedback(current_gamepad(),&options);
 }
-void runtime_pad_effect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms) {
+void runtime_pad_effect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned period_ms,
+                        int texture) {
     TheOrderPadOptions options;
     theordergpu_pad_options(&options);
     if ((kind==RUNTIME_PULSE_MENU_PRESS && options.menu_vibration<1) ||
@@ -805,6 +813,7 @@ void runtime_pad_effect(int kind, int id, float large, float small, unsigned ms,
             }
         }
         slot->id=id;
+        slot->texture=texture>=0 && texture<RUNTIME_TEXTURES ? texture : RUNTIME_TEXTURE_PLAIN;
         slot->large=large<0 ? 0 : large>1 ? 1 : large;
         slot->small=small<0 ? 0 : small>1 ? 1 : small;
         slot->start_us=now; slot->end_us=now+(uint64_t)ms*1000;
@@ -812,6 +821,25 @@ void runtime_pad_effect(int kind, int id, float large, float small, unsigned ms,
     }
     apply_feedback(current_gamepad(),&options);
     pthread_mutex_unlock(&lock);
+}
+int runtime_pad_haptic_voices(RuntimeHapticVoice *out, int max, float *game_large, float *game_small) {
+    TheOrderPadOptions options;
+    theordergpu_pad_options(&options);
+    const float k=(float)vibration_strength(&options)/100.0f;
+    pthread_mutex_lock(&lock);
+    const uint64_t now=now_us();
+    int n=0;
+    for (int i=0;i<EFFECTS && n<max;++i) {
+        const Effect *e=&effects[i];
+        const float level=effect_envelope(e,now,e->texture!=RUNTIME_TEXTURE_STEP);
+        if (level<=0.0f) continue;
+        out[n++]=(RuntimeHapticVoice){.slot=i,.texture=e->texture,.large=e->large*level*k,.small=e->small*level*k,
+            .age_s=(double)(now-e->start_us)/1e6,.period_s=(double)e->period_us/1e6};
+    }
+    *game_large=(float)rumble_large/255.0f*k;
+    *game_small=(float)rumble_small/255.0f*k;
+    pthread_mutex_unlock(&lock);
+    return n;
 }
 static ABI int32_t pad_vibration(int32_t handle, const uint8_t *param) {
     if (handle!=PAD_HANDLE || !opened) return ERR_INVALID_HANDLE;

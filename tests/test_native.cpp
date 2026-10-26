@@ -70,11 +70,12 @@ constexpr std::uint64_t kHit = 0x8683c0, kHitSlot = 0x109c8a0 + 0x30, kPlayer = 
 constexpr std::uint64_t kShakeCall = 0x70c2ed, kApplyShake = 0x103e90, kCameraManager = 0x135c5f0, kManager = 0x1f200;
 
 // Pulses the native layer asks the pad for.
-int g_pulses = 0, g_pulse_kind = -1, g_pulse_id = 0;
+int g_pulses = 0, g_pulse_kind = -1, g_pulse_id = 0, g_pulse_texture = -1;
 float g_pulse_large = 0, g_pulse_small = 0;
 unsigned g_pulse_ms = 0, g_pulse_rise = 0;
-void PadEffect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned) {
+void PadEffect(int kind, int id, float large, float small, unsigned ms, unsigned rise_ms, unsigned, int texture) {
     ++g_pulses;
+    g_pulse_texture = texture;
     g_pulse_kind = kind;
     g_pulse_id = id;
     g_pulse_large = large;
@@ -299,6 +300,7 @@ int main() {
         std::memcpy(&slot, g_base + kLashSlot, 8);
         CHECK(reinterpret_cast<Slot>(slot)(nullptr) == 7);
         CHECK(g_pulses == before + 3 && g_pulse_id == 0 && g_pulse_ms > 0 && g_pulse_small > g_pulse_large);
+        CHECK(g_pulse_texture == static_cast<int>(Native::Texture::Crack)); // the HD haptics' whip crack
 
         // A hit reaction: only the player's.
         std::uint8_t action[0x100] = {};

@@ -48,7 +48,8 @@ fix is applied in memory, and the port checks the executables against the untouc
   frame rate, display mode and V-Sync, as the game's own rows.
 - A **port menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse, for everything else.
-- **DualSense features** — the game's light bar colours and vibration (with a strength setting),
+- **DualSense features** — HD haptics over USB (every move with its own feel, and the game's impacts),
+  the game's light bar colours and vibration (with a strength setting),
   vibration on Alex's moves and powers (consuming, the whipfist, wall running, devastators, hits,
   landings, explosions) and in the menus, also in the game's own Options > Controller screen.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
@@ -106,8 +107,12 @@ once: windowed, the window takes it (fitted to the screen); fullscreen, the clos
 
 **Options > Controller** has the gamepad's four after Target toggle: **Vibration** (off, 25% to
 200%), **Light bar** (the game's colours on a DualSense or DualShock 4, or the controller's own),
-**Menu vibration** (a tap on pressing in the game's menus, or also on moving) and **Action
-vibration** (the port's own vibration on Alex's moves, hits, landings and explosions).
+**Menu vibration** (a tap on pressing in the game's menus, or also on moving), **Action
+vibration** (the port's own vibration on Alex's moves, hits, landings and explosions), **HD
+haptics** and **Sound haptics**. With a DualSense on a USB cable, HD haptics play all of it on the
+controller's haptic motors, each move with a feel of its own, and the game's explosions and impacts
+too (Windows must have the controller's speaker set to 4.0 / Quadraphonic; the log says so if not).
+Over Bluetooth the controller rumbles as before.
 
 ### Port menu
 
