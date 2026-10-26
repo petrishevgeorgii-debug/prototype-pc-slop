@@ -252,7 +252,13 @@ void Save() {
     PortSettings::Save();
 }
 
-const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save};
+/// PROTOTYPE's own rumble switch: the PS3's Rumble row, hidden on the PS4, where the profile can
+/// hold it off (then the game never asks the controller to vibrate).
+const char* Linked(int page, int row) {
+    return page == THEORDER_MENU_CONTROLLER && row == Vibration ? "Proto_Profile_GamepadRumbleEnabled" : nullptr;
+}
+
+const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked};
 
 } // namespace
 

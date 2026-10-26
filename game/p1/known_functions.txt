@@ -19,3 +19,6 @@
 0xc16e0 pure3d::Light::SetShadowCascadeExtent
 0x70fa90 proto::ChaseCamera::Update
 0x8f68d0 proto::ChaseCamera::ReadStick
+0x5685a0 proto::ProfileSettings::OnRumbleSettingChanged
+0x568510 proto::SetPlayerRumbleEnabled
+0x91fdc0 proto::OrbisPad::Update

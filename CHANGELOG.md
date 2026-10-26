@@ -9,6 +9,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 - DualSense and other gamepads:
   - **Light bar:** the colours the game sets reach a DualSense or DualShock 4, as on the PS4 (`scePadSetLightBar`, `scePadResetLightBar`; they were ignored).
   - **Vibration** runs as long as the game asks, as on the PS4 (it stopped after a second), with a strength setting from off to 200%.
+  - **Vibration works with PS4 profiles that have it switched off.** The game's own rumble switch (`Proto_Profile_GamepadRumbleEnabled`, the PS3's Rumble row, hidden on the PS4) can be off in a PS4 profile, and then the game never vibrates. The port keeps it on (`game/p1/rumble.cpp`); the port's Vibration setting decides how strong, off included. The Vibration row of Options > Controller also sets the game's switch, so the profile saves it on.
   - Settings: PROTOTYPE's own **Options > Controller** screen (main menu and pause menu) has **Vibration** and **Light bar** after Target toggle, as the game's own rows; also the launcher's new CONTROLLER page and the port menu's new CONTROLLER page (all live); `theorder.ini` keys `vibration`, `light_bar`.
   - `scripts/proto_menu.py` makes the Controller screens too (`protocontrolleroption.gfx`, `protopausecontroller.gfx`). The port's menu rows come in pages (`port_Count(page)`..., game database names `PortSetting<page>_<row>`).
 

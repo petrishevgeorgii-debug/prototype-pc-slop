@@ -73,6 +73,9 @@ typedef struct TheOrderGameMenu {
     void (*set)(int page, int row, int index);
     void (*reset)(int page, int row);
     void (*save)(void);
+    /* The game's own database setting (an int) the row also switches, or NULL: kept at 1 while
+     * the row's choice is not 0 and 0 when it is (Vibration: the game's own rumble switch). */
+    const char *(*linked)(int page, int row);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

@@ -2,8 +2,9 @@
 // Native game layer (game/): installation into a stand-in game image. A test replacement takes
 // over one call: it is installed only where the original bytes are found, can be turned off with
 // THEORDER_NATIVE, and calls the original through the address it is handed. Then the game's
-// PlaceLuaCall hand-over (game/p1/options_menu.cpp) answers the Video screen's port rows from a
-// stand-in menu and leaves everything else to the game. Linux (build.sh --test).
+// PlaceLuaCall hand-over (game/p1/options_menu.cpp) answers the Video and Controller screens'
+// port rows from a stand-in menu, keeps a linked game setting in step, and leaves everything else
+// to the game. Linux (build.sh --test).
 
 #include <sys/mman.h>
 
@@ -36,7 +37,7 @@ int failures = 0;
         }                                                                     \
     } while (0)
 
-constexpr std::size_t kImage = 0x20000, kCode = 0x10000, kData = 0x1000;
+constexpr std::size_t kImage = 0x570000, kCode = 0x10000, kData = 0x1000;
 constexpr std::uint64_t kCallee = 0x1000; ///< the stand-in game function: marks byte +0 of its argument
 constexpr std::uint64_t kSite = 0x2000;   ///< a call to it
 std::uint8_t* g_base = nullptr;
@@ -54,6 +55,21 @@ void Put(std::uint64_t at, std::initializer_list<int> bytes) {
 }
 
 constexpr std::uint64_t kHandOver = 0x1cbf2, kPlaceLuaCall = 0x1cd90;
+constexpr std::uint64_t kLuaCalls = 0x1f000; ///< the stand-in PlaceLuaCall counts its calls here
+// The rumble switch's hand-over (game/p1/rumble.cpp) to 0x568510(on, player), which here stores
+// its arguments at kRumbleArgs.
+constexpr std::uint64_t kSwitchSite = 0x5685cb, kSetRumble = 0x568510, kRumbleArgs = 0x1f100;
+
+void PutRel32(std::uint64_t at, std::uint64_t target, std::uint64_t end) {
+    const std::int32_t rel = std::int32_t(target - end);
+    std::memcpy(g_base + at, &rel, 4);
+}
+
+int LuaCalls() {
+    std::int32_t n;
+    std::memcpy(&n, g_base + kLuaCalls, 4);
+    return n;
+}
 
 void BuildGame() {
     std::memset(g_base, 0xcc, kImage);
@@ -62,7 +78,16 @@ void BuildGame() {
     // The ExternalInterface handler's tail call to PlaceLuaCall, which here marks its result
     // with type 5 (the game's Lua answered).
     Put(kHandOver, {0xe9, 0x99, 0x01, 0x00, 0x00, 0x49, 0x81, 0xc5, 0x40, 0x02, 0x00, 0x00});
-    Put(kPlaceLuaCall, {0xc7, 0x01, 0x05, 0x00, 0x00, 0x00, 0xc3}); // mov dword [rcx], 5; ret
+    // inc dword [rip -> kLuaCalls]; mov dword [rcx], 5; ret
+    const std::int32_t rel = std::int32_t(kLuaCalls - (kPlaceLuaCall + 6));
+    Put(kPlaceLuaCall, {0xff, 0x05, rel & 0xff, (rel >> 8) & 0xff, (rel >> 16) & 0xff, (rel >> 24) & 0xff,
+                        0xc7, 0x01, 0x05, 0x00, 0x00, 0x00, 0xc3});
+    g_base[kLuaCalls] = g_base[kLuaCalls + 1] = g_base[kLuaCalls + 2] = g_base[kLuaCalls + 3] = 0;
+    Put(kSetRumble, {0x89, 0x3d, 0, 0, 0, 0, 0x89, 0x35, 0, 0, 0, 0, 0xc3}); // mov [args], edi; mov [args+4], esi; ret
+    PutRel32(kSetRumble + 2, kRumbleArgs, kSetRumble + 6);
+    PutRel32(kSetRumble + 8, kRumbleArgs + 4, kSetRumble + 12);
+    Put(kSwitchSite, {0xe9, 0x40, 0xff, 0xff, 0xff, 0x48, 0x3b, 0x47, 0x08, 0x75, 0x11, 0x48});
+    std::memset(g_base + kRumbleArgs, 0xff, 8);
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
@@ -75,7 +100,9 @@ int MenuGet(int page, int row) { return g_values[page][row]; }
 void MenuSet(int page, int row, int index) { g_values[page][row] = index; }
 void MenuReset(int page, int row) { g_values[page][row] = 0; }
 void MenuSave() { ++g_saved; }
-const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave};
+const char* MenuLinked(int page, int row) { return page == 1 && row == 0 ? "GameSwitch" : nullptr; }
+const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
+                                MenuLinked};
 
 struct Value {
     std::uint32_t type, pad;
@@ -181,12 +208,18 @@ int main() {
     CHECK(r.type == 4 && !std::strcmp(r.string, "THIRD"));
     r = LuaCall({Str("db_GetInt"), Str("PortSetting0_0"), Num(0), Num(0)});
     CHECK(r.type == 3 && r.number == 1);
+    int calls = LuaCalls();
+    r = LuaCall({Str("db_GetInt"), Str("PortSetting0_0"), Num(0), Num(0)});
+    CHECK(LuaCalls() == calls); // not linked: the game is not asked
     r = LuaCall({Str("db_GetInt"), Str("PortSetting1_0"), Num(0), Num(0)});
     CHECK(r.type == 3 && r.number == 4);
+    CHECK(LuaCalls() == calls + 1); // linked and on: the game's switch is read (not a number here: left)
     r = LuaCall({Str("db_SetInt"), Str("PortSetting0_1"), Num(0), Num(1), Num(0)});
     CHECK(g_values[0][1] == 1 && g_saved == 1 && r.type != 5);
+    calls = LuaCalls();
     r = LuaCall({Str("db_SetInt"), Str("PortSetting1_0"), Num(0), Num(2), Num(0)});
     CHECK(g_values[1][0] == 2 && g_saved == 2 && r.type != 5);
+    CHECK(LuaCalls() == calls + 1); // the game's switch is set
     r = LuaCall({Str("fe_RestoreGameDBDefault"), Str("PortSetting0_0"), Num(0)});
     CHECK(g_values[0][0] == 0 && g_saved == 3);
     CHECK(LuaCall({Str("db_GetInt"), Str("SettingVideoGammaCorrection"), Num(0), Num(0)}).type == 5);
@@ -196,6 +229,15 @@ int main() {
     CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0"), Num(0), Num(0)}).type == 5);   // not a name of ours
     CHECK(LuaCall({Str("db_GetInt"), Str("PortSetting0_0x"), Num(0), Num(0)}).type == 5);
     CHECK(LuaCall({Str("fe_IsStorageAvailable")}).type == 5);
+
+    // The profile's rumble switch: off is handed on as on.
+    {
+        using Switch = void(GUEST_ABI*)(std::uint32_t, std::uint32_t);
+        reinterpret_cast<Switch>(g_base + kSwitchSite)(0, 3);
+        std::uint32_t got[2];
+        std::memcpy(got, g_base + kRumbleArgs, 8);
+        CHECK(got[0] == 1 && got[1] == 3);
+    }
 
     // Without the port's menu every call goes to the game.
     BuildGame();

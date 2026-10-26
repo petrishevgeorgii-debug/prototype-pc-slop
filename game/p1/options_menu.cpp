@@ -95,8 +95,52 @@ Setting Parse(const char* name, const TheOrderGameMenu* menu) {
     return s;
 }
 
+/// Calls the game's PlaceLuaCall with `args`; the result.
+GfxValue GameCall(void* handler, GfxValue* args, int argc) {
+    GfxValue ret{};
+    ret.type = GfxValue::Undefined;
+    Guest::Call<void>(g_place_lua_call, handler, args, argc, &ret);
+    return ret;
+}
+
+GfxValue String(const char* text) {
+    GfxValue v{};
+    v.type = GfxValue::String;
+    v.string = text;
+    return v;
+}
+
+GfxValue Number(double number) {
+    GfxValue v{};
+    v.type = GfxValue::Number;
+    v.number = number;
+    return v;
+}
+
+/// Keeps the game's own setting a row is linked to (TheOrderGameMenu::linked) on while the row is
+/// not 0, and off when it is: `force` sets it either way, otherwise only an off one is turned on.
+/// `profile` and `index` are the screen's own arguments, passed on as they are.
+void Link(void* handler, const char* name, bool on, bool force, const GfxValue& profile, const GfxValue& index) {
+    if (!name) return;
+    if (!force) {
+        if (!on) return;
+        GfxValue get[] = {String("db_GetInt"), String(name), profile, index};
+        const GfxValue now = GameCall(handler, get, 4);
+        if (now.type != GfxValue::Number || now.number != 0) return;
+    }
+    GfxValue set[] = {String("db_SetInt"), String(name), profile, Number(on ? 1 : 0), index};
+    GameCall(handler, set, 5);
+    std::printf("Menu: the game's %s set to %d\n", name, on ? 1 : 0);
+    std::fflush(stdout);
+}
+
+const GfxValue& Arg(const GfxValue* args, int argc, int i) {
+    static const GfxValue none = Number(0);
+    return i < argc ? args[i] : none;
+}
+
 /// The port's answer to a PlaceLuaCall, or false for the game's Lua.
-bool Answer(const GfxValue* args, int argc, GfxValue* ret) {
+bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     const TheOrderGameMenu* menu = Native::Menu();
     const char* function = Text(args, argc, 0);
     if (!menu || !function || !ret) return false;
@@ -124,15 +168,20 @@ bool Answer(const GfxValue* args, int argc, GfxValue* ret) {
     const Setting setting = Parse(Text(args, argc, 1), menu);
     if (setting.page < 0) return false;
     const int page = setting.page, row = setting.row;
+    const char* linked = menu->linked ? menu->linked(page, row) : nullptr;
     if (!std::strcmp(function, "db_GetInt")) {
-        ReturnNumber(ret, menu->get(page, row));
+        const int value = menu->get(page, row);
+        Link(handler, linked, value != 0, false, Arg(args, argc, 2), Arg(args, argc, 3));
+        ReturnNumber(ret, value);
     } else if (!std::strcmp(function, "db_SetInt")) {
         menu->set(page, row, Int(args, argc, 3));
         menu->save();
+        Link(handler, linked, menu->get(page, row) != 0, true, Arg(args, argc, 2), Arg(args, argc, 4));
         ret->type = GfxValue::Null;
     } else if (!std::strcmp(function, "fe_RestoreGameDBDefault")) {
         menu->reset(page, row);
         menu->save();
+        Link(handler, linked, menu->get(page, row) != 0, true, Arg(args, argc, 2), Number(0));
         ret->type = GfxValue::Null;
     } else {
         return false; // another database call for these names: the game's own answer
@@ -141,7 +190,7 @@ bool Answer(const GfxValue* args, int argc, GfxValue* ret) {
 }
 
 GUEST_ABI void PlaceLuaCall(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
-    if (Answer(args, argc, ret)) return;
+    if (Answer(handler, args, argc, ret)) return;
     Guest::Call<void>(g_place_lua_call, handler, args, argc, ret);
 }
 

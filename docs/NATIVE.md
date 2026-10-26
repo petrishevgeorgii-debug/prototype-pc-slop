@@ -85,6 +85,17 @@ the game starts and read in place of the game's (`THEORDER_FILE_OVERRIDES`).
 `scripts/proto_menu.py` can be run on its own (`python scripts/proto_menu.py <game> <out>`); its
 patched movies can be checked with any SWF disassembler (they are uncompressed GFX 8, SWF 8).
 
+### The rumble switch stays on (`game/p1/rumble.cpp`)
+
+The game vibrates the controller only while the profile's `Proto_Profile_GamepadRumbleEnabled`
+is on: the PS3's Rumble row of Options > Controller, hidden on the PS4, and off in some PS4
+profiles (then `scePadSetVibration` is never called). The game database's listener (`0x5685a0`)
+hands a change of it (also on loading a profile) to `0x568510(on, player)` with a tail call; that
+hand-over now always says on. How strong the vibration is, off included, is the port's Vibration
+setting (`src/runtime_pad.c`). The Controller screen's Vibration row is also linked to the
+switch (`TheOrderGameMenu::linked`): it sets it with the game's own `db_SetInt`, so the profile
+saves it on.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

@@ -727,7 +727,7 @@ static ABI int32_t pad_vibration(int32_t handle, const uint8_t *param) {
     if (!param) return ERR_INVALID_ARG; /* OrbisPadVibrationParam: large motor, small motor */
     pthread_mutex_lock(&lock);
     static int logged;
-    if ((param[0]!=rumble_large || param[1]!=rumble_small) && logged<12) {
+    if ((!logged || param[0]!=rumble_large || param[1]!=rumble_small) && logged<12) {
         ++logged;
         printf("Runtime: pad vibration %u %u\n",param[0],param[1]);
     }
