@@ -24,6 +24,10 @@ inline constexpr int OutputWidths[] = {1280, 1920, 2560, 3840};
 inline constexpr int OutputHeights[] = {720, 1080, 1440, 2160};
 inline constexpr int OutputCount = 4;
 inline constexpr int OutputDefault = 1; ///< 1920x1080, the game's own size
+/// PROTOTYPE's render resolutions (the launcher's list; patches "Render Resolution - WxH").
+inline constexpr const char* ProtoResolutions[] = {"1280x720", "1600x900", "1920x1080",
+                                                   "2560x1440", "3200x1800", "3840x2160"};
+inline constexpr int ProtoResolutionCount = 6;
 /// The in-game menu's tabs: Image, Performance, Overlay.
 inline constexpr int MenuTabCount = 3;
 
@@ -72,6 +76,12 @@ struct Values {
     std::atomic<int> vibration{100};
     std::atomic<bool> light_bar{true};
     std::atomic<int> menu_vibration{1};
+    /// PROTOTYPE's render resolution (index into ProtoResolutions) and 60 FPS patch: run.py turns
+    /// them into patches at start (THEORDER_PROTO_RES, THEORDER_FPS60), so they apply on the next
+    /// start; startup_*: what this launch runs with. -1: not known (another game).
+    std::atomic<int> proto_res{-1};
+    std::atomic<int> proto_fps60{-1};
+    int startup_proto_res = -1, startup_proto_fps60 = -1;
     /// Field of view in percent of the game's (tangent of the half angle); live.
     std::atomic<int> fov{100};
     /// Anisotropic filtering forced on mipmapped textures: 0 as the game asks, else 2..16.

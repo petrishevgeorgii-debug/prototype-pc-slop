@@ -43,8 +43,9 @@ fix is applied in memory, and the port checks the executables against the untouc
 - **FSR 3.1 and FSR 4** temporal anti-aliasing and upscaling: *Native AA*, *Quality*, *Balanced*,
   *Performance*, *Ultra Performance*, switchable while playing. FSR 4 needs a Radeon RX 9000 GPU.
 - **FSR 1** scaling to the window, **RCAS** sharpening, **anisotropic filtering** up to 16×.
-- **The port's settings in the game's own Options > Video screen** (main menu and pause menu):
-  upscaling, sharpening, display mode and V-Sync, as the game's own rows.
+- **The port's settings in the game's own options** (main menu and pause menu): upscaling and
+  sharpening in Video, the gamepad in Controller, and a new **Display** screen with resolution,
+  frame rate, display mode and V-Sync, as the game's own rows.
 - A **port menu drawn like the game's own options screens** (English or Russian with the game
   language), with keyboard, controller and mouse, for everything else.
 - **DualSense features** — the game's light bar colours and vibration (with a strength setting),
@@ -91,11 +92,16 @@ folder is not changed. A controller works at any time.
 
 PROTOTYPE's **Options > Video** (from the main menu or the pause menu) has the port's settings
 under Brightness, as the game's own rows: **Upscaling** (off, FSR 3.1, FSR 4 on a Radeon RX
-9000), **Upscaling quality**, **Sharpening**, **Display mode** and **V-Sync** (the screen has room
-for five; FSR 1 and the frame counter are in the port menu). They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
+9000), **Upscaling quality** and **Sharpening** (FSR 1 is in the port menu). They apply at once and are saved to `theorder.ini`; *Restore defaults* resets
 them too. The port makes this screen from your game's own menu files when the game starts (loose
 files in `p1\art\hud`, or inside the `p1\*.rcf` archives) and the game reads the port's copy:
 the game folder is not changed. `THEORDER_GAME_MENU=0` keeps the game's own screens.
+
+A **Display** screen (a fourth category of the pause menu's options, a fourth button of the main
+menu's Options) has **Resolution**, **Frame rate** (30 / 60 FPS), **Display mode**, **V-Sync**,
+**Frame counter** and **Apply resolution**: the resolution and frame rate apply on the next start,
+or at once with *Restart now* (unsaved progress is lost). With archive dumps (`p1\*.rcf`) there is
+no Display screen yet, and Display mode and V-Sync stay on the Video screen.
 
 **Options > Controller** has the gamepad's three after Target toggle: **Vibration** (off, 25% to
 200%), **Light bar** (the game's colours on a DualSense or DualShock 4, or the controller's own)

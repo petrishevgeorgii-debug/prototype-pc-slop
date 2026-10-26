@@ -33,7 +33,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 3        # of this script's output (part of the cache key)
+VERSION = 4        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -99,6 +99,13 @@ def with_length(data):
 
 # ---- ActionScript 2 bytecode
 
+class Reg(int):
+    """A register in a Push."""
+
+
+UNDEF = type('Undefined', (), {'__repr__': lambda self: 'undefined'})()
+
+
 def actions(code, pos, end, pool):
     """[(offset, op, body offset, body length, values)] (values: Push's, ConstantPool's)."""
     out = []
@@ -125,14 +132,20 @@ def actions(code, pos, end, pool):
                 t = code[p]; p += 1
                 if t == 0:
                     e = code.index(b'\0', p); values.append(code[p:e].decode('utf-8', 'replace')); p = e + 1
-                elif t in (1, 7):
-                    values.append(None); p += 4
-                elif t in (2, 3):
+                elif t == 1:
+                    values.append(struct.unpack_from('<f', code, p)[0]); p += 4
+                elif t == 7:
+                    values.append(struct.unpack_from('<i', code, p)[0]); p += 4
+                elif t == 2:
                     values.append(None)
-                elif t in (4, 5):
-                    values.append(None); p += 1
-                elif t == 6:
-                    values.append(None); p += 8
+                elif t == 3:
+                    values.append(UNDEF)
+                elif t == 4:
+                    values.append(Reg(code[p])); p += 1
+                elif t == 5:
+                    values.append(bool(code[p])); p += 1
+                elif t == 6:  # a double: its two 32-bit halves swapped
+                    values.append(struct.unpack('<d', code[p + 4:p + 8] + code[p:p + 4])[0]); p += 8
                 elif t == 8:
                     i = code[p]; p += 1; values.append(pool[i] if i < len(pool) else None)
                 elif t == 9:
@@ -151,7 +164,8 @@ class Asm:
     """A tiny ActionScript 2 assembler: Push, plain actions, Jump/If to labels."""
     OPS = {'Pop': 0x17, 'GetVariable': 0x1C, 'SetVariable': 0x1D, 'Not': 0x12, 'Less2': 0x48,
            'Add2': 0x47, 'GetMember': 0x4E, 'SetMember': 0x4F, 'Increment': 0x50, 'CallMethod': 0x52,
-           'NewObject': 0x40, 'InitObject': 0x43, 'DefineLocal': 0x3C}
+           'NewObject': 0x40, 'InitObject': 0x43, 'DefineLocal': 0x3C, 'StrictEquals': 0x66,
+           'Equals2': 0x49, 'Return': 0x3E, 'CallFunction': 0x3D, 'InitArray': 0x42}
 
     def __init__(self):
         self.parts, self.labels, self.fixups = [], {}, []
@@ -159,8 +173,17 @@ class Asm:
     def push(self, *values):
         body = b''
         for v in values:
+            if isinstance(v, float) and v == int(v) and -2**31 <= v < 2**31:
+                v = int(v)
             if isinstance(v, bool):
                 body += b'\x05' + bytes([1 if v else 0])
+            elif isinstance(v, Reg):
+                body += b'\x04' + bytes([int(v)])
+            elif v is UNDEF:
+                body += b'\x03'
+            elif isinstance(v, float):
+                d = struct.pack('<d', v)
+                body += b'\x06' + d[4:] + d[:4]
             elif isinstance(v, int):
                 body += b'\x07' + struct.pack('<i', v)
             elif isinstance(v, str):
@@ -248,9 +271,11 @@ def port_rows(page):
 
 
 def splice(code, acts, lo, hi, new):
-    """code[lo:hi] replaced by `new`, with the branches and the function, With and Try sizes
-    around it moved to match. A branch from outside into the replaced code is an error."""
+    """code[lo:hi] replaced by `new` (lo == hi: inserted), with the branches and the function,
+    With and Try sizes around it moved to match. A branch from outside into the replaced code
+    (or to the insertion point) is an error."""
     delta = len(new) - (hi - lo)
+    insert = lo == hi
     out = bytearray(code[:lo] + new + code[hi:])
 
     def at(offset):  # an offset in the old code -> in the new
@@ -262,8 +287,8 @@ def splice(code, acts, lo, hi, new):
         if op in (0x99, 0x9D):  # Jump, If
             after = pos + 5
             target = after + struct.unpack_from('<h', code, body)[0]
-            if lo < target < hi:
-                raise ValueError('a branch into the replaced rows')
+            if lo < target < hi or (insert and target == lo):
+                raise ValueError('a branch into the replaced code')
             moved = at(target) - at(after)
             if not -0x8000 <= moved < 0x8000:
                 raise ValueError('a branch too far')
@@ -276,12 +301,12 @@ def splice(code, acts, lo, hi, new):
                 continue
             field = body if op == 0x94 else body + length - 2
             start, size = body + length, struct.unpack_from('<H', code, field)[0]
-            if start <= lo and hi <= start + size:
+            if start <= lo and hi <= start + size and (not insert or lo < start + size):
                 if not 0 <= size + delta < 0x10000:
                     raise ValueError('a function too large')
                 struct.pack_into('<H', out, at(field), size + delta)
             elif start < hi and lo < start + size:
-                raise ValueError('a function across the replaced rows')
+                raise ValueError('a function across the replaced code')
     return bytes(out)
 
 
@@ -385,6 +410,248 @@ def patch_sprite(data, sprite, page):
         sprite_body = data[body:body + 4] + out
         return with_length(data[:head] + tag(39, sprite_body) + data[end:])
     raise ValueError(f'{page.sprite} sprite not found')
+
+
+# ---- the Display screen
+
+# The port's third page gets a screen of its own: "Display", a fourth category of the pause
+# menu's options (Video, Audio, Controller: PROTO_PAUSE_GAME, protopausegame.swf) and a fourth
+# button of the main menu's Options (PROTO_GAMEOPTION, protogameoption.swf). The game still
+# registers both screens (the PC version's Game options) but has no movie for them: the movies are
+# made from the Controller screens' own (their rows replaced by the port's), and the other
+# options screens get the category, the button and the way to it.
+DISPLAY = Page(2, 'Display', (), 'Proto_Profile_TargetToggleEnabled', 'mControllerOptions', 'mcControllerOverlay',
+               ('Proto_Profile_TargetToggleEnabled',), 'ControllerOptionsOverlay', 'tglInvertX')
+PAUSE_SCREENS = ('protopausevideo.gfx', 'protopauseaudio.gfx', 'protopausecontroller.gfx')
+MAIN_SCREENS = ('protovideooption.gfx', 'protoaudiooption.gfx', 'protocontrolleroption.gfx')
+HUB = 'protooptions.gfx'
+NEW_SCREENS = {'protopausegame.gfx': 'protopausecontroller.gfx', 'protogameoption.gfx': 'protocontrolleroption.gfx'}
+
+
+def display_label(language):
+    return 'ДИСПЛЕЙ' if str(language) == '8' else 'DISPLAY'
+
+
+def edit_code(data, locate, what):
+    """The movie with one change to the code of one of its DoAction tags: locate(acts) gives
+    (lo, hi, new bytes) in the movie's offsets, or None for another tag."""
+    for code, head, body, end in tags(data, movie_start(data), len(data)):
+        if code != 12:
+            continue
+        acts = actions(data, body, end, [])
+        found = locate(acts)
+        if not found:
+            continue
+        lo, hi, new = found
+        rel = [(pos - body, op, b - body, length, v) for pos, op, b, length, v in acts]
+        code_bytes = splice(data[body:end], rel, lo - body, hi - body, new)
+        return with_length(data[:head] + tag(12, code_bytes) + data[end:])
+    raise ValueError(f'{what} not found')
+
+
+def is_push(a, *strings, exact=None):
+    if a[1] != 0x96 or not a[4]:
+        return False
+    if exact is not None:
+        return list(a[4]) == list(exact)
+    return all(s in a[4] for s in strings)
+
+
+def push_bytes(*values):
+    asm = Asm()
+    asm.push(*values)
+    return asm.bytes()
+
+
+def whole(a):
+    """(start, end) of an action."""
+    return a[0], a[2] + a[3]
+
+
+def function_body(acts, data, name):
+    """(body start, {parameter: register}) of DefineFunction2 `name`, or None."""
+    for a in acts:
+        if a[1] != 0x8E:
+            continue
+        p = a[2]
+        e = data.index(b'\0', p)
+        if data[p:e].decode('latin-1') != name:
+            continue
+        p = e + 1
+        n = struct.unpack_from('<H', data, p)[0]
+        p += 5
+        params = {}
+        for _ in range(n):
+            reg = data[p]
+            e = data.index(b'\0', p + 1)
+            params[data[p + 1:e].decode('latin-1')] = Reg(reg)
+            p = e + 1
+        return a[2] + a[3], params
+    return None
+
+
+def replace_push(data, match, values, what):
+    def locate(acts):
+        for a in acts:
+            if match(a):
+                lo, hi = whole(a)
+                return lo, hi, push_bytes(*values(a[4]))
+        return None
+    return edit_code(data, locate, what)
+
+
+def insert_at_function(data, name, build):
+    def locate(acts):
+        found = function_body(acts, data, name)
+        if not found:
+            return None
+        at, params = found
+        return at, at, build(params)
+    return edit_code(data, locate, f'function {name}')
+
+
+def insert_after_pop(data, match, build, what):
+    """`build()` inserted after the statement (the Pop) that follows the first Push `match` takes."""
+    def locate(acts):
+        for i, a in enumerate(acts):
+            if match(a):
+                j = next(k for k in range(i, len(acts)) if acts[k][1] == 0x17)
+                at = whole(acts[j])[1]
+                return at, at, build()
+        return None
+    return edit_code(data, locate, what)
+
+
+def pause_categories(data, label):
+    """A pause options screen: Display as its fourth category."""
+    data = replace_push(data, lambda a: is_push(a, 'mCategoryNames', '$PAUSE_CONTROLLER', '$AUDIO', '$VIDEO'),
+                        lambda v: ['mCategoryNames', label, '$PAUSE_CONTROLLER', '$AUDIO', '$VIDEO', 4],
+                        'the pause categories')
+
+    def index(params):  # if (screenName === "protopausegame") return 3;
+        a = Asm()
+        a.push(params.get('screenName', Reg(1)), 'protopausegame'); a.op('StrictEquals', 'Not')
+        a.branch('If', 'skip'); a.push(3); a.op('Return'); a.label('skip')
+        return a.bytes()
+    data = insert_at_function(data, 'GetCategoryIndexFromScreenName', index)
+
+    def change(params):  # the fourth category: SwitchScreen(PROTO_PAUSE_GAME)
+        a = Asm()
+        a.push(0, 'mcCategoryList'); a.op('GetVariable'); a.push('GetSelectIndex'); a.op('CallMethod')
+        a.push(3); a.op('Equals2', 'Not'); a.branch('If', 'skip')
+        a.get('mCategoryIndex'); a.push(3); a.op('Equals2'); a.branch('If', 'skip')
+        a.push('mCategoryIndex', 3); a.op('SetVariable')
+        a.get('_global'); a.push('PROTO_PAUSE_GAME'); a.op('GetMember')
+        a.push(1); a.get('_global'); a.push('managers'); a.op('GetMember'); a.push('screen'); a.op('GetMember')
+        a.push('SwitchScreen'); a.op('CallMethod', 'Pop')
+        a.push(UNDEF); a.op('Return')
+        a.label('skip')
+        return a.bytes()
+    return insert_at_function(data, 'OnCategoryChange', change)
+
+
+def show_fourth_button(data, widgets):
+    """mcOptionBtn3, hidden on the PS4, goes into `widgets` like the other three."""
+    def locate(acts):
+        for i in range(len(acts) - 3):
+            if is_push(acts[i], 'mcOptionBtn3') and acts[i + 1][1] == 0x4E and \
+                    is_push(acts[i + 2], exact=['_visible', False]) and acts[i + 3][1] == 0x4F:
+                a = Asm()
+                a.push(1, widgets); a.op('GetVariable'); a.push('push'); a.op('CallMethod', 'Pop')
+                return acts[i + 2][0], whole(acts[i + 3])[1], a.bytes()
+        return None
+    return edit_code(data, locate, 'the hidden fourth button')
+
+
+def main_buttons(data, label):
+    """A main menu options screen: Display as the fourth button of its list."""
+    data = show_fourth_button(data, 'mButtons')
+    data = replace_push(data, lambda a: is_push(a, 'mLocalButtonStrings', '$PAUSE_CONTROLLER', '$AUDIO', '$VIDEO'),
+                        lambda v: ['mLocalButtonStrings', label, '$PAUSE_CONTROLLER', '$AUDIO', '$VIDEO', 4, 'Array'],
+                        'the button names')
+
+    def names(acts):
+        for i, a in enumerate(acts):
+            if is_push(a, exact=['mOptionScreenNames', '_global']):
+                j = next(k for k in range(i + 1, len(acts)) if is_push(acts[k], exact=[3, 'Array']))
+                lo, hi = whole(acts[j])
+                return lo, hi, push_bytes(4, 'Array')
+        return None
+    data = edit_code(data, names, 'the screen names')
+
+    def first(acts):  # _global.PROTO_GAMEOPTION, the new last one, goes in first
+        for a in acts:
+            if is_push(a, exact=['mOptionScreenNames', '_global']):
+                asm = Asm()
+                asm.push('mOptionScreenNames', '_global'); asm.op('GetVariable'); asm.push('PROTO_GAMEOPTION')
+                asm.op('GetMember'); asm.push('_global')
+                lo, hi = whole(a)
+                return lo, hi, asm.bytes()
+        return None
+    return edit_code(data, first, 'the screen names')
+
+
+def patch_hub(data, label):
+    """protooptions.gfx (Options in the main menu): a fourth button, Display, to PROTO_GAMEOPTION
+    through its GotoGame (the PC version's Game options)."""
+    data = show_fourth_button(data, 'mWidgets')
+
+    def set_label():
+        a = Asm()
+        a.push(label, 1, 'mcOptionButtons'); a.op('GetVariable'); a.push('mcOptionBtn3'); a.op('GetMember')
+        a.push('SetLabel'); a.op('CallMethod', 'Pop')
+        return a.bytes()
+    data = insert_after_pop(data, lambda a: is_push(a, '$PAUSE_CONTROLLER', 'mcOptionButtons'), set_label,
+                            'the Controller button\'s label')
+
+    def on_select():
+        a = Asm()
+        a.get('GotoGame'); a.get('mcOptionButtons'); a.push('mcOptionBtn3'); a.op('GetMember')
+        a.push(2); a.get('_global'); a.push('managers'); a.op('GetMember'); a.push('focus'); a.op('GetMember')
+        a.push('SetOnSelect'); a.op('CallMethod', 'Pop')
+        return a.bytes()
+    data = insert_after_pop(data, lambda a: is_push(a, exact=['GotoController']), on_select,
+                            'the Controller button\'s action')
+
+    def confirm(params):  # the confirm hint on the fourth button
+        a = Asm()
+        a.push(0); a.get('_global'); a.push('managers'); a.op('GetMember'); a.push('focus'); a.op('GetMember')
+        a.push('GetSelectedIndex'); a.op('CallMethod'); a.push(3); a.op('Equals2', 'Not'); a.branch('If', 'skip')
+        a.push(None, 'A', None, 3, 'GotoGame'); a.op('CallFunction', 'Pop')
+        a.push(UNDEF); a.op('Return')
+        a.label('skip')
+        return a.bytes()
+    return insert_at_function(data, 'OnButtonHintConfirm', confirm)
+
+
+def display_screen(data, pause, label):
+    """The Display screen from a Controller screen's movie: its rows are the port's page 2."""
+    def rows(acts):
+        for i, a in enumerate(acts):
+            if is_push(a, exact=['mControllerOptions', 0, 'Array']) and acts[i + 1][1] == 0x40 \
+                    and acts[i + 2][1] in (0x3C, 0x1D):
+                lo = whole(acts[i + 2])[1]
+                last = next(k for k in range(i, len(acts)) if acts[k][1] == 0x96 and acts[k][4]
+                            and acts[k][4][0] == 'mConfirmParams')
+                names = [v for b in acts[i:last] if b[1] == 0x96 and b[4] for v in b[4]]
+                if 'Proto_Profile_TargetToggleEnabled' not in names:
+                    raise ValueError('the Controller rows are not where they were expected')
+                return lo, acts[last][0], port_rows(DISPLAY)
+        return None
+    data = edit_code(data, rows, 'the Controller rows')
+    old = 'protopausecontroller' if pause else 'protocontrolleroption'
+    new = 'protopausegame' if pause else 'protogameoption'
+    rename = {old: new, '$PAUSE_CONTROLLER': label,
+              'PauseControllerOptionSelection': 'PauseDisplayOptionSelection',
+              'ControllerOptionSelection': 'DisplayOptionSelection'}
+    data = replace_push(data, lambda a: is_push(a, old, 'InitializeOptions'),
+                        lambda v: [rename.get(x, x) if isinstance(x, str) else x for x in v], 'the screen\'s name')
+    data = replace_push(data, lambda a: is_push(a, 'PauseControllerOptionSelection' if pause else 'ControllerOptionSelection'),
+                        lambda v: [rename.get(x, x) if isinstance(x, str) else x for x in v], 'the selection\'s name')
+    if not pause:  # no "view the controller" button on it
+        data = replace_push(data, lambda a: is_push(a, exact=['mGamepadAvailable', True]),
+                            lambda v: ['mGamepadAvailable', False], 'the gamepad button')
+    return pause_categories(data, label) if pause else main_buttons(data, label)
 
 
 # ---- archives
@@ -509,18 +776,55 @@ def fingerprint(path):
         return None
 
 
-def generate(game, out, log=print, base_roots=()):
+def loose_movie(path):
+    movie, _ = unpack(path.read_bytes())
+    if movie is None:
+        raise ValueError(f'{path.name} is not a movie')
+    return movie
+
+
+def patch_loose(hud, label):
+    """{output name: movie} for loose files; with `label`, the Display screen too."""
+    out = {}
+    for name in (*SCREENS, OVERLAY):
+        movie = loose_movie(hud / name)
+        out[name] = patch_overlay(movie) if name == OVERLAY else patch_screen(movie, screen_page(movie))
+    if label:
+        for name in PAUSE_SCREENS:
+            out[name] = pause_categories(out.get(name) or loose_movie(hud / name), label)
+        for name in MAIN_SCREENS:
+            out[name] = main_buttons(out.get(name) or loose_movie(hud / name), label)
+        out[HUB] = patch_hub(loose_movie(hud / HUB), label)
+        for name, source in NEW_SCREENS.items():
+            out[name] = display_screen(loose_movie(hud / source), name == 'protopausegame.gfx', label)
+    return out
+
+
+def made_display(out):
+    """Whether the last generate() into `out` made the Display screen."""
+    try:
+        return bool(json.loads((Path(out) / 'menu.json').read_text(encoding='utf-8')).get('display'))
+    except (OSError, ValueError):
+        return False
+
+
+def generate(game, out, log=print, base_roots=(), language=None):
     """Writes the patched menu movies into `out` (cached); returns `out`, or None when they could
-    not be made. Loose files (p1/art/hud/*.gfx) become files; archives get a patch each, which
-    includes the patch of the same archive in the first of `base_roots` that has one (the
-    keyboard prompts'): `out` must then come first in THEORDER_FILE_OVERRIDES."""
+    not be made. Loose files (p1/art/hud/*.gfx) become files, with the Display screen
+    (made_display); archives get a patch each, which includes the patch of the same archive in
+    the first of `base_roots` that has one (the keyboard prompts'): `out` must then come first in
+    THEORDER_FILE_OVERRIDES. Archives get no Display screen yet: its new movies would be loose
+    files beside them. `language`: the game's (THEORDER_LANGUAGE) for the screen's name."""
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
+    display_sources = [hud / n for n in (*PAUSE_SCREENS, *MAIN_SCREENS, HUB)]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
         log('Menu: neither p1/art/hud/*.gfx nor p1/*.rcf in the game folder: the game\'s screens stay')
         return None
+    display = loose and all(s.is_file() for s in display_sources)
+    label = display_label(language) if display else None
     bases = {}
     for archive in archives:
         for root in base_roots:
@@ -528,9 +832,10 @@ def generate(game, out, log=print, base_roots=()):
             if candidate.is_file():
                 bases[archive.name] = candidate
                 break
+    inputs = sorted(set(sources + (display_sources if display else [])))
     key = hashlib.sha256(json.dumps({
-        'v': VERSION, 'loose': loose,
-        'files': [fingerprint(s) for s in (sources if loose else archives)],
+        'v': VERSION, 'loose': loose, 'label': label,
+        'files': [fingerprint(s) for s in (inputs if loose else archives)],
         'bases': {name: fingerprint(p) for name, p in bases.items()}},
         sort_keys=True).encode()).hexdigest()
     out = Path(out)
@@ -541,17 +846,18 @@ def generate(game, out, log=print, base_roots=()):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    for old in [*(target / s.name.lower() for s in sources), *(out / 'p1').glob('*.rcf.patch')]:
-        old.unlink(missing_ok=True)
+    names = [*SCREENS, OVERLAY, *PAUSE_SCREENS, *MAIN_SCREENS, HUB, *NEW_SCREENS]
+
+    def clean():
+        stamp.unlink(missing_ok=True)
+        for old in [*(target / n.lower() for n in names), *(out / 'p1').glob('*.rcf.patch')]:
+            old.unlink(missing_ok=True)
+    clean()
     try:
         if loose:
             target.mkdir(parents=True, exist_ok=True)
-            for s in sources:
-                movie, _ = unpack(s.read_bytes())
-                if movie is None:
-                    raise ValueError(f'{s.name} is not a movie')
-                data = patch_overlay(movie) if s.name == OVERLAY else patch_screen(movie, screen_page(movie))
-                (target / s.name.lower()).write_bytes(data)
+            for name, data in patch_loose(hud, label).items():
+                (target / name.lower()).write_bytes(data)
             done = MOVIES
         else:
             done = 0
@@ -560,18 +866,17 @@ def generate(game, out, log=print, base_roots=()):
                 if n:
                     log(f'Menu: {archive.name}: {n} menu movies')
                 done += n
-    except (ValueError, OSError, struct.error, StopIteration, IndexError, zlib.error) as error:
-        log(f'Menu: the game\'s Video and Controller screens stay ({error})')
-        for old in [*(target / s.name.lower() for s in sources), *(out / 'p1').glob('*.rcf.patch')]:
-            old.unlink(missing_ok=True)
+    except (ValueError, OSError, struct.error, StopIteration, IndexError, KeyError, zlib.error) as error:
+        log(f'Menu: the game\'s options screens stay ({error})')
+        clean()
         return None
     if done != MOVIES:
-        log(f'Menu: {done} menu movies found, not {MOVIES}: the game\'s Video and Controller screens stay')
-        for old in (out / 'p1').glob('*.rcf.patch'):
-            old.unlink(missing_ok=True)
+        log(f'Menu: {done} menu movies found, not {MOVIES}: the game\'s options screens stay')
+        clean()
         return None
-    stamp.write_text(json.dumps({'key': key}), encoding='utf-8')
-    log(f'Menu: the port\'s settings in Options > Video and Controller ({"loose files" if loose else "archive patches"})')
+    stamp.write_text(json.dumps({'key': key, 'display': display}), encoding='utf-8')
+    log(f'Menu: the port\'s settings in Options > Video and Controller{" and a Display screen" if display else ""} '
+        f'({"loose files" if loose else "archive patches"})')
     return out
 
 
@@ -579,8 +884,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('game', type=Path, help='the game folder')
     parser.add_argument('out', type=Path, help='the overrides folder')
+    parser.add_argument('--language', default=None, help='the game\'s language (THEORDER_LANGUAGE; 8: Russian)')
     args = parser.parse_args()
-    return 0 if generate(args.game, args.out) else 1
+    return 0 if generate(args.game, args.out, language=args.language) else 1
 
 
 if __name__ == '__main__':

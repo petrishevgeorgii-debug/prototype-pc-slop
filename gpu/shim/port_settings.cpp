@@ -111,6 +111,12 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.light_bar = i != 0;
     } else if (key == "menu_vibration") {
         v.menu_vibration = std::clamp(i, 0, 2);
+    } else if (key == "proto_res") {
+        for (int r = 0; r < ProtoResolutionCount; ++r) {
+            if (value == ProtoResolutions[r]) v.proto_res = r;
+        }
+    } else if (key == "proto_fps60") {
+        v.proto_fps60 = i != 0 ? 1 : 0;
     } else if (key == "fov") {
         v.fov = std::clamp(i, 50, 200);
     } else if (key == "anisotropy") {
@@ -179,6 +185,8 @@ void Load() {
         {"THEORDER_STALE_READBACK", "stale_readback"},     {"THEORDER_FSR1", "fsr1"},
         {"THEORDER_RCAS", "rcas"},                        {"THEORDER_FRAMES_AHEAD", "frames_queued"},
         {"THEORDER_ANISOTROPY", "anisotropy"},
+        // PROTOTYPE (run.py: theorder.ini's proto_res / proto_fps60 when it has them).
+        {"THEORDER_PROTO_RES", "proto_res"},              {"THEORDER_FPS60", "proto_fps60"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -198,6 +206,8 @@ void Load() {
     v.startup_deferred_readback = v.deferred_readback;
     v.startup_stale_readback = v.stale_readback;
     v.startup_anisotropy = v.anisotropy;
+    v.startup_proto_res = v.proto_res;
+    v.startup_proto_fps60 = v.proto_fps60;
 }
 
 bool GraphicsNeedRestart() {
@@ -297,6 +307,9 @@ void Save() {
                  v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
     std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\n", v.vibration.load(), int(v.light_bar.load()),
                  v.menu_vibration.load());
+    // PROTOTYPE's render resolution and frame rate: read by run.py and the launcher at start.
+    if (v.proto_res >= 0 && v.proto_res < ProtoResolutionCount) std::fprintf(file, "proto_res=%s\n", ProtoResolutions[v.proto_res]);
+    if (v.proto_fps60 >= 0) std::fprintf(file, "proto_fps60=%d\n", v.proto_fps60.load());
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

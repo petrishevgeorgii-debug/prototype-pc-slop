@@ -59,12 +59,12 @@ void theordergpu_pad_options(TheOrderPadOptions *out);
  * grows with every new camera and its time (steady clock, ns); 0 before the first camera (it is
  * found while the camera is tracked, THEORDER_UPSCALER not "none"). For mouse look (runtime_pad.c). */
 int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
-/* PROTOTYPE: the port's settings as rows of the game's own options screens, page 0 Options > Video
- * and page 1 Options > Controller (scripts/proto_menu.py adds the rows,
+/* PROTOTYPE: the port's settings as rows of the game's own options screens, page 0 Options > Video,
+ * page 1 Options > Controller and page 2 the Display screen the port adds (scripts/proto_menu.py adds the rows,
  * game/p1/options_menu.cpp answers the screens' calls). Every row is a choice: `choices` texts,
  * the current one `get`, `set` applies one (live) and `reset` the default; `save` writes the
  * settings file. Texts are in the game's language. Called on the game's thread. */
-enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_PAGES = 2 };
+enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_DISPLAY = 2, THEORDER_MENU_PAGES = 3 };
 typedef struct TheOrderGameMenu {
     int (*count)(int page);
     const char *(*label)(int page, int row);

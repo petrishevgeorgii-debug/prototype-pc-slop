@@ -192,6 +192,16 @@ def load_settings():
     if values.get('settings_version', 0) < 2:
         per_game['p1']['render_res'] = '1920x1080'
         values['settings_version'] = 2
+    # PROTOTYPE's resolution and frame rate as the game's Display screen left them.
+    try:
+        import graphics_options
+        ini = graphics_options.read_ini(PORT_DIR / 'theorder.ini')
+        if ini.get('proto_res') in RESOLUTIONS:
+            per_game['p1']['render_res'] = ini['proto_res']
+        if ini.get('proto_fps60') in ('0', '1'):
+            per_game['p1']['fps60'] = ini['proto_fps60'] == '1'
+    except Exception:
+        pass
     return values
 
 
@@ -217,6 +227,9 @@ def write_ini(values):
             'mouse_look': int(values['mouse_look']), 'mouse_sensitivity': int(values['mouse_sensitivity']),
             'vibration': int(values['vibration']), 'light_bar': int(values['light_bar']),
             'menu_vibration': int(values['menu_vibration']),
+            # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
+            'proto_res': values['per_game']['p1']['render_res'],
+            'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -1162,7 +1175,9 @@ class Launcher:
                         'difference). Keep it on.', 'game.tendril_fix')
         self.row_y += 20
         self.note(f'These apply to {name} only: {other} keeps its own (switch with the file tabs on the left). '
-                  'Graphics, display and controls are shared by both games.', C['dim'], height=48)
+                  'Graphics, display and controls are shared by both games.'
+                  + (' PROTOTYPE\'s resolution and frame rate are also on its own Options > Display screen.'
+                     if self.game == 'p1' else ''), C['dim'], height=64 if self.game == 'p1' else 48)
         self.profile()
         if self.game == 'p2':
             self.section('EXPERIMENTAL')

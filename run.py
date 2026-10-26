@@ -251,19 +251,27 @@ def prototype_controls(env, probe, game, out, derived, prompts=True):
 
 
 def prototype_menu(env, game, out, derived):
-    """PROTOTYPE: the port's settings in the game's own Options > Video and Controller screens (files
-    made from the game's own, scripts/proto_menu.py). THEORDER_GAME_MENU=0 keeps the game's screens."""
+    """PROTOTYPE: the port's settings in the game's own Options > Video and Controller screens and a
+    Display screen (files made from the game's own, scripts/proto_menu.py). THEORDER_GAME_MENU=0
+    keeps the game's screens."""
     if get_env(env, 'GAME_MENU', '1') == '0':
         return
     import proto_menu
     roots = [r for r in env.get('THEORDER_FILE_OVERRIDES', '').split(';') if r]
     menu_root = str((out / 'menu').resolve())
     others = [r for r in roots if r != menu_root]
+    import graphics_options
+    language = resolve_language(None, env, env['THEORDER_CONFIG'], graphics_options)
     try:
-        root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True), base_roots=others)
+        root = proto_menu.generate(game, out / 'menu', log=lambda m: print(m, flush=True), base_roots=others,
+                                   language=language)
     except (OSError, ValueError, ImportError) as error:
-        print(f'Menu: the game\'s Video and Controller screens stay ({error})', flush=True)
+        print(f'Menu: the game\'s options screens stay ({error})', flush=True)
         return
+    # The Display screen (loose game files): Display mode and V-Sync move there from Video.
+    env['THEORDER_GAME_MENU_DISPLAY'] = '1' if root and proto_menu.made_display(root) else '0'
+    if 'THEORDER_GAME_MENU_DISPLAY' not in derived:
+        derived.append('THEORDER_GAME_MENU_DISPLAY')
     if root:
         # First: an archive's patch here includes the prompts' patch of it.
         env['THEORDER_FILE_OVERRIDES'] = ';'.join([menu_root, *others])
@@ -345,6 +353,14 @@ def main():
     if reverted:
         print('Graphics: the last restart never reached the game; previous options restored', flush=True)
     env.update(graphics_options.environment(graphics))
+    # PROTOTYPE's render resolution and frame rate: the launcher writes them to theorder.ini at
+    # every start and the game's Display screen changes them there ("Apply: restart now" starts
+    # this script again with the launcher's old environment): the file wins.
+    ini = graphics_options.read_ini(env['THEORDER_CONFIG'])
+    if ini.get('proto_res'):
+        env['THEORDER_PROTO_RES'] = ini['proto_res']
+    if ini.get('proto_fps60') in ('0', '1'):
+        env['THEORDER_FPS60'] = ini['proto_fps60']
     # THEORDER_SAFE_GPU (tests, PROTOTYPE 2 bring-up): 1 = the GPU layer's optimizations, early
     # readbacks and async shaders off; settings = only the readbacks and async shaders off.
     # THEORDER_GPU_TOGGLES=<mask>: these optimizations off (bits: src/runtime_memory.c and

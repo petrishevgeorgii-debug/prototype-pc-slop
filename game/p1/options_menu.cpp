@@ -9,7 +9,8 @@
 //
 // scripts/proto_menu.py rewrites the Video screens (protovideooption.gfx, protopausevideo.gfx)
 // and the Controller screens (protocontrolleroption.gfx, protopausecontroller.gfx) so that after
-// Brightness / Target toggle they ask for the port's rows of their page (0 Video, 1 Controller):
+// Brightness / Target toggle they ask for the port's rows of their page (0 Video, 1 Controller; the
+// Display screen it makes asks for page 2):
 // port_Count(page), port_Label(page, row), port_Choices(page, row), port_Choice(page, row, index),
 // and add a game toggle per row whose game database name is "PortSetting<page>_<row>". Here the
 // hand-over to 0x1cd90 (a tail call) goes through native code that answers those, and the
@@ -153,7 +154,8 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
         static bool logged[THEORDER_MENU_PAGES] = {};
         if (!std::strcmp(function, "port_Count") && count && !logged[page]) {
             logged[page] = true;
-            std::printf("Menu: the %s screen shows the port's %d settings\n", page ? "Controller" : "Video", count);
+            static const char* const names[] = {"Video", "Controller", "Display"};
+            std::printf("Menu: the %s screen shows the port's %d settings\n", page < 3 ? names[page] : "?", count);
             std::fflush(stdout);
         }
         if (!std::strcmp(function, "port_Count")) ReturnNumber(ret, count);
