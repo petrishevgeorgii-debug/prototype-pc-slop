@@ -49,8 +49,6 @@ SAVES AND LOGS
   Log:     last_run.log (send it with any problem report)
 
 KNOWN ISSUES
-  - If a loading screen still never ends: press F10 while it hangs and send last_run.log
-    and out\hang_sample.txt.
   - PROTOTYPE 2 is experimental: no keyboard and mouse button icons yet (PlayStation buttons
     are shown), FSR upscaling does not work in it yet, its mouse camera goes through the right
     stick, and 4K is untested.

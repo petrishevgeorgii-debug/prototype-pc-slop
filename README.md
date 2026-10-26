@@ -106,8 +106,6 @@ Saves are kept in `user\savedata` in the port folder and backed up at every star
 
 ## Known issues
 
-- A loading screen can rarely never end (seen when opening the pause menu). Press **F10** while
-  it hangs and send `last_run.log` and `out\hang_sample.txt`.
 - PROTOTYPE 2 is experimental. It has no keyboard and mouse button icons yet (it shows the
   PlayStation buttons) and FSR upscaling does not work in it yet. Its mouse camera goes through
   the right stick, and 4K is untested.
