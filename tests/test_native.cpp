@@ -154,10 +154,15 @@ int main() {
     native_game_install(&host);
     CHECK(reinterpret_cast<std::uint8_t*>(CallTarget(kSite)) == g_base + kCallee);
 
-    // The Video screen's rows: answered from the menu; the game's own calls go to its Lua.
+    // The Video screen's rows: answered from the menu; the game's own calls go to its Lua. The
+    // loader's host is a local that is gone when the game runs: so is this one.
     BuildGame();
-    host.menu = &kMenu;
-    native_game_install(&host);
+    {
+        auto* local = new NativeHost(host);
+        local->menu = &kMenu;
+        native_game_install(local);
+        std::memset(static_cast<void*>(local), 0xff, sizeof(*local)); // (kept allocated: reads see the poison)
+    }
     Value r = LuaCall({Str("port_Count")});
     CHECK(r.type == 3 && r.number == 2);
     r = LuaCall({Str("port_Label"), Num(1)});
@@ -178,7 +183,6 @@ int main() {
 
     // Without the port's menu every call goes to the game.
     BuildGame();
-    host.menu = nullptr;
     native_game_install(&host);
     CHECK(LuaCall({Str("port_Count")}).type == 5);
 
