@@ -72,9 +72,6 @@ int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
  * settings file. Texts are in the game's language. Called on the game's thread. */
 enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_DISPLAY = 2, THEORDER_MENU_TRAINER = 3,
        THEORDER_MENU_PAGES = 4 };
-/* Options > Video's SHADOW DISTANCE row (get: 0 the game's own, 1 250 m, 2 500 m, 3 1000 m, 4 2000 m,
- * 5 3000 m; the game layer applies it, game/p1/shadows.cpp). */
-enum { THEORDER_VIDEO_SHADOW_DISTANCE = 3 };
 /* PROTOTYPE's trainer (page 3, its own screen in the pause menu, F1 or holding the touchpad;
  * game/p1/trainer.cpp does what the rows say): two switches and two one-shot actions. */
 enum { THEORDER_TRAINER_GOD = 0, THEORDER_TRAINER_CRITICAL_MASS = 1, THEORDER_TRAINER_EP = 2,

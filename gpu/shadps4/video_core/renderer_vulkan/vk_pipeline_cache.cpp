@@ -24,7 +24,6 @@
 #include "shader_recompiler/runtime_info.h"
 #include "port_settings.h"
 #include "port_shader_mods.h"
-#include "port_shadow_fade.h"
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/liverpool_to_vk.h"
@@ -258,11 +257,6 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
                 : 1;
         info.hw.fs.z_export_format = regs.z_export_format;
         info.hw.fs.motion_vectors = sel.motion;
-        {
-            // port: PROTOTYPE's shadow fade follows the shadow distance (port_shadow_fade.h).
-            const auto ps = AmdGpu::GetParams(regs.ps_program);
-            info.hw.fs.shadow_fade = PortShadowFade::Level(ps.hash, ps.code);
-        }
         u8 stencil_ref_export_enable = regs.depth_shader_control.stencil_op_val_export_enable |
                                        regs.depth_shader_control.stencil_test_val_export_enable;
         info.hw.fs.mrtz_mask = regs.depth_shader_control.z_export_enable |
@@ -612,12 +606,6 @@ bool PipelineCache::QueueShader(Program& program, HwStage stage, SwStage l_stage
     auto build = std::make_shared<AsyncShaderCompilation>();
     build->device = instance.GetDevice();
     build->code.assign(params.code.begin(), params.code.end());
-    if (stage == HwStage::Fragment && runtime_info.hw.fs.shadow_fade) {
-        std::vector<u32> faded; // port: the shadow fade's literals (port_shadow_fade.h)
-        if (PortShadowFade::Apply(build->code, runtime_info.hw.fs.shadow_fade, faded).data() == faded.data()) {
-            build->code = std::move(faded);
-        }
-    }
     build->user_data.assign(params.user_data.begin(), params.user_data.end());
     build->info = Shader::Info(stage, l_stage, params);
     build->info.user_data = build->user_data;
@@ -1565,15 +1553,10 @@ bool PipelineCache::RefreshComputeKey() {
 }
 
 vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::RuntimeInfo& runtime_info,
-                                              const std::span<const u32>& code_in, size_t perm_idx,
+                                              const std::span<const u32>& code, size_t perm_idx,
                                               Shader::Backend::Bindings& binding, u64& spv_hash) {
     LOG_INFO(Render_Vulkan, "Compiling {} shader {:#x} {}", info.hw_stage, info.pgm_hash,
              perm_idx != 0 ? "(permutation)" : "");
-    // port: the shadow fade's literals for this permutation (port_shadow_fade.h).
-    std::vector<u32> faded;
-    const std::span<const u32> code = info.hw_stage == Shader::HwStage::Fragment
-        ? PortShadowFade::Apply(code_in, runtime_info.hw.fs.shadow_fade, faded)
-        : code_in;
     DumpShader(code, info.pgm_hash, info.hw_stage, perm_idx, "bin");
     CompileTimer timer;
 

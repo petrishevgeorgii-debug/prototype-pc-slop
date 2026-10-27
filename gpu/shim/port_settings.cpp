@@ -97,8 +97,6 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.fsr1 = i != 0;
     } else if (key == "rcas") {
         v.rcas = i != 0;
-    } else if (key == "shadow_distance") {
-        v.shadow_distance = std::clamp(i, 0, 5);
     } else if (key == "rcas_strength") {
         v.rcas_strength = PortGraphics::ParseRcasStrength(value.empty() ? -1 : i);
     } else if (key == "frames_queued") {
@@ -318,9 +316,8 @@ void Save() {
                  PortGraphics::Aspects[std::clamp(v.aspect.load(), 0, 3)].data(),
                  v.engine_fps.load(), int(v.deferred_readback.load()), int(v.stale_readback.load()),
                  int(v.restart_unconfirmed.load()));
-    std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\nshadow_distance=%d\n",
-                 v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load(),
-                 v.shadow_distance.load());
+    std::fprintf(file, "fov=%d\nmouse_look=%d\nmouse_sensitivity=%d\nanisotropy=%d\n",
+                 v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
     std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\nextra_vibration=%d\n", v.vibration.load(),
                  int(v.light_bar.load()), v.menu_vibration.load(), int(v.extra_vibration.load()));
     std::fprintf(file, "haptics=%d\nhaptics_sound=%d\ndiscord=%d\nmenu_mouse=%d\n", int(v.haptics.load()),
