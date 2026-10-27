@@ -156,14 +156,40 @@ void LogHealth() {
 }
 
 // ---- opening and closing
+//
+// The screen stack holds the screens' names, not their ids: the pause menu is PAUSEMENU, the
+// trainer (PROTO_PAUSE_DEBUG) DEBUG, the map MAP...; NONE in between two screens.
 
-enum class State { Idle, OpeningPause, Pushing, Open };
+constexpr const char* kTrainer = "DEBUG";
+constexpr const char* kPause = "PAUSEMENU";
+/// The pause menu's other screens (the touchpad opens the map straight from the game): the trainer
+/// takes their place.
+constexpr const char* kPauseScreens[] = {"MAP", "CONTROLLERCONFIG", "EVENTS", "OBJECTIVES", "POWERPURCHASE",
+                                         "STATISTICS", "PROTOPAUSEGAME", "PROTOPAUSEVIDEO", "PROTOPAUSEAUDIO",
+                                         "PROTOPAUSECONTROLLER", "SAVE", "QUIT"};
+
+enum class State { Idle, Asked, OpeningPause, Pushing, Open };
 State g_state = State::Idle;
-bool g_from_game = false;
+bool g_back_to_game = false; ///< leaving the trainer goes on to the game (not opened from PAUSEMENU)
 int g_wait = 0;
 
 bool Is(const char* screen, const char* name) {
     return std::strcmp(screen, name) == 0;
+}
+
+bool PauseScreen(const char* screen) {
+    for (const char* name : kPauseScreens)
+        if (Is(screen, name)) return true;
+    return false;
+}
+
+/// Between two screens: no decision on it.
+bool Passing(const char* screen) {
+    return !*screen || Is(screen, "NONE");
+}
+
+void Opened(bool ok) {
+    Log(ok ? "opened" : "could not open (the pause menu's screens did not answer)");
 }
 
 } // namespace
@@ -173,45 +199,62 @@ namespace Native {
 void TrainerFrame(void* movie, const char* screen) {
     const TheOrderGameMenu* menu = Native::Menu();
     if (!menu || !menu->trainer_open || !menu->press_options || !Ready()) return;
-    const bool trainer = Is(screen, "PROTO_PAUSE_DEBUG");
-    const bool pause = std::strncmp(screen, "PROTO_PAUSE", 11) == 0;
+    const bool trainer = Is(screen, kTrainer);
     if (menu->trainer_open()) {
+        char text[96];
+        std::snprintf(text, sizeof(text), "asked (screen %s)", *screen ? screen : "(none)");
+        Log(text);
         if (trainer) {
-            // F1 again: back to where it was opened from.
+            // Again: back to where it was opened from (leaving it for the pause menu goes on to
+            // the game when it was opened from there).
             Invoke(movie, "PortTrainerBack");
             g_state = State::Open;
-        } else if (Is(screen, "IGHUD")) {
-            menu->press_options();
-            g_state = State::OpeningPause;
-            g_from_game = true;
-            g_wait = 120;
-        } else if (pause) {
-            g_from_game = false;
-            Log(Invoke(movie, Is(screen, "PROTO_PAUSE") ? "PortTrainerPush" : "PortTrainerSwitch") ? "opened"
-                                                                                                     : "could not open");
-            g_state = State::Open;
-            g_wait = 60;
+            g_wait = 0;
         } else {
-            char text[96];
-            std::snprintf(text, sizeof(text), "not from here (screen %s)", *screen ? screen : "(none)");
-            Log(text);
+            g_state = State::Asked;
+            g_wait = 90; // the screen it was asked on may still be coming (NONE)
         }
     }
     switch (g_state) {
+    case State::Asked:
+        if (Is(screen, "IGHUD")) {
+            menu->press_options();
+            g_state = State::OpeningPause;
+            g_back_to_game = true;
+            g_wait = 150;
+        } else if (Is(screen, kPause)) {
+            g_back_to_game = false;
+            Opened(Invoke(movie, "PortTrainerPush"));
+            g_state = State::Open;
+            g_wait = 60;
+        } else if (PauseScreen(screen)) {
+            g_back_to_game = true;
+            Opened(Invoke(movie, "PortTrainerSwitch"));
+            g_state = State::Open;
+            g_wait = 60;
+        } else if (!Passing(screen) || --g_wait <= 0) {
+            char text[96];
+            std::snprintf(text, sizeof(text), "not from here (screen %s)", *screen ? screen : "(none)");
+            Log(text);
+            g_state = State::Idle;
+        }
+        break;
     case State::OpeningPause:
-        if (Is(screen, "PROTO_PAUSE")) {
+        if (Is(screen, kPause)) {
             g_state = State::Pushing;
-            g_wait = 12; // the pause menu's own opening first
+            g_wait = 15; // the pause menu's own opening first
         } else if (--g_wait <= 0) {
             Log("the pause menu did not open");
             g_state = State::Idle;
         }
         break;
     case State::Pushing:
-        if (!Is(screen, "PROTO_PAUSE")) {
-            g_state = trainer ? State::Open : State::Idle;
+        if (trainer) {
+            g_state = State::Open;
+        } else if (!Is(screen, kPause)) {
+            if (!Passing(screen)) g_state = State::Idle; // somewhere else meanwhile
         } else if (--g_wait <= 0) {
-            Log(Invoke(movie, "PortTrainerPush") ? "opened" : "could not open");
+            Opened(Invoke(movie, "PortTrainerPush"));
             g_state = State::Open;
             g_wait = 60;
         }
@@ -220,14 +263,13 @@ void TrainerFrame(void* movie, const char* screen) {
         if (trainer) {
             g_wait = 0;
             LogHealth();
-        } else if (Is(screen, "PROTO_PAUSE") && g_wait <= 0) {
-            // Left the trainer for the pause menu: opened from the game, back to the game.
-            if (g_from_game) menu->press_options();
-            g_from_game = false;
-            g_state = State::Idle;
+        } else if (Passing(screen)) {
+            // on the way in or out
         } else if (g_wait > 0) {
             --g_wait; // still on its way in
         } else {
+            if (Is(screen, kPause) && g_back_to_game) menu->press_options(); // left it: on to the game
+            g_back_to_game = false;
             g_state = State::Idle;
         }
         break;

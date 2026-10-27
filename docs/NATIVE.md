@@ -155,9 +155,11 @@ loaded) and it is not skipped yet (`0x122f3c8`), the port calls the game's own `
 
 `game/p1/trainer.cpp`, from protomain's `Advance` (the same hook as the menu mouse, on the thread
 that runs the game's Lua). Opening: F1 or the touchpad held (`gpu/shim/port_trainer.cpp`,
-`src/runtime_pad.c`); from the HUD (`IGHUD`) the port presses Options, waits for `PROTO_PAUSE` and
+`src/runtime_pad.c`); from the HUD (`IGHUD`) the port presses Options, waits for the pause menu (the stack holds the
+screens' names: `PAUSEMENU`; the trainer is `DEBUG`, the map `MAP`) and
 `Invoke`s `_root.PortTrainerPush` (GFxMovie slot 18, `0x4055e0`), which `scripts/proto_menu.py`
-defines in protomain as `managers.screen.PushScreen(PROTO_PAUSE_DEBUG)`; leaving it for the pause
+defines in protomain as `managers.screen.PushScreen(PROTO_PAUSE_DEBUG)` (`PortTrainerSwitch` in place
+of another pause screen: the touchpad opens the map); leaving it for the pause
 menu presses Options again (the pause menu's `ExitPause` on the PS4). The screen's rows are page
 3 of `TheOrderGameMenu`.
 
