@@ -228,9 +228,34 @@ log lists them:
           draw 4 from 2bb4f3: 412 draws in 412 calls, 37 materials, group 105e000, shader 105c3a0 x400
           untagged: 21 draws
 
-The caller (the code after the call) tells the primitive class (`Mesh`, `Skin`, `GpuSkin`,
-`ParticleSystem`, `proto::HUD`...): read off the executable from the first log with tags.
-Draws not tagged are drawn by other code (Scaleform's, full-screen passes).
+What b11 showed (frame 7200, 3714 draws): every 3D draw is tagged; only the full-screen passes,
+the HUD and Scaleform's front end are not. But the callers are not the primitives: they are the
+passes' own drawing loops, which draw sorted lists of primitive groups (Pure3D sorts the scene's
+primitives into the passes' lists first):
+
+| caller | in | draws | materials |
+|---|---|---|---|
+| `0x345943` (slot 5), `0x345d99` (4) | ProtoShadowPass's list drawer (`0x345500`) | 807 in 4 calls, 114 | 3, 22 |
+| `0x3499a6` (5) | `ProtoFastZPass` Render | 1040 in 1 call | 1 |
+| `0x348f6e` (4) | `ProtoSlowZPass` Render | 168 | 18 |
+| `0x348d8c` (5), `0x348d0b` (4) | `ProtoMidgroundZPass` Render | 47 in 1 call, 10 | 1, 2 |
+| `0x33be7e` (4) | `ProtoDecalPass` Render | 33 | 21 |
+| `0x3434ce` (4) | the unlit list drawer (`0x3433e0`): Unlit, Sky, Midground | 124, 1, 57 | 3, 1, 14 |
+| `0xaabe58` (4) | the opaque drawer (`0xaabd10`): World, Road | 507, 12 | 256+, 12 |
+| `0xaac0d5` (4) | the same, Objects | 565 | 212 |
+| `0x346ddc`, `0x347172` (4) | the translucent drawers (`0x346b40`, `0x347050`) | 38, 38 | 30, 33 |
+
+So slot 5 (whole arrays in one call) is the depth-only work: the fast Z list draws 1040 groups
+with one material. Everything lit goes one group at a time through slot 4, each with its own
+material: about 470 materials in the opaque world and objects. A material here is a
+`pure3d::ps4Shader` (vtable `0x105b920`; every group's shader is one), a `pddiShaderCommon`:
+`+0x10` its program (the shader definition, refcounted, given to its constructor), `+0x18` its
+parameter block (0x30 bytes), `+0x28` a serial number. Primitive groups have no vtable (their
+first field is data).
+
+What a draw is (static world, character, vehicle) is therefore not in who calls the draw; it is
+in the material's program (skinned or not) and the group's vertex format. Next: the programs
+(how many, their names) and the vertex shaders per caller.
 
 The primitive classes (vtables; slots 0-1 the destructors):
 
