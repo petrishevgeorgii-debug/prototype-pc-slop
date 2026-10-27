@@ -159,8 +159,9 @@ that runs the game's Lua). Opening: F1 or the touchpad held (`gpu/shim/port_trai
 which opens on its map; Options is the Web of Intrigue, which it leaves first), waits for the pause menu (the stack holds the
 screens' names: `PAUSEMENU`; the trainer is `DEBUG`, the map `MAP`) and
 `Invoke`s `_root.PortTrainerPush` (GFxMovie slot 18, `0x4055e0`), which `scripts/proto_menu.py`
-defines in protomain as `managers.screen.PushScreen(PROTO_PAUSE_DEBUG)` (`PortTrainerSwitch` in place
-of another pause screen: the touchpad opens the map); leaving it for the pause
+defines in protomain as `managers.screen.PushScreen(PROTO_PAUSE_DEBUG)` (over the map too, the
+pause menu's first screen; taking a pause screen's place emptied the stack and backing out froze
+the game); leaving it for the pause
 menu presses Options (the pause menu's `ExitPause` on the PS4). The screen's rows are page
 3 of `TheOrderGameMenu`; they act as they change, and leaving the screen never asks to save or
 saves the profile (its `PromptLeaveScreen` and `SaveSettings` are cut short: saving the profile

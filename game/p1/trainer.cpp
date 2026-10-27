@@ -206,11 +206,10 @@ void TrainerFrame(void* movie, const char* screen) {
         std::snprintf(text, sizeof(text), "asked (screen %s)", *screen ? screen : "(none)");
         Log(text);
         if (trainer) {
-            // Again: back to where it was opened from (leaving it for the pause menu goes on to
-            // the game when it was opened from there).
-            Invoke(movie, "PortTrainerBack");
-            g_state = State::Open;
-            g_wait = 0;
+            // Again: on to the game (Options on the trainer's screen is its ExitPause).
+            menu->press_options();
+            g_back_to_game = false;
+            g_state = State::Idle;
         } else {
             g_state = State::Asked;
             g_wait = 90; // the screen it was asked on may still be coming (NONE)
@@ -231,8 +230,11 @@ void TrainerFrame(void* movie, const char* screen) {
             g_state = State::Open;
             g_wait = 60;
         } else if (PauseScreen(screen)) {
+            // Over the map (the pause menu opens on it) or another pause screen: backing out of
+            // the trainer comes back to it, and then on to the game. (Taking its place left the
+            // screen stack without the pause menu: backing out froze the game.)
             g_back_to_game = true;
-            Opened(Invoke(movie, "PortTrainerSwitch"));
+            Opened(Invoke(movie, "PortTrainerPush"));
             g_state = State::Open;
             g_wait = 60;
         } else if (Is(screen, "WEBOFINTRIGUE") && !g_left_web) {
@@ -263,8 +265,8 @@ void TrainerFrame(void* movie, const char* screen) {
         } else if (!Is(screen, kPause) && !PauseScreen(screen)) {
             if (!Passing(screen)) g_state = State::Idle; // somewhere else meanwhile
         } else if (--g_wait <= 0) {
-            // On the pause menu: over it; on the map it opens with: in its place.
-            Opened(Invoke(movie, Is(screen, kPause) ? "PortTrainerPush" : "PortTrainerSwitch"));
+            // Over the pause menu, or the map it opens with.
+            Opened(Invoke(movie, "PortTrainerPush"));
             g_state = State::Open;
             g_wait = 60;
         }
