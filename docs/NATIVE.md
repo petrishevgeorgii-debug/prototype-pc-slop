@@ -211,7 +211,17 @@ Alex), the other two end a constant factor further each, the last at the distanc
 the unit at 10 m, and the range check reads a native value that follows the range. GAME puts the
 game's values back. The casters come with it: the shadow pass culls the scene once per cascade
 against that cascade's planes (`0x349160`: `0x2b02c0` for each), so a longer cascade draws more
-of the city into the shadow map. The render map logs the shadow pass's draws every 5 s to see it.
+of the city into the shadow map. The render map logs the shadow pass's draws every 5 s to see it. (b15 in the city: about 540-840 draws a frame with GAME, 2250 with 1000 m.)
+
+That alone showed nothing more on screen: the game's lit pixel shaders fade the sun's shadow out
+themselves, `saturate(dist_to_vertex * 0.02 - 3.0)` squared, from 150 to 200 m (the HLSL is kept
+beside the binaries in `art/startup_shaders.p3d`; about 414 of its 1134 shaders have it). On the
+GPU side (`gpu/shim/port_shadow_fade.cpp`) a pixel shader whose GCN code has those two literals
+(0.02 `0x3ca3d70a` and -3.0 `0xc0400000`, each after an instruction taking a literal, a few dwords
+apart) gets the setting in its runtime info (`hw.fs.shadow_fade`, two spare bits: the stored
+specializations keep their size) and so its own permutation, translated from a copy of its code
+with the fade over the last 15% of the distance (1000 m: 850 to 1000 m). Changing the setting
+builds those permutations in the background: lit objects can blink for a moment the first time.
 
 An earlier try (0.7.0) was removed in 1.0.0 (it did not show a difference in play). It spread all
 four cascades from 5 m, which blurs the nearest shadows, and it kept the game's values in four
