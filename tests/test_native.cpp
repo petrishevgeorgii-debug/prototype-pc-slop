@@ -407,6 +407,10 @@ int main() {
     {
         CHECK(LuaCall({Str("port_Pointer"), Num(1)}).number == 1 && g_pointer_mode == 1);
         CHECK(LuaCall({Str("port_Pointer"), Num(0)}).number == 0 && g_pointer_mode == 0);
+        // The screen on top: the HUD while playing, any other is a menu.
+        CHECK(LuaCall({Str("port_Pointer"), Str("PROTO_PAUSE")}).number == 1 && g_pointer_mode == 1);
+        CHECK(LuaCall({Str("port_Pointer"), Str("IGHUD")}).number == 0 && g_pointer_mode == 0);
+        CHECK(LuaCall({Str("port_Pointer"), Str("PROTO_MAINMENU")}).number == 1 && g_pointer_mode == 1);
         // With the cursor's frame and place (for the log).
         CHECK(LuaCall({Str("port_Pointer"), Num(1), Num(2), Num(640), Num(360)}).number == 1);
         // Stand-ins: Advance returns 3.0f; NotifyMouseState and the cursor count note their

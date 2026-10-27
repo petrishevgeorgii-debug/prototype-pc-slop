@@ -149,10 +149,24 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     const TheOrderGameMenu* menu = Native::Menu();
     const char* function = Text(args, argc, 0);
     if (!menu || !function || !ret) return false;
-    // The mouse in the menus (menu_mouse.cpp): protomain's cursor asks every frame, with whether
-    // the menus are up (1) or the game is played (0); the answer shows or hides it.
+    // The mouse in the menus (menu_mouse.cpp): protomain's cursor asks every frame, with the
+    // screen on top (IGHUD while playing: the mouse looks around; any other, the main menu, the
+    // pause menu and the screens under them, loading: it points); the answer shows or hides it.
     if (!std::strcmp(function, "port_Pointer")) {
-        const int shown = menu->pointer_mode ? menu->pointer_mode(Int(args, argc, 1) ? 1 : 0) : 0;
+        const char* screen = Text(args, argc, 1);
+        int up;
+        if (screen) {
+            up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE") ? 1 : 0;
+            static char last[64] = "?";
+            if (std::strncmp(last, screen, sizeof(last) - 1)) {
+                std::snprintf(last, sizeof(last), "%s", screen);
+                std::printf("Menu mouse: screen %s\n", *screen ? screen : "(none)");
+                std::fflush(stdout);
+            }
+        } else {
+            up = Int(args, argc, 1) ? 1 : 0; // an older protomain: whether the menus are up
+        }
+        const int shown = menu->pointer_mode ? menu->pointer_mode(up) : 0;
         ReturnNumber(ret, shown);
         // The cursor's frame: 2 ('enable') while a control is under it (the controls' OnRollOver),
         // 1 ('disable') otherwise; and where it is on the stage. Logged as it changes.

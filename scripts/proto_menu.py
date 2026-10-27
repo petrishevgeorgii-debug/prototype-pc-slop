@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 9        # of this script's output (part of the cache key)
+VERSION = 10        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -168,7 +168,8 @@ class Asm:
     OPS = {'Pop': 0x17, 'GetVariable': 0x1C, 'SetVariable': 0x1D, 'Not': 0x12, 'Less2': 0x48,
            'Add2': 0x47, 'GetMember': 0x4E, 'SetMember': 0x4F, 'Increment': 0x50, 'CallMethod': 0x52,
            'NewObject': 0x40, 'InitObject': 0x43, 'DefineLocal': 0x3C, 'StrictEquals': 0x66,
-           'Equals2': 0x49, 'Return': 0x3E, 'CallFunction': 0x3D, 'InitArray': 0x42}
+           'Equals2': 0x49, 'Return': 0x3E, 'CallFunction': 0x3D, 'InitArray': 0x42,
+           'Subtract': 0x0B, 'PushDuplicate': 0x4C}
 
     def __init__(self):
         self.parts, self.labels, self.fixups = [], {}, []
@@ -450,25 +451,23 @@ CONTROLS = 'protocontrols.gfx'
 def main_pointer(data):
     """protomain.gfx: the PC version's mouse cursor (mMouseCursor) for the mouse in the menus
     (game/p1/menu_mouse.cpp): _global.gMouseCursor (the menus' controls light it up), and every
-    frame it asks the port (port_Pointer) whether to show, telling it whether the menus are up
-    (_global.gPortPointerMode, set where the game switches the menus' sounds between the front end,
-    the pause menu and the game), and follows the mouse."""
+    frame it asks the port (port_Pointer) whether to show, telling it the screen on top of the
+    screen manager's stack (IGHUD while playing: the mouse looks around; the main menu, the pause
+    menu, the map... it points), and follows the mouse."""
     data = on_pc(data, lambda v: 'gMouseCursor' in v, 'the PC cursor')
-    for name, mode in (('AS_InstallFrontEndFESounds', 1), ('AS_InstallPauseMenuFESounds', 1),
-                       ('AS_InstallInGameFESounds', 0)):
-        def set_mode(params, mode=mode):
-            a = Asm()
-            a.get('_global'); a.push('gPortPointerMode', mode); a.op('SetMember')
-            return a.bytes()
-        data = insert_at_function(data, name, set_mode)
 
-    # var v = DoCallBack("port_Pointer", mode, this._currentframe, this._x, this._y); this._visible = v;
-    # if (v) follow the mouse. (The frame, 'enable' over a control, and the place are for the log.)
+    # var v = DoCallBack("port_Pointer", screen, this._currentframe, this._x, this._y);
+    # this._visible = v; if (v) follow the mouse. screen: the top of
+    # _global.managers.screen.arrScreenStack. (The frame, 'enable' over a control, and the place
+    # are for the log.)
     body = Asm()
     body.push('v')
     for name in ('_y', '_x', '_currentframe'):
         body.get('this'); body.push(name); body.op('GetMember')
-    body.get('_global'); body.push('gPortPointerMode'); body.op('GetMember')
+    body.get('_global')
+    for name in ('managers', 'screen', 'arrScreenStack'):
+        body.push(name); body.op('GetMember')
+    body.op('PushDuplicate'); body.push('length'); body.op('GetMember'); body.push(1); body.op('Subtract', 'GetMember')
     body.push('port_Pointer', 5, 'commonregisters'); body.op('GetVariable'); body.push('DoCallBack')
     body.op('CallMethod', 'DefineLocal')
     body.get('this'); body.push('_visible'); body.get('v'); body.op('SetMember')

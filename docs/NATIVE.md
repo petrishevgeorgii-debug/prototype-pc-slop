@@ -136,7 +136,8 @@ GFx maps the rect's pixels to the stage. The PS4 game's buffer says 1280x720 whi
 render resolution, so the buffer's size kept the mouse in the top left of the screen) and a `MouseWheel` event (type 4, delta at `+0x10`) per notch. The window's side
 (`gpu/shim/port_pointer.cpp`) maps the mouse onto the game's picture with the presenter's
 letterbox; protomain's PC cursor (`mMouseCursor`) follows `_xmouse`/`_ymouse` and asks
-`port_Pointer` whether to show, saying whether the menus are up (and, for the log, its frame:
+`port_Pointer` whether to show, saying which screen is on top of
+`_global.managers.screen.arrScreenStack` (`IGHUD` while playing; any other is a menu) (and, for the log, its frame:
 `enable` while a control is under it, and its place). The right button, while the menus are up, is the pad's Circle
 (back; `TheOrderMouse::menu_back`, `src/runtime_pad.c`). The main menu's buttons (`protoButton` in
 `protocontrols.gfx`) are pointed at by their label alone, a text box 64 px tall for 29 px between
