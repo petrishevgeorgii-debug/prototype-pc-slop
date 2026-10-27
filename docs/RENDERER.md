@@ -181,7 +181,7 @@ does for a full buffer: the start of the draw buffer +0x108, of the other two +0
 the kept ranges at +0x2b8 to none), so the last submit sends the rest of the frame only: about
 1870 fewer draws a frame in the city, of 5100. `THEORDER_NATIVE=-framesubmit` leaves it out.
 Checked in b10: the frame's list is one tree, every pass closed, and the frame stats' draws per
-frame in the city went from 3300-6150 (b9) to 1650-3550, with nothing missing on screen.
+frame in the city went from 3300-6150 (b9) to 1650-3550.
 
 ### The pixel shaders (b10, frame 7200)
 
