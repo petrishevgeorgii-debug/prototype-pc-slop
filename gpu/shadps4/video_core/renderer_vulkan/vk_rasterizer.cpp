@@ -72,6 +72,7 @@ Rasterizer::Rasterizer(const Instance& instance_, Scheduler& scheduler_, Runtime
     scene_targets = std::make_unique<SceneTargets>(instance, scheduler, runtime, texture_cache);
     // Object motion first: it fixes the buffer addresses the motion shader variants embed.
     object_motion = std::make_unique<ObjectMotion>(instance, scheduler);
+    scene_capture = std::make_unique<SceneCapture>(instance, scheduler);
     camera_motion = std::make_unique<CameraMotion>(instance, scheduler, texture_cache, runtime);
     camera_motion->SetObjectMotion(object_motion.get());
     upscaler = std::make_unique<TemporalUpscaler>(instance, scheduler, texture_cache, runtime,
@@ -643,7 +644,9 @@ bool Rasterizer::DrawPipeWanted() {
 }
 
 bool Rasterizer::UseDrawPipe() const {
-    return draw_pipe && !host_markers_enabled && !PortToggle::Disabled(PortToggle::DrawPipeline);
+    // port: not while the scene capture draws a capture frame (it decides per draw, here).
+    return draw_pipe && !host_markers_enabled && !PortToggle::Disabled(PortToggle::DrawPipeline) &&
+           !(scene_capture && scene_capture->Active());
 }
 
 bool Rasterizer::OnStageA() const {
@@ -1184,7 +1187,20 @@ void Rasterizer::Draw(bool is_indexed, u32 index_offset, const PreparedDraw* pre
             return;
         }
     }
-    const GraphicsPipeline* pipeline = pipeline_cache.GetGraphicsPipeline({}, prepared);
+    // port: a solid draw of a scene capture frame takes its capture variant when it is built
+    // (vk_scene_capture.h); until then, and for draws that cannot have one, the usual pipeline.
+    const GraphicsPipeline* pipeline = nullptr;
+    if (scene_capture && scene_capture->Wanted()) {
+        pipeline_cache.RequestSceneCapture(true);
+        pipeline = pipeline_cache.GetGraphicsPipeline({}, nullptr);
+        pipeline_cache.RequestSceneCapture(false);
+        if (!pipeline || pipeline->GetGraphicsKey().motion_vectors != 2) {
+            scene_capture->NoteMissed(!pipeline);
+        }
+    }
+    if (!pipeline) {
+        pipeline = pipeline_cache.GetGraphicsPipeline({}, prepared);
+    }
     const PreparedDraw* used_prepared = pipeline_cache.UsedPrepared();
     if (prepared) {
         draw_prep->Count(pipeline != nullptr &&
@@ -1271,6 +1287,37 @@ void Rasterizer::DiagPassBoundary(bool force) {
     diag_addresses = force ? std::array<VAddr, 8>{} : addresses;
 }
 
+// port: the scene capture's parameters for this draw (vk_scene_capture.h): the vertex range it
+// runs and its indices, 0 when it cannot be captured (then its vertex shader stores nothing).
+u32 Rasterizer::SceneCaptureParam(const GraphicsPipeline* pipeline, bool is_indexed, u32 index_offset) {
+    if (!scene_capture || !scene_capture->Active()) {
+        return 0;
+    }
+    const auto& regs = Regs();
+    const auto& vs = pipeline->GetStage(Shader::SwStage::Vertex);
+    const auto [base_vertex, first_instance] = GetDrawOffsets(regs, vs, pipeline->GetFetchShader());
+    SceneCapture::Draw draw{
+        .indices = nullptr,
+        .index_size = regs.index_buffer_type.index_type == AmdGpu::IndexType::Index16 ? 2u : 4u,
+        .count = regs.num_indices,
+        .base_vertex = s32(base_vertex),
+        .restart = regs.enable_primitive_restart != 0,
+        .first_instance = first_instance,
+        .instances = regs.num_instances.NumInstances(),
+    };
+    if (is_indexed) {
+        const VAddr address =
+            regs.index_base_address.Address<VAddr>() + u64(index_offset) * draw.index_size;
+        const u64 bytes = u64(draw.count) * draw.index_size;
+        if (!address || !memory->IsValidGpuMapping(address, 0) ||
+            memory->ClampRangeSize(address, bytes) != bytes) {
+            return 0;
+        }
+        draw.indices = reinterpret_cast<const void*>(address);
+    }
+    return scene_capture->PrepareDraw(draw);
+}
+
 void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw* used_prepared,
                             bool is_indexed, u32 index_offset) {
     if (DrawPipe::OnStageB()) {
@@ -1326,7 +1373,7 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
         NoteFrameStart(); // THEORDER_GPU_PROFILE without an upscaler: a frame per display pass
     }
     bind_prepared = used_prepared;
-    motion_draw = pipeline->GetGraphicsKey().motion_vectors;
+    motion_draw = pipeline->GetGraphicsKey().motion_vectors == 1;
     motion_geometry = 0;
 
     PrepareRenderState(pipeline);
@@ -1459,6 +1506,9 @@ void Rasterizer::DrawRecord(const GraphicsPipeline* pipeline, const PreparedDraw
                 .vertices = range,
             });
         }
+    }
+    if (pipeline->GetGraphicsKey().motion_vectors == 2) {
+        push_data.motion_param = SceneCaptureParam(pipeline, is_indexed, index_offset);
     }
     pipeline->BindResources(set_writes, push_data);
     // port: jitter geometry drawn with the scene depth, not full-screen passes (a shifted
@@ -3349,7 +3399,7 @@ Rasterizer::BeginSignature Rasterizer::MakeBeginSignature(const GraphicsPipeline
     }
     sig.mrt_mask = key.mrt_mask;
     sig.num_samples = key.num_samples;
-    sig.motion = key.motion_vectors;
+    sig.motion = key.motion_vectors == 1;
     sig.scene_started = scene_started;
     sig.raster_scaling = upscaler->RasterScaling();
     sig.upscaler_state = upscaler->RedirectState();
@@ -3854,7 +3904,7 @@ RenderState Rasterizer::BeginRenderingFull(const GraphicsPipeline* pipeline) {
         }
     }
     // port: object motion vector attachment of G-buffer pipelines.
-    if (key.motion_vectors) {
+    if (key.motion_vectors == 1) {
         object_motion->Attach(state, state.width, state.height);
     }
     return state;

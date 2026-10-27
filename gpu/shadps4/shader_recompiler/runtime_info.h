@@ -98,6 +98,18 @@ struct MotionVectors {
     static constexpr u32 FlagLoad = 2;
 };
 
+/// port: the scene capture (video_core/renderer_vulkan/vk_scene_capture.h). The vertex shader of
+/// a captured draw also stores its clip position for each vertex: the draw's parameters (u32x4:
+/// store base, vertices, first vertex, first instance) are at params_address + 16 * index (index
+/// in the push constants' motion_param; 0 is all zero: off), the positions (vec4) at
+/// positions_address + 16 * (store base + vertex - first vertex), first instance only.
+struct SceneCapture {
+    static inline u64 params_address = 0;
+    static inline u64 positions_address = 0;
+    static constexpr u32 ParamsSpecId = 0x6d78;
+    static constexpr u32 PositionsSpecId = 0x6d79;
+};
+
 struct HwLocalRuntimeInfo {
     u32 ls_stride;
 
@@ -118,6 +130,8 @@ struct HwVertexRuntimeInfo {
     u32 user_clip_plane_mask{};
     /// port: object motion vectors (G-buffer draws), see MotionVectors below.
     bool motion_vectors{};
+    /// port: the scene capture stores the clip positions (SceneCapture below).
+    bool scene_capture{};
 
     bool operator==(const HwVertexRuntimeInfo& other) const noexcept = default;
 };

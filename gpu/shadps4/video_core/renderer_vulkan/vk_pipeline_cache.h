@@ -110,6 +110,7 @@ struct PipelineSelection {
     std::optional<Shader::Gcn::FetchShaderData> fetch_shader{};
     GraphicsPipelineKey graphics_key{};
     bool motion = false;
+    bool capture = false; ///< port: the scene capture's vertex stores (vk_scene_capture.h)
     bool compilation_pending = false;
     bool fresh_permutation = false; ///< port: a stage uses a Program::Module::fresh permutation
     DrawIndirectParams draw_indirect_params{};
@@ -169,6 +170,12 @@ public:
     const GraphicsPipeline* TryPreparedPipeline(const PreparedDraw& prepared);
 
     /// port: the prepared draw the last GetGraphicsPipeline used, or null (regular path).
+    /// port: the next GetGraphicsPipeline (on the command processor's thread) selects the scene
+    /// capture variant of the draw's vertex shader (vk_scene_capture.h), when it can have one.
+    void RequestSceneCapture(bool on) noexcept {
+        scene_capture_request = on;
+    }
+
     [[nodiscard]] const PreparedDraw* UsedPrepared() const noexcept {
         return used_prepared;
     }
@@ -282,6 +289,7 @@ private:
     std::shared_mutex programs_mutex;
     u64 prepared_hits = 0, prepared_misses = 0;
     const PreparedDraw* used_prepared = nullptr;
+    bool scene_capture_request = false;
     tsl::robin_map<ComputePipelineKey, std::unique_ptr<ComputePipeline>> compute_pipelines;
     tsl::robin_map<GraphicsPipelineKey, std::unique_ptr<GraphicsPipeline>> graphics_pipelines;
     PipelineSelection sel{}; ///< GPU thread selection state

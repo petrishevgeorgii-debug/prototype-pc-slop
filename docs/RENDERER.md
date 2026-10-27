@@ -307,6 +307,28 @@ no need to know the game's vertex formats, skinning or world matrices; the camer
 space. The index buffer is the draw's own. Then acceleration structures from those triangles,
 rebuilt or refitted each frame, and ray-traced shadows as the first use.
 
+### The scene capture (b14, first try)
+
+`video_core/renderer_vulkan/vk_scene_capture.{h,cpp}`, `THEORDER_SCENE_CAPTURE=1` (test builds,
+with the render map). Every 30 s from frame 900 one frame is a capture frame:
+
+- The draw pipeline is off for it (the choice is per draw, on the command processor's thread,
+  where the render map knows the draw's kind).
+- A solid draw (world, roads, Alex, people, vehicles) asks the pipeline cache for its **capture
+  variant** (`RequestSceneCapture`): the same pipeline with the vertex shader permutation
+  `hw.vs.scene_capture`, whose epilogue (`EmitVertexCapture`, before the depth and clip-space
+  conversions) stores `gl_Position` by buffer device address for every vertex of the draw's first
+  instance. Its key has `motion_vectors = 2` (no new key field: the stored pipeline keys keep their
+  hashes) and is not stored for later sessions. Until a variant is built (in the background) the
+  draw uses its usual pipeline.
+- The rasterizer gives the draw its parameters (`SceneCaptureParam`: the vertex range its indices
+  reach, as the object motion does, through the push constants' `motion_param`) and keeps its
+  triangles (indices rebased onto the stored positions).
+- Once the GPU is done with that frame, the log sums it up per kind (vertices written, triangles
+  complete, in front of the camera, in view, the range of w), and the first two captures are
+  written to `scene_capture_<n>.ply` (x, y and w of the clip positions: the camera's view up to a
+  scale per axis).
+
 The primitive classes (vtables; slots 0-1 the destructors):
 
 | class | vtable |

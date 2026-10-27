@@ -22,5 +22,12 @@ void TagEnd();
 /// A shader template's name (game/p1/render_map.cpp writes each once): the log names templates and
 /// sums a frame's draws by kind (world, people, vehicles...) from them.
 void Name(std::uint32_t hash, std::string_view name);
+/// The kind of the draw just counted (Draw): -1 when it was outside every draw tag. Its name, the
+/// number of kinds, and whether it is solid geometry (world, roads, Alex, people, vehicles: what
+/// the scene capture takes, vk_scene_capture.h).
+int CurrentKind();
+const char* KindName(int kind);
+int KindCount();
+bool Solid(int kind);
 void Frame();
 } // namespace PortRenderMap

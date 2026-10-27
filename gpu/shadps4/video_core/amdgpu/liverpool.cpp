@@ -838,6 +838,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 switch (nop->data_block[0]) {
                 case PM4CmdNop::PayloadType::PatchedFlip: {
                     if (PortRenderMap::Enabled()) PortRenderMap::Frame(); // port: the render map
+                    if (rasterizer) rasterizer->OnFlipParsed(); // port: the scene capture
                     // There is no evidence that GPU CP drives flip events by parsing
                     // special NOP packets. For convenience lets assume that it does.
                     // port: after the writes before it (the buffer label: WriteData, which

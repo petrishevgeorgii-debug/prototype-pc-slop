@@ -161,6 +161,55 @@ static void EmitVertexMotion(EmitContext& ctx) {
     ctx.OpStore(ctx.motion_out_prev, previous);
 }
 
+// port: the scene capture (runtime_info.h, SceneCapture): the clip position of each vertex of
+// the draw's first instance, by buffer device address. Off (parameter 0, all zero: no vertices)
+// branches around the store.
+static void EmitVertexCapture(EmitContext& ctx) {
+    const Id u32_type = ctx.U32[1];
+    const Id position = ctx.OpLoad(ctx.F32[4], ctx.output_position);
+    const Id param_ptr = ctx.OpAccessChain(ctx.TypePointer(spv::StorageClass::PushConstant, u32_type),
+                                           ctx.push_data_block,
+                                           ctx.ConstU32(PushData::MotionParamIndex));
+    const Id param_index = ctx.OpLoad(u32_type, param_ptr);
+    const auto spec_address = [&](u32 spec_id) {
+        const Id id = ctx.SpecConstant(ctx.U64, u64(spec_id));
+        ctx.Decorate(id, spv::Decoration::SpecId, spec_id);
+        return id;
+    };
+    const Id params_base = spec_address(SceneCapture::ParamsSpecId);
+    const Id positions_base = spec_address(SceneCapture::PositionsSpecId);
+    const auto address = [&](Id base, Id index, u32 stride) {
+        return ctx.OpIAdd(ctx.U64, base,
+                          ctx.OpIMul(ctx.U64, ctx.OpUConvert(ctx.U64, index),
+                                     ctx.Constant(ctx.U64, u64(stride))));
+    };
+    const Id u32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.U32[4]);
+    const Id f32x4_ptr = ctx.TypePointer(spv::StorageClass::PhysicalStorageBuffer, ctx.F32[4]);
+    const Id params = ctx.OpLoad(ctx.U32[4],
+                                 ctx.OpConvertUToPtr(u32x4_ptr, address(params_base, param_index, 16)),
+                                 spv::MemoryAccessMask::Aligned, 16u);
+    const Id store_base = ctx.OpCompositeExtract(u32_type, params, 0u);
+    const Id vertices = ctx.OpCompositeExtract(u32_type, params, 1u);
+    const Id first_vertex = ctx.OpCompositeExtract(u32_type, params, 2u);
+    const Id first_instance = ctx.OpCompositeExtract(u32_type, params, 3u);
+    const Id vertex = ctx.OpISub(u32_type, ctx.OpLoad(u32_type, ctx.vertex_index), first_vertex);
+    const Id instance = ctx.OpLoad(u32_type, ctx.instance_id);
+    const Id bool_type = ctx.U1[1];
+    const Id store = ctx.OpLogicalAnd(bool_type, ctx.OpULessThan(bool_type, vertex, vertices),
+                                      ctx.OpIEqual(bool_type, instance, first_instance));
+    const Id store_label = ctx.OpLabel();
+    const Id merge_label = ctx.OpLabel();
+    ctx.OpSelectionMerge(merge_label, spv::SelectionControlMask::MaskNone);
+    ctx.OpBranchConditional(store, store_label, merge_label);
+    ctx.AddLabel(store_label);
+    // Indexed draws may run a vertex more than once: the same value is stored each time.
+    ctx.OpStore(ctx.OpConvertUToPtr(f32x4_ptr,
+                                    address(positions_base, ctx.OpIAdd(u32_type, store_base, vertex), 16)),
+                position, spv::MemoryAccessMask::Aligned, 16u);
+    ctx.OpBranch(merge_label);
+    ctx.AddLabel(merge_label);
+}
+
 // Screen-space motion (previous minus current, pixels) through the viewport scale; z = valid.
 static void EmitFragmentMotion(EmitContext& ctx) {
     const Id f32_type = ctx.F32[1];
@@ -202,6 +251,9 @@ void EmitEpilogue(EmitContext& ctx) {
     }
     if (Sirit::ValidId(ctx.motion_frag_out)) {
         EmitFragmentMotion(ctx);
+    }
+    if (ctx.VertexCapture()) {
+        EmitVertexCapture(ctx);
     }
     if (ctx.hw_stage == HwStage::Vertex &&
         ctx.runtime_info.hw.vs.emulate_depth_negative_one_to_one) {

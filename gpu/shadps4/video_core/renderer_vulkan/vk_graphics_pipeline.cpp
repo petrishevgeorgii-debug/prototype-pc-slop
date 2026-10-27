@@ -194,11 +194,16 @@ GraphicsPipeline::GraphicsPipeline(
         shader_stages;
     // port: the object motion buffer addresses, specialization constants of the vertex shader
     // (EmitVertexMotion); unused by a shader without motion vectors.
+    // port: and the scene capture's (EmitVertexCapture), the same way.
     using Motion = Shader::MotionVectors;
-    const std::array<u64, 2> motion_addresses{Motion::params_address, Motion::positions_address};
+    using Capture = Shader::SceneCapture;
+    const std::array<u64, 4> motion_addresses{Motion::params_address, Motion::positions_address,
+                                              Capture::params_address, Capture::positions_address};
     const std::array motion_entries{
         vk::SpecializationMapEntry{Motion::ParamsSpecId, 0, sizeof(u64)},
         vk::SpecializationMapEntry{Motion::PositionsSpecId, sizeof(u64), sizeof(u64)},
+        vk::SpecializationMapEntry{Capture::ParamsSpecId, 2 * sizeof(u64), sizeof(u64)},
+        vk::SpecializationMapEntry{Capture::PositionsSpecId, 3 * sizeof(u64), sizeof(u64)},
     };
     const vk::SpecializationInfo motion_specialization{
         static_cast<u32>(motion_entries.size()), motion_entries.data(), sizeof(motion_addresses),
@@ -209,7 +214,9 @@ GraphicsPipeline::GraphicsPipeline(
             .stage = vk::ShaderStageFlagBits::eVertex,
             .module = modules[stage],
             .pName = "main",
-            .pSpecializationInfo = Motion::params_address ? &motion_specialization : nullptr,
+            .pSpecializationInfo = Motion::params_address || Capture::params_address
+                                       ? &motion_specialization
+                                       : nullptr,
         });
     }
     stage = u32(Shader::SwStage::Geometry);

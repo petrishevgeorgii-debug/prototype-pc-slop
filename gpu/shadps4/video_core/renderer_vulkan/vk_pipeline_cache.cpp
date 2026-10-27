@@ -242,6 +242,7 @@ const Shader::RuntimeInfo& PipelineCache::BuildRuntimeInfo(PipelineSelection& se
             regs.clipper_control.clip_space == AmdGpu::ClipSpace::MinusWToW;
         info.hw.vs.clip_disable = regs.IsClipDisabled();
         info.hw.vs.motion_vectors = sel.motion;
+        info.hw.vs.scene_capture = sel.capture;
         break;
     }
     case HwStage::Fragment: {
@@ -752,7 +753,9 @@ void PipelineCache::PublishGraphics(bool wait) {
         }
         const auto key = it.key();
         build->pipeline->PublishStages(build->live_infos);
-        RegisterPipelineData(key, std::hash<GraphicsPipelineKey>{}(key), build->data);
+        if (key.motion_vectors != 2) { // port: scene capture pipelines are not kept
+            RegisterPipelineData(key, std::hash<GraphicsPipelineKey>{}(key), build->data);
+        }
         graphics_pipelines.emplace(key, std::move(build->pipeline));
         ++num_new_pipelines;
         it = pending_graphics.erase(it);
@@ -981,7 +984,9 @@ const GraphicsPipeline* PipelineCache::GetGraphicsPipeline(const DrawIndirectPar
             return build_in_background(false); // no stored binary: a full compile
         }
 
-        RegisterPipelineData(sel.graphics_key, pipeline_hash, sdata);
+        if (sel.graphics_key.motion_vectors != 2) { // port: scene capture pipelines are not kept
+            RegisterPipelineData(sel.graphics_key, pipeline_hash, sdata);
+        }
         ++num_new_pipelines;
 
         if (EmulatorSettings.IsShaderCollect()) {
@@ -1266,6 +1271,7 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
                           regs.stage_enable.raw == AmdGpu::ShaderStageEnable::VgtStages::Vs;
     }
     sel.motion = false;
+    sel.capture = false;
 
     // First pass to fill render target information needed by shader recompiler
     for (s32 cb = 0; cb < AmdGpu::NUM_COLOR_BUFFERS && !skip_cb_binding; ++cb) {
@@ -1340,6 +1346,20 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         }
     }
 
+    // port: the scene capture (vk_scene_capture.h): on request (a solid draw of a capture frame,
+    // on the command processor's thread only), the vertex shader variant that also stores its
+    // clip positions. Plain vertex shader pipelines drawing triangle lists only.
+    if (scene_capture_request && !sel.worker && !sel.motion &&
+        Shader::SceneCapture::positions_address != 0 &&
+        regs.stage_enable.raw == AmdGpu::ShaderStageEnable::VgtStages::Vs && !regs.IsClipDisabled() &&
+        regs.primitive_type == AmdGpu::PrimitiveType::TriangleList) {
+        sel.capture = true;
+        if (!RefreshGraphicsStages(sel)) {
+            sel.capture = false;
+            return false;
+        }
+    }
+
     // Second pass to mask out render targets not written by shader and fill remaining info
     u8 color_samples = 0;
     bool all_color_samples_same = true;
@@ -1370,6 +1390,9 @@ bool PipelineCache::RefreshGraphicsKey(PipelineSelection& sel) {
         key.num_samples = std::max(key.num_samples, color_samples);
     }
 
+    if (sel.capture) {
+        key.motion_vectors = 2; // port: the scene capture variant (no attachment)
+    }
     if (sel.motion) {
         constexpr u32 mv = Shader::MotionVectors::Output;
         key.motion_vectors = 1;
