@@ -6,7 +6,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 ## 1.0.5 — October 27, 2026 ([notes](docs/releases/v1.0.5.md))
 
 ### Added
-- **The render map** (test builds, `THEORDER_RENDER_MAP=1`): the first step towards a native renderer. Every Pure3D pass marks its part of the game's command buffers, and the log lists a frame's passes in order with their draws ([docs/RENDERER.md](docs/RENDERER.md)); with `THEORDER_VK_MARKERS=1` they are named scopes in RenderDoc captures.
+- **The render map** (test builds, `THEORDER_RENDER_MAP=1`): the first step towards a native renderer. Every Pure3D pass marks its part of the game's command buffers, and the log lists a frame's passes in order with their draws and the pixel shaders they use, by the hash shader mods are named after ([docs/RENDERER.md](docs/RENDERER.md)); with `THEORDER_VK_MARKERS=1` they are named scopes in RenderDoc captures.
 - **Trainer**, a screen of the game's own pause menu: press **F1** (or hold the DualSense's **touchpad**) in game and the pause menu opens on it; back out of it (or F1 again) and the game goes on.
   - **God mode** (no damage, health kept full), **Infinite critical mass** (health kept at its critical mass top, for devastators), **Evolution points** (+100,000 each time) and **All powers and upgrades** (unlocks every mission's worth of them for the Upgrades screen).
   - The screen is made from the pause Controller screen like the Display screen (`scripts/proto_menu.py`), registered as the developers' pause debug screen (`PROTO_PAUSE_DEBUG`, never opened on the PS4) with the unused promo code screen's file (`protopromocode.gfx`); its rows are the port's page 3 (`gpu/shim/port_game_menu.cpp`, `port_trainer.cpp`); they act as they change, and leaving never asks to save the profile. From the game the port opens the pause menu with the touchpad's right side (Options is the Web of Intrigue). What they do runs as Lua in the game's own scripting (`game/p1/trainer.cpp`: the game's script manager, `loadstring`, the functions its mission scripts use: `go_SetHealth`, `go_SetDamageable`, `db_SetInt`, `UnlockForMission`). The log says what each did (`Trainer:` lines).
@@ -21,6 +21,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
   - Settings **HD haptics** and **Sound haptics** in Options > Controller, the launcher's and the port menu's CONTROLLER pages; `haptics`, `haptics_sound` in `theorder.ini`.
 
 ### Fixed
+- **The shadow maps and the depth pre-pass were drawn twice every frame** (on the PS4 too): the game sends them to the GPU early, mid-frame, and then sent the whole frame again from its start. The frame's last submit now starts where the early one ended: in the open city about 1,870 fewer draws a frame of about 5,100, less work for the GPU thread (`game/p1/frame_submit.cpp`, found with the render map; [docs/RENDERER.md](docs/RENDERER.md)).
 - **The mouse could not choose a power on the power wheel** (hold Tab): the wheel selects with the right stick, but the mouse turns PROTOTYPE's camera directly, so it never reached the stick. While the power wheel is held, the mouse now points the right stick (a short move towards a power chooses it, and it stays chosen until you move again or let go).
 
 ## 1.0.4 — October 26, 2026 ([notes](docs/releases/v1.0.4.md))

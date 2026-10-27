@@ -40,8 +40,10 @@ the `DrawCommandBuffer`:
 | +0x28 | predication (bit 0, or-ed into packet headers) |
 
 The packets are written by the game's statically linked Gnm (0x969f20 writes `DRAW_INDEX_2`,
-0x96a040 `DRAW_INDEX_AUTO`; more draw packet writers follow it up to about 0x96a300). The game
-writes no debug markers of its own.
+0x96a040 `DRAW_INDEX_AUTO`; more draw packet writers follow it up to about 0x96a300).
+`ps4Context` has debug markers of its own (vtable slots 68 and 69, 0x2367f0 and 0x236800: push
+and pop), which the passes use for their parts ("Shadows", "Fast Z", "World", "Front End"...):
+the names under the pass classes in the map below.
 
 ## The render map (step 1, running)
 
@@ -49,10 +51,12 @@ writes no debug markers of its own.
 class's name before it and one after (the packets `sceGnmInsertPushMarker` and
 `sceGnmInsertPopMarker` write), in the game's own command buffer. On the GPU side
 (`gpu/shim/port_render_map.cpp`, from `liverpool.cpp`) the draws between them are counted, and a
-frame's passes are logged in order with their draws (frames 300, 1200, then every 3600):
+frame's passes are logged in order with their draws and the pixel shaders those used (by the
+hash shader mods are named after, `mods\<hash>_p0.frag`; the four most used), at frames 300,
+1200, 2400, then every 3600:
 
-    Render map: frame 300: 41 passes, 2310 draws (0 outside them)
-      RootPass > ProtoLitRootPass > ProtoZPass                412
+    Render map: frame 3600: 92 passes, 5098 draws (0 outside them)
+      RootPass > ProtoShadowPass > Shadows                    688  (3 shaders: ...)
       ...
 
 `THEORDER_RENDER_MAP=1` turns it on (test builds of the launcher do). With
@@ -122,9 +126,63 @@ frame's passes are logged in order with their draws (frames 300, 1200, then ever
 | `pure3d::WireframeOverlayPass` | `0x1061710` | `0x333610` |
 | `pure3d::ZPass` | `0x1061810` | `0x333fc0` |
 
+## A frame, mapped (b9, the open city, standing still)
+
+The render map's frame 3600 (5098 draws; passes without draws of their own left out unless
+they hold others). Indented names are children; `Proto...Pass` are pass classes, the rest the
+game's own markers inside them.
+
+    RootPass
+      ProtoShadowPass > Shadows                         688   the shadow maps
+      LetterBoxPass
+        ViewPass > Visibility
+        ViewPass > ProtoLitRootPass > ProtoCapturePass   1
+          ProtoZPass                                          the depth pre-pass
+            ProtoFastZPass > Fast Z                     928
+            ProtoSlowZPass > Slow Z                     126
+            ProtoAlphaTestZPass > Alpha Test Z            0
+            ProtoMidgroundZPass > Midground Z           127   then the kick (below)
+          ProtoSSAOExtractionPass > SSAO Extract > Linearize Z, SSAO Calc, Blur X, Blur Y (1 each)
+          ProtoDecalPass > Decal                         17
+          ProtoLightDecalPass > Light decal               0
+          ProtoOpaquePass > Opaque
+            Unlit 28, World 224, Objects 792, Road > World 10, Sky > Unlit 1
+          ProtoMidgroundPass > Midground > Unlit        127
+          ProtoSSAOApplyPass > SSAO Apply                 1
+          ProtoBloodPass > Blood                          0
+          ProtoTranslucentPass > Translucent 49, Particles 3, Mission markers 0
+          ProtoProperFadePass
+        ViewPass                                              post-processing
+          ProtoRadialBlurPass > Radial blur               1
+          DepthOfFieldPass > Depth of Field > Generate Bluriness, Downsample, Blur framebuffer 2, Composite
+          ProtoFBPass > FB Effects > ProtoBloomPass > Bloom (Colour Adjust, Blur 2), Draw distortion objects, DrawQuad
+          ProtoHUDPass > HUD                              8
+        LetterboxRenderPass
+        FrontEndPass > Front End                         81   the Scaleform UI
+
+A forward renderer: shadow maps, a depth pre-pass (which the CPU waits on: it is
+kicked to the GPU early), SSAO from the depth, then the opaque world and objects lit in one go,
+the midground (distant city), translucent, then post-processing on the frame buffer. Opaque
+objects are the most draws (792 here), the shadow maps and the depth pre-pass together 1869.
+
+### The kicked depth pre-pass ran twice
+
+`ProtoMidgroundZPass`'s Render ends with `ps4Context`'s kick (vtable slot 70, 0x236810): an
+end-of-pipe label (the CPU waits for it later, 0x237870) and Gnmx's `submit()` (0x91d790) of the
+frame so far. But `submit()` sends the context from its submission start (+0x108) and leaves it
+there; only `reset()` (0x920d50, at the frame's start) and a full command buffer (0x921101) move
+it. So the frame's `submitAndFlip` (0x91db30) sent the whole frame again from its start, and the
+GPU drew the shadow maps and the depth pre-pass twice every frame: in the first render map the
+frame's list began with them, unclosed, and then the whole frame again with the same draw counts
+(688, 928, 126, 127). On a PS4 the same.
+
+`game/p1/frame_submit.cpp` moves the submission start to the end of what the kick sent (as Gnmx
+does for a full buffer: the start of the draw buffer +0x108, of the other two +0x110 and +0x118,
+the kept ranges at +0x2b8 to none), so the last submit sends the rest of the frame only: about
+1870 fewer draws a frame in the city, of 5100. `THEORDER_NATIVE=-framesubmit` leaves it out.
+
 ## Next
 
-- The frame's real pass order and draw counts (the first map from the game).
 - Primitives: their draw (`Mesh` vtable 0x105f920, `Skin` 0x105c1d0, `GpuSkin` 0x105f860...)
   and the shader each uses, so draws can be tagged with what they are (step 2).
 - `ps4Context`'s state calls: render targets, the shader programs (`ps4Program`), constant

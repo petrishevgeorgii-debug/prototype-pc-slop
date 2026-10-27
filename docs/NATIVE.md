@@ -180,6 +180,16 @@ the result is capped at the top plus critical mass (`+0x1dc`). The trainer sends
 `go_SetHealth(PLAYER_1, 98765)`, a marker its replacement of that vtable slot turns into the
 health setter (`0x1258c0`) with the cap itself.
 
+## The frame's last submit (`game/p1/frame_submit.cpp`)
+
+`ProtoMidgroundZPass` kicks the frame so far (the shadow maps and the depth pre-pass) to the GPU
+with Gnmx's `submit()`, which leaves the context's submission start at the frame's start, so the
+frame's `submitAndFlip` sent them again and the GPU drew them twice every frame (about 1870 of
+the city's 5100 draws; the PS4 too). The kick (`ps4Context`'s vtable slot 70, `0x236810`) is
+replaced by one that calls it and then moves the submission start to where it ended (Gnmx's own
+step for a full command buffer, `0x921101`). Group `framesubmit`. Details in
+[RENDERER.md](RENDERER.md).
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

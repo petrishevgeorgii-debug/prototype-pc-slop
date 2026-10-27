@@ -994,7 +994,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break; // registers: ApplyGraphicsRegisterPacket
             }
             case PM4ItOpcode::DrawIndex2: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 if (DebugState.DumpingCurrentReg()) {
                     DebugState.PushRegsDump(base_addr, reinterpret_cast<uintptr_t>(header), regs);
                 }
@@ -1008,7 +1008,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndexOffset2: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_index_off =
                     reinterpret_cast<const PM4CmdDrawIndexOffset2*>(header);
                 if (DebugState.DumpingCurrentReg()) {
@@ -1025,7 +1025,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndexAuto: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_index = reinterpret_cast<const PM4CmdDrawIndexAuto*>(header);
                 if (DebugState.DumpingCurrentReg()) {
                     DebugState.PushRegsDump(base_addr, reinterpret_cast<uintptr_t>(header), regs);
@@ -1040,7 +1040,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndirect: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_indirect = reinterpret_cast<const PM4CmdDrawIndirect*>(header);
                 const auto offset = draw_indirect->data_offset;
                 const auto stride = sizeof(DrawIndirectArgs);
@@ -1060,7 +1060,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndirectCountMulti: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_indirect =
                     reinterpret_cast<const PM4CmdDrawIndirectCountMulti*>(header);
                 const auto offset = draw_indirect->data_offset;
@@ -1082,7 +1082,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndirectMulti: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_indirect =
                     reinterpret_cast<const PM4CmdDrawIndirectMulti*>(header);
                 const auto offset = draw_indirect->data_offset;
@@ -1103,7 +1103,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndexIndirect: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_index_indirect =
                     reinterpret_cast<const PM4CmdDrawIndexIndirect*>(header);
                 const auto offset = draw_index_indirect->data_offset;
@@ -1125,7 +1125,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndexIndirectMulti: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_index_indirect =
                     reinterpret_cast<const PM4CmdDrawIndexIndirectMulti*>(header);
                 const auto offset = draw_index_indirect->data_offset;
@@ -1147,7 +1147,7 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                 break;
             }
             case PM4ItOpcode::DrawIndexIndirectCountMulti: {
-                if (PortRenderMap::Enabled()) PortRenderMap::Draw(); // port: the render map
+                if (PortRenderMap::Enabled()) PortRenderMap::Draw(regs.ps_program.address << 8); // port: the render map
                 const auto* draw_index_indirect =
                     reinterpret_cast<const PM4CmdDrawIndexIndirectCountMulti*>(header);
                 const auto offset = draw_index_indirect->data_offset;
