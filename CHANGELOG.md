@@ -6,6 +6,7 @@ All releases of the PROTOTYPE native PC port. Each version's full notes are in
 ## 1.0.5 — October 27, 2026 ([notes](docs/releases/v1.0.5.md))
 
 ### Added
+- **Shadow distance** in the game's **Options > Video**: the sun's shadows reach 250, 500 or 1000 m instead of about 120 m (GAME), live. The nearest shadows keep the game's detail; the farther ones are softer the farther they reach (`game/p1/shadows.cpp`, [docs/NATIVE.md](docs/NATIVE.md)).
 - **The render map** (test builds, `THEORDER_RENDER_MAP=1`): the first step towards a native renderer. Every Pure3D pass marks its part of the game's command buffers, and the log lists a frame's passes in order with their draws, the pixel shaders they use (by the hash shader mods are named after) and which of the game's draw calls made them, with their materials ([docs/RENDERER.md](docs/RENDERER.md)); with `THEORDER_VK_MARKERS=1` they are named scopes in RenderDoc captures.
 - **Trainer**, a screen of the game's own pause menu: press **F1** (or hold the DualSense's **touchpad**) in game and the pause menu opens on it; back out of it (or F1 again) and the game goes on.
   - **God mode** (no damage, health kept full), **Infinite critical mass** (health kept at its critical mass top, for devastators), **Evolution points** (+100,000 each time) and **All powers and upgrades** (unlocks every mission's worth of them for the Upgrades screen).

@@ -37,7 +37,8 @@ const char* T(const char* en, const char* ru) {
     return Russian() ? ru : en;
 }
 
-enum Row { Upscaler, Quality, Sharpening, RowCount };
+enum Row { Upscaler, Quality, Sharpening, ShadowDistance, RowCount };
+static_assert(int(ShadowDistance) == int(THEORDER_VIDEO_SHADOW_DISTANCE), "the game layer reads this row");
 enum DisplayRow { Resolution, FrameRate, DisplayMode, VSync, FrameCounter, Apply, DisplayRowCount };
 enum PadRow { Vibration, LightBar, MenuVibration, GameEffects, Haptics, SoundHaptics, PadRowCount };
 constexpr int kVibrationSteps = 8; ///< 0 off, then 25% steps up to 200% (the port menu's)
@@ -66,6 +67,7 @@ const char* VideoLabel(int row) {
     case Upscaler: return T("UPSCALING", "АПСКЕЙЛИНГ");
     case Quality: return T("UPSCALING QUALITY", "КАЧЕСТВО АПСКЕЙЛА");
     case Sharpening: return T("SHARPENING", "РЕЗКОСТЬ");
+    case ShadowDistance: return T("SHADOW DISTANCE", "ДАЛЬНОСТЬ ТЕНЕЙ");
     default: return "";
     }
 }
@@ -75,6 +77,7 @@ int VideoChoices(int row) {
     case Upscaler: return int(Providers().size());
     case Quality: return 5;
     case Sharpening: return 11;
+    case ShadowDistance: return 4;
     default: return 0;
     }
 }
@@ -102,6 +105,12 @@ const char* VideoChoice(int row, int index) {
         if (index <= 0) return T("OFF", "ВЫКЛ");
         text = std::to_string(std::min(index, 10) * 10) + "%";
         return text.c_str();
+    case ShadowDistance: {
+        static const char* const en[] = {"GAME (120 M)", "250 M", "500 M", "1000 M"};
+        static const char* const ru[] = {"ИГРА (120 М)", "250 М", "500 М", "1000 М"};
+        index = std::clamp(index, 0, 3);
+        return Russian() ? ru[index] : en[index];
+    }
     default: return "";
     }
 }
@@ -116,6 +125,7 @@ int VideoGet(int row) {
     }
     case Quality: return std::clamp(s.preset.load(), 0, 4);
     case Sharpening: return s.rcas ? std::clamp(int(std::lround(s.rcas_strength.load() / 10.0)), 1, 10) : 0;
+    case ShadowDistance: return std::clamp(s.shadow_distance.load(), 0, 3);
     default: return 0;
     }
 }
@@ -133,6 +143,7 @@ void VideoSet(int row, int index) {
         s.rcas = index > 0;
         if (index > 0) s.rcas_strength = std::min(index, 10) * 10;
         break;
+    case ShadowDistance: s.shadow_distance = std::clamp(index, 0, 3); break;
     default: break;
     }
 }
@@ -144,6 +155,7 @@ void VideoReset(int row) {
     case Upscaler: s.upscaler = PortSettings::UpscalerOff; break;
     case Quality: s.preset = 0; break;
     case Sharpening: s.rcas = true; s.rcas_strength = 60; break;
+    case ShadowDistance: s.shadow_distance = 0; break;
     default: break;
     }
 }

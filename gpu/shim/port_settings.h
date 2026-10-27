@@ -61,6 +61,9 @@ struct Values {
     /// PROTOTYPE: screen-space reflections on the river (vk_screen_reflections.h). Since 1.0.1 no
     /// setting or menu switches it on (it looked too poor): always off, the code kept for later.
     std::atomic<bool> ssr{false};
+    /// PROTOTYPE: how far the sun's shadows reach: 0 the game's own (about 120 m), 1 250 m,
+    /// 2 500 m, 3 1000 m (Options > Video; game/p1/shadows.cpp applies it). Live.
+    std::atomic<int> shadow_distance{0};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
     /// image is smaller than the window).
     std::atomic<bool> rcas_applied{false};

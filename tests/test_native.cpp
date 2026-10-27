@@ -8,6 +8,8 @@
 
 #include <sys/mman.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -120,6 +122,15 @@ void BuildGame() {
                         0xc7, 0x01, 0x05, 0x00, 0x00, 0x00, 0xc3});
     g_base[kLuaCalls] = g_base[kLuaCalls + 1] = g_base[kLuaCalls + 2] = g_base[kLuaCalls + 3] = 0;
     Put(kSetRumble, {0x89, 0x3d, 0, 0, 0, 0, 0x89, 0x35, 0, 0, 0, 0, 0xc3}); // mov [args], edi; mov [args+4], esi; ret
+    // The sun's shadow distance (game/p1/shadows.cpp): its two calls of Shadow::Update and the
+    // range check; the Update stand-in marks the shadow (byte +0x58 = 1) and returns.
+    Put(0x330dca, {0xe8, 0x01, 0x6b, 0xf9, 0xff, 0x41, 0x80, 0x7e, 0x58, 0x00});
+    Put(0x344eb3, {0xe8, 0x18, 0x2a, 0xf8, 0xff, 0x80, 0x7b, 0x58, 0x00});
+    Put(0x2c95db, {0xc5, 0xe2, 0x58, 0x1d, 0x35, 0x62, 0x9d, 0x00});
+    Put(0x2c78d0, {0xc6, 0x47, 0x58, 0x01, 0xc3});
+    const float range = 200.0f, check = -200.0f;
+    std::memcpy(g_base + 0x1218930, &range, 4);
+    std::memcpy(g_base + 0xc9f818, &check, 4);
     PutRel32(kSetRumble + 2, kRumbleArgs, kSetRumble + 6);
     PutRel32(kSetRumble + 8, kRumbleArgs + 4, kSetRumble + 12);
     Put(kSwitchSite, {0xe9, 0x40, 0xff, 0xff, 0xff, 0x48, 0x3b, 0x47, 0x08, 0x75, 0x11, 0x48});
@@ -157,7 +168,7 @@ void BuildGame() {
 }
 
 // ---- a stand-in menu: two Video rows, one Controller row
-int g_values[2][2] = {{1, 0}, {4, 0}}, g_saved = 0;
+int g_values[2][4] = {{1, 0, 0, 0}, {4, 0, 0, 0}}, g_saved = 0;
 int MenuCount(int page) { return page == 0 ? 2 : page == 1 ? 1 : 0; }
 const char* MenuLabel(int page, int row) { return page ? "PAD" : row ? "B" : "A"; }
 int MenuChoices(int page, int row) { return page ? 9 : row ? 2 : 3; }
@@ -456,6 +467,67 @@ int main() {
         CHECK(xy[0] == 1280.0f && xy[1] == 360.0f && notes[0] == 1 && notes[1] == 0); // buttons, mouse 0
         CHECK(notes[2] == 1);                                                          // one cursor
         CHECK(notes[4] == 3 && notes[3] == 4); // SetFocus, then the wheel's two notches
+    }
+
+    // The shadow distance: Options > Video's row 3 (the stand-in menu's g_values[0][3]).
+    {
+        BuildGame();
+        auto* local = new NativeHost(host);
+        local->menu = &kMenu;
+        native_game_install(local);
+        using Update = std::uint64_t(GUEST_ABI*)(void*, void*, void*, void*);
+        auto update = [](std::uint64_t site) {
+            std::int32_t rel;
+            std::memcpy(&rel, g_base + site + 1, 4);
+            return reinterpret_cast<Update>(g_base + site + 5 + rel);
+        };
+        CHECK(reinterpret_cast<std::uint8_t*>(update(0x330dca)) >= g_base + kImage);
+        CHECK(reinterpret_cast<std::uint8_t*>(update(0x344eb3)) >= g_base + kImage);
+        std::int32_t disp;
+        std::memcpy(&disp, g_base + 0x2c95df, 4);
+        const float* range_check = reinterpret_cast<const float*>(g_base + 0x2c95e3 + disp);
+        CHECK(*range_check == -200.0f);
+        auto global = [] { float v; std::memcpy(&v, g_base + 0x1218930, 4); return v; };
+        // A stand-in sun shadow: 4 cascades, extents 1 2 4 24 (5, 10, 20, 120 m), divisor 40, scale 1.
+        alignas(16) std::uint8_t shadow[0x400] = {};
+        const std::uint32_t count = 4;
+        std::memcpy(shadow + 0x300, &count, 4);
+        const float extents[5] = {1, 2, 4, 24, 25}, divisor = 40, scale = 1;
+        std::memcpy(shadow + 0x318, extents, sizeof(extents));
+        std::memcpy(shadow + 0x32c, &divisor, 4);
+        std::memcpy(shadow + 0x330, &scale, 4);
+        auto field = [&](std::size_t off) { float v; std::memcpy(&v, shadow + off, 4); return v; };
+        auto near = [](float a, float b) { return std::fabs(a - b) <= 0.01f * std::max(1.0f, std::fabs(b)); };
+        // GAME: the original runs, nothing changes.
+        g_values[0][3] = 0;
+        update(0x330dca)(shadow, nullptr, nullptr, nullptr);
+        CHECK(shadow[0x58] == 1 && field(0x318) == 1 && field(0x324) == 24 && field(0x32c) == 40 && global() == 200);
+        // 1000 m: the nearest two kept (5, 10 m), then 100 and 1000 m; box +- 1100 m, unit still 10 m.
+        shadow[0x58] = 0;
+        g_values[0][3] = 3;
+        update(0x344eb3)(shadow, nullptr, nullptr, nullptr);
+        CHECK(shadow[0x58] == 1);
+        CHECK(near(field(0x318), 1) && near(field(0x31c), 2) && near(field(0x320), 20) && near(field(0x324), 200));
+        CHECK(field(0x328) == 25); // a cascade the shadow does not use is left alone
+        CHECK(near(global(), 1100) && near(*range_check, -1100) && near(field(0x32c), 220));
+        // 250 m: 5, 10, 50, 250 m; box +- 275 m.
+        g_values[0][3] = 1;
+        update(0x344eb3)(shadow, nullptr, nullptr, nullptr);
+        CHECK(near(field(0x320), 10) && near(field(0x324), 50) && near(global(), 275));
+        // Back to GAME: the game's values return.
+        g_values[0][3] = 0;
+        update(0x330dca)(shadow, nullptr, nullptr, nullptr);
+        CHECK(field(0x318) == 1 && field(0x31c) == 2 && field(0x320) == 4 && field(0x324) == 24 && field(0x32c) == 40);
+        CHECK(global() == 200 && *range_check == -200);
+        // A shadow without cascades (a spot light's) is never touched.
+        alignas(16) std::uint8_t spot[0x400] = {};
+        std::memcpy(spot + 0x318, extents, sizeof(extents));
+        g_values[0][3] = 3;
+        update(0x330dca)(spot, nullptr, nullptr, nullptr);
+        float spot0;
+        std::memcpy(&spot0, spot + 0x318, 4);
+        CHECK(spot0 == 1.0f);
+        g_values[0][3] = 0;
     }
 
     // Without the port's menu every call goes to the game.

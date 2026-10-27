@@ -71,6 +71,7 @@ constexpr const char* kKindNames[kKinds] = {"world",  "roads", "Alex", "people",
                                             "sky",    "water", "effects", "unlit", "depth batches", "unnamed"};
 std::unordered_map<std::uint32_t, int> kinds; ///< template name hash -> Kind
 unsigned frame_kinds[kKinds];
+unsigned long long shadow_draws = 0, shadow_frames = 0; ///< the sun's shadow pass, since the last line
 
 int KindOf(std::uint32_t slot, std::uint32_t hash) {
     if (slot == 5) return kBatched; // one call, many groups: the tag has the first group's template only
@@ -266,6 +267,7 @@ void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
     }
     auto& entry = frame.back();
     ++entry.draws;
+    if (entry.path.rfind("RootPass > ProtoShadowPass", 0) == 0) ++shadow_draws;
     if (tag.on) {
         auto& c = CallerOf(entry);
         ++c.draws;
@@ -291,6 +293,13 @@ void Frame() {
     frame.erase(std::remove_if(frame.begin(), frame.end(), [](const Entry& e) { return e.resumed && !e.draws; }),
                 frame.end());
     if (frames == 300 || frames == 1200 || frames == 2400 || frames % 3600 == 0) Log();
+    // The sun's shadow pass every 5 s (the shadow distance setting's effect on what is drawn).
+    if (++shadow_frames == 300) {
+        std::printf("Render map: shadow pass %.0f draws a frame (frames %u-%u)\n",
+                    double(shadow_draws) / double(shadow_frames), frames - 299, frames);
+        std::fflush(stdout);
+        shadow_draws = shadow_frames = 0;
+    }
     frame.clear();
     loose = 0;
     for (auto& k : frame_kinds) k = 0;
