@@ -173,6 +173,13 @@ The rows run Lua through the game's script manager (`0xca650` returns it; `+0x18
 `0xd1870`, `GetFloat(L, float*)` `0xd1960`, `gettop`/`settop` `0xd1b20`/`0xd1b30`. A chunk is
 `loadstring(code)` called, then called itself. The player is the scripts' global `PLAYER_1`.
 
+Critical mass: Alex's health behaviour (`proto::PrototypeHealthBehaviour`, vtable `0x1092230`)
+handles a SetHealth message (type `0x14`, kind 0, value at `+0x10`) in `0x6bc570`: health above
+the normal top (`+0x1c`) is only added scaled by `criticalMassHealthGainFactor` (`+0x23c`), and
+the result is capped at the top plus critical mass (`+0x1dc`). The trainer sends
+`go_SetHealth(PLAYER_1, 98765)`, a marker its replacement of that vtable slot turns into the
+health setter (`0x1258c0`) with the cap itself.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

@@ -91,9 +91,49 @@ void Log(const char* text) {
 const char kGod[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageable(p,false) "
                     "local m=go_GetMaxRegenHealth(p) if m and go_GetHealth(p)<m then go_SetHealth(p,m) end end";
 const char kMortal[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageable(p,true) end";
-const char kCriticalMass[] = "local p=PLAYER_1 if p and go_IsValid(p) then local m=go_GetMaxHealth(p) "
-                             "if m and go_GetHealth(p)<m then go_SetHealth(p,m) end return go_GetHealth(p) end "
-                             "return -1";
+// Critical mass: Alex's health behaviour (proto::PrototypeHealthBehaviour) takes a SetHealth above
+// its normal top only scaled by criticalMassHealthGainFactor, so the game's own go_SetHealth
+// never filled it. The trainer asks with a marker value instead, which HealthMessage below (its
+// message handler, in the class's vtable) turns into the top itself: normal top + critical mass.
+constexpr float kFillMarker = 98765.0f;
+const char kCriticalMass[] = "local p=PLAYER_1 if p and go_IsValid(p) then "
+                             "if go_GetHealth(p)<go_GetMaxHealth(p) then go_SetHealth(p,98765) end "
+                             "return go_GetHealth(p) end return -1";
+
+// proto::PrototypeHealthBehaviour: its vtable's message handler (slot 5 past the vtable's two
+// header words), engine::HealthBehaviour's health setter.
+constexpr std::uint64_t kHealthMessage = 0x6bc570, kHealthMessageSlot = 0x1092230 + 7 * 8, kSetHealth = 0x1258c0;
+bool g_fill_hooked = false;
+
+GUEST_ABI void HealthMessage(std::uint8_t* self, std::uint8_t* message) {
+    std::uint32_t type;
+    std::uint16_t kind;
+    float value;
+    std::memcpy(&type, message + 0x08, 4);
+    std::memcpy(&kind, message + 0x0c, 2);
+    std::memcpy(&value, message + 0x10, 4);
+    if (type == 0x14 && kind == 0 && value == kFillMarker) { // SetHealth, from the trainer
+        float top, mass;
+        std::memcpy(&top, self + 0x1c, 4);  // the normal top (regenerates to)
+        std::memcpy(&mass, self + 0x1dc, 4); // critical mass on top of it
+        Guest::Call<void>(kSetHealth, self, top + mass);
+        return;
+    }
+    Guest::Call<void>(kHealthMessage, self, message);
+}
+
+bool InstallHealth(std::uint64_t) {
+    auto& slot = Guest::At<std::uintptr_t>(kHealthMessageSlot);
+    if (slot != reinterpret_cast<std::uintptr_t>(Guest::Image()) + kHealthMessage) return false;
+    if (std::memcmp(Guest::Image() + kSetHealth, "\xc5\xfa\x11\x47\x14\xc5\xf0\x57\xc9", 9) != 0) return false;
+    slot = reinterpret_cast<std::uintptr_t>(&HealthMessage);
+    g_fill_hooked = true;
+    return true;
+}
+
+NATIVE_REPLACEMENT({"trainer's critical mass (Alex's health messages)", "trainer", Native::Kind::Custom, kHealthMessage,
+                    {0x55, 0x48, 0x89, 0xe5, 0x41, 0x56, 0x53, 0x48, 0x89, 0xf3, 0x49, 0x89, 0xfe, 0x8b, 0x43, 0x08},
+                    nullptr, nullptr, &InstallHealth});
 const char kAddEp[] = "local n='Proto_Save_EvolutionPoints' "
                       "if ep_AwardEP then ep_AwardEP(100000) "
                       "else db_SetInt(n,0,(db_GetInt(n,0,0) or 0)+100000,0) end "
@@ -148,7 +188,8 @@ void Switches(const TheOrderGameMenu* menu, bool playing) {
                            health < max)) {
             ++logged;
             char text[96];
-            std::snprintf(text, sizeof(text), "critical mass: health %.0f after setting it", health);
+            std::snprintf(text, sizeof(text), "critical mass: health %.0f after filling it%s", health,
+                          g_fill_hooked ? "" : " (the health hook is not installed)");
             Log(text);
         }
     }
