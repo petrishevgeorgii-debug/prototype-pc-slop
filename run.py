@@ -281,7 +281,7 @@ def prototype_menu(env, game, out, derived):
 
 # The Discord application whose name ("PROTOTYPE") the Discord status shows, with its "logo" image
 # (theorder.ini discord_app_id overrides it; discord=0 turns the status off).
-DISCORD_APP_ID = ''
+DISCORD_APP_ID = '1564496546521808986'
 
 
 def prototype_discord(env, game, out, derived):
