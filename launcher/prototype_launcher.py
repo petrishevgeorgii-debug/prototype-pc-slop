@@ -48,6 +48,9 @@ WINDOWS = sys.platform == 'win32'
 FROZEN = getattr(sys, 'frozen', False)
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
+import prototype_lang as lang  # noqa: E402  (the launcher's languages: English, Russian)
+
+T = lang.tr
 
 APP_NAME = 'PROTOTYPE'
 VERSION = '1.0.5'
@@ -130,7 +133,7 @@ DEFAULTS = {
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
-    'haptics': True, 'haptics_sound': 2, 'discord': True,
+    'haptics': True, 'haptics_sound': 2, 'discord': True, 'ui_language': 'auto',
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -547,6 +550,7 @@ class Launcher:
         self.root = root
         self.random = random.Random()
         self.values = load_settings()
+        lang.set_language(self.values.get('ui_language', 'auto'))
         self.process = None
         self.started = 0.0
         self.busy = None
@@ -608,7 +612,7 @@ class Launcher:
             self.place_cursor()
 
     def status_line(self):
-        text = self.status_text.upper()
+        text = T(self.status_text).upper()
         return text if len(text) <= 92 else text[:91] + '…'
 
     def refresh_game(self, redraw=True):
@@ -617,7 +621,7 @@ class Launcher:
         if not self.values['game_dir']:
             self.set_status('Select your game folder to begin', C['warn'])
         elif bad:
-            self.set_status(f'{bad[0][0]}: {bad[0][2]}', C['bad'])
+            self.set_status(f'{T(bad[0][0])}: {T(bad[0][2])}', C['bad'])
         else:
             self.set_status('Ready to play', C['ok'])
         if redraw:
@@ -691,6 +695,7 @@ class Launcher:
     def draw(self):
         cv = self.canvas
         cv.delete('all')
+        lang.set_language(self.values.get('ui_language', 'auto'))
         C.update(STATE)
         C.update(THEMES[self.game])
         self.root.configure(bg=C['bg'])
@@ -724,9 +729,9 @@ class Launcher:
         y = HEAD // 2
         cv.create_rectangle(16, y - 5, 26, y + 5, fill=C['red'], outline='', tags=('beacon',))
         item = cv.create_text(38, y, text='BLACKWATCH', anchor='w', fill=C['text'], font=self.f(11, 'bold'))
-        cv.create_text(cv.bbox(item)[2] + 12, y, text='//  CONTAINMENT TERMINAL 7-A  ·  MANHATTAN ISLAND',
+        cv.create_text(cv.bbox(item)[2] + 12, y, text=T('//  CONTAINMENT TERMINAL 7-A  ·  MANHATTAN ISLAND'),
                        anchor='w', fill=C['muted'], font=self.f(9))
-        cv.create_text(W - 270, y, text=f'BIOHAZARD BUNDLE  ·  NATIVE PC PORT v{VERSION}', anchor='e',
+        cv.create_text(W - 270, y, text=T(f'BIOHAZARD BUNDLE  ·  NATIVE PC PORT v{VERSION}'), anchor='e',
                        fill=C['dim'], font=self.f(8))
         cv.create_text(W - 16, y, text=self.clock(), anchor='e', fill=C['text'], font=self.f(10, 'bold'),
                        tags=('clock',))
@@ -748,7 +753,7 @@ class Launcher:
             shape = cv.create_polygon(x, y1, x, y0 + 8, x + 8, y0, x + w - 16, y0, x + w, y0 + 16, x + w, y1,
                                       fill=theme['card'] if active else C['bg'],
                                       outline=theme['red'] if active else C['line'], tags=(tag,))
-            number = cv.create_text(x + 14, (y0 + y1) / 2, text=f'FILE {i + 1:02d}', anchor='w',
+            number = cv.create_text(x + 14, (y0 + y1) / 2, text=T(f'FILE {i + 1:02d}'), anchor='w',
                                     fill=theme['red'] if active else C['dim'], font=self.f(8, 'bold'), tags=(tag,))
             label = cv.create_text(cv.bbox(number)[2] + 10, (y0 + y1) / 2, text=name, anchor='w',
                                    fill=C['text'] if active else C['muted'], font=self.f(10, 'bold'), tags=(tag,))
@@ -762,8 +767,8 @@ class Launcher:
         fx0, _, fx1, fy1 = FEED
         x, y = fx0, fy1 + 22
         for label, value in DOSSIER[self.game]:
-            item = cv.create_text(x, y, text=label, anchor='w', fill=C['dim'], font=self.f(8))
-            item = cv.create_text(cv.bbox(item)[2] + 7, y, text=value, anchor='w',
+            item = cv.create_text(x, y, text=T(label), anchor='w', fill=C['dim'], font=self.f(8))
+            item = cv.create_text(cv.bbox(item)[2] + 7, y, text=T(value), anchor='w',
                                   fill=C['warn'] if value == 'EXPERIMENTAL' else C['text'], font=self.f(8, 'bold'))
             x = cv.bbox(item)[2] + 16
         name = GAMES[self.game][0]
@@ -778,7 +783,7 @@ class Launcher:
         facts = [TITLE_ID] + ([f'APP {version}'] if version else []) + [
             settings['render_res'].replace('x', ' × '), '60 FPS' if settings['fps60'] else '30 FPS']
         item = cv.create_text(fx0, fy1 + 98, text=' · '.join(facts), anchor='w', fill=C['muted'], font=self.f(9))
-        change = cv.create_text(cv.bbox(item)[2] + 14, fy1 + 98, text='[ CHANGE ]', anchor='w', fill=C['red'],
+        change = cv.create_text(cv.bbox(item)[2] + 14, fy1 + 98, text=T('[ CHANGE ]'), anchor='w', fill=C['red'],
                                 font=self.f(8, 'bold'))
         self.clickable(change, lambda e: self.switch_tab('GAME'), ((change, 'fill', C['red'], C['red_hot']),))
         self.draw_play(fy1 + 118)
@@ -797,7 +802,7 @@ class Launcher:
         for cx, cy, dx, dy in ((fx0, fy0, 1, 1), (fx1, fy0, -1, 1), (fx0, fy1, 1, -1), (fx1, fy1, -1, -1)):
             cv.create_line(cx, cy + dy * 18, cx, cy, cx + dx * 18, cy, fill=C['red'], width=2)
         self.tag_label(fx0 + 10, fy0 + 14, 'CAM 04  //  SUBJECT FEED')
-        item = cv.create_text(fx1 - 12, fy0 + 14, text='REC', anchor='e', fill=C['red_hot'], font=self.f(8, 'bold'),
+        item = cv.create_text(fx1 - 12, fy0 + 14, text=T('REC'), anchor='e', fill=C['red_hot'], font=self.f(8, 'bold'),
                               tags=('rec',))
         x = cv.bbox(item)[0] - 8
         cv.create_oval(x - 7, fy0 + 10, x + 1, fy0 + 18, fill=C['red_hot'], outline='', tags=('rec',))
@@ -806,9 +811,9 @@ class Launcher:
                        font=self.f(8), tags=('feedtime',))
         if not signal:
             cx, cy = (fx0 + fx1) / 2, (fy0 + fy1) / 2
-            cv.create_text(cx, cy - 12, text='NO SIGNAL', fill=C['text'], font=(self.title_font, 28, 'bold'),
+            cv.create_text(cx, cy - 12, text=T('NO SIGNAL'), fill=C['text'], font=(self.title_font, 28, 'bold'),
                            tags=('title',))
-            link = cv.create_text(cx, cy + 22, text='> SELECT THE GAME FOLDER', fill=C['red'], font=self.f(9, 'bold'))
+            link = cv.create_text(cx, cy + 22, text=T('> SELECT THE GAME FOLDER'), fill=C['red'], font=self.f(9, 'bold'))
             self.clickable(link, lambda e: self.choose_folder(), ((link, 'fill', C['red'], C['red_hot']),))
             return
         # A reticle on the face, and the file's stamp.
@@ -826,7 +831,7 @@ class Launcher:
     def tag_label(self, x, y, text, color=None):
         """Small text on a black plate, over the feed."""
         cv = self.canvas
-        item = cv.create_text(x + 5, y, text=text, anchor='w', fill=color or C['text'], font=self.f(8, 'bold'))
+        item = cv.create_text(x + 5, y, text=T(text), anchor='w', fill=color or C['text'], font=self.f(8, 'bold'))
         b = cv.bbox(item)
         plate = cv.create_rectangle(b[0] - 5, b[1] - 1, b[2] + 5, b[3] + 1, fill='#000000', outline='')
         cv.tag_lower(plate, item)
@@ -836,6 +841,7 @@ class Launcher:
         import math
         cv = self.canvas
         font = (self.title_font, 17, 'bold')
+        text = T(text)
         tw = self.text_width(text, font)
         a = math.radians(angle)
         ca, sa = math.cos(a), math.sin(a)
@@ -857,18 +863,18 @@ class Launcher:
         if self.running:
             cv.create_polygon(chamfer(x0, x1 - 118), fill=C['track'], outline='')
             cv.create_rectangle(x0 + 22, y + h / 2 - 7, x0 + 36, y + h / 2 + 7, fill=C['red'], outline='')
-            cv.create_text(x0 + 50, y + h / 2, text='RUNNING', anchor='w', fill=C['text'], font=self.f(15, 'bold'))
+            cv.create_text(x0 + 50, y + h / 2, text=T('RUNNING'), anchor='w', fill=C['text'], font=self.f(15, 'bold'))
             cv.create_text(x1 - 136, y + h / 2, text=self.elapsed(), anchor='e', fill=C['muted'], font=self.f(9),
                            tags=('elapsed',))
             shape = cv.create_polygon(chamfer(x1 - 108, x1, 8), fill=C['bg'], outline=C['red'], width=2, tags=('stop',))
-            label = cv.create_text(x1 - 54, y + h / 2, text='STOP', fill=C['red'], font=self.f(12, 'bold'), tags=('stop',))
+            label = cv.create_text(x1 - 54, y + h / 2, text=T('STOP'), fill=C['red'], font=self.f(12, 'bold'), tags=('stop',))
             self.clickable('stop', lambda e: self.stop(), ((shape, 'fill', C['bg'], C['red_dark']),
                                                            (label, 'fill', C['red'], C['text'])))
         elif self.busy:
             cv.create_polygon(chamfer(x0, x1), fill=C['red_dark'], outline='')
             self.busy_x = 0
             cv.create_rectangle(x0, y + h - 5, x0 + 90, y + h - 2, fill=C['red'], outline='', tags=('busybar',))
-            cv.create_text(x0 + 22, y + h / 2, text=self.busy.upper() + '…', anchor='w', fill=C['text'],
+            cv.create_text(x0 + 22, y + h / 2, text=T(self.busy).upper() + '…', anchor='w', fill=C['text'],
                            font=self.f(15, 'bold'))
         else:
             ready = self.ready
@@ -877,8 +883,8 @@ class Launcher:
             ink = C['ink'] if ready else C['dim']
             cv.create_polygon(x0 + 24, y + h / 2 - 10, x0 + 41, y + h / 2, x0 + 24, y + h / 2 + 10, fill=ink,
                               outline='', tags=('play',))
-            cv.create_text(x0 + 56, y + h / 2, text='PLAY', anchor='w', fill=ink, font=self.f(18, 'bold'), tags=('play',))
-            cv.create_text(x1 - 22, y + h / 2, text='[ ENTER ]' if ready else 'LOCKED', anchor='e',
+            cv.create_text(x0 + 56, y + h / 2, text=T('PLAY'), anchor='w', fill=ink, font=self.f(18, 'bold'), tags=('play',))
+            cv.create_text(x1 - 22, y + h / 2, text=T('[ ENTER ]' if ready else 'LOCKED'), anchor='e',
                            fill=C['ink'] if ready else C['dim'], font=self.f(8, 'bold'), tags=('play',))
             if ready:
                 self.clickable('play', lambda e: self.play(), ((shape, 'fill', C['red'], C['red_hot']),))
@@ -891,13 +897,13 @@ class Launcher:
         """The game folder's checks, as a terminal prints them."""
         cv = self.canvas
         x0, x1 = FEED[0], FEED[2]
-        item = cv.create_text(x0, y, text='> INTEGRITY SCAN', anchor='w', fill=C['dim'], font=self.f(8, 'bold'))
+        item = cv.create_text(x0, y, text=T('> INTEGRITY SCAN'), anchor='w', fill=C['dim'], font=self.f(8, 'bold'))
         cv.create_line(cv.bbox(item)[2] + 10, y, x1, y, fill=C['hair'])
         y += 17
         for label, state, detail in self.checks[:6]:
             cv.create_text(x0, y, text=STATE_TAGS[state], anchor='w', fill=C[state], font=self.f(8, 'bold'))
-            cv.create_text(x0 + 52, y, text=label.upper(), anchor='w', fill=C['muted'], font=self.f(8))
-            cv.create_text(x1, y, text=detail, anchor='e', fill=C['dim'], font=self.f(8))
+            cv.create_text(x0 + 52, y, text=T(label).upper(), anchor='w', fill=C['muted'], font=self.f(8))
+            cv.create_text(x1, y, text=T(detail), anchor='e', fill=C['dim'], font=self.f(8))
             y += 15
 
     def draw_footer(self):
@@ -912,7 +918,7 @@ class Launcher:
         for text, command in reversed((('GAME FOLDER', self.choose_folder), ('SAVES', self.open_saves),
                                        ('BACKUPS', self.open_backups), ('LOG', self.open_log),
                                        ('PORT FOLDER', lambda: self.open_path(PORT_DIR)))):
-            item = cv.create_text(x, y, text=f'[ {text} ]', anchor='e', fill=C['muted'], font=self.f(8, 'bold'))
+            item = cv.create_text(x, y, text=f'[ {T(text)} ]', anchor='e', fill=C['muted'], font=self.f(8, 'bold'))
             self.clickable(item, lambda e, c=command: c(), ((item, 'fill', C['muted'], C['text']),))
             x = cv.bbox(item)[0] - 10
 
@@ -929,7 +935,7 @@ class Launcher:
         tx, ty = x0 + 28, y0 + 30
         for i, name in enumerate(self.TABS):
             active = name == current
-            item = cv.create_text(tx + 10, ty, text=f'{i + 1} {name}', anchor='w', fill=C['ink'] if active else C['muted'],
+            item = cv.create_text(tx + 10, ty, text=f'{i + 1} {T(name)}', anchor='w', fill=C['ink'] if active else C['muted'],
                                   font=self.f(9, 'bold'))
             b = cv.bbox(item)
             box = cv.create_rectangle(b[0] - 10, ty - 13, b[2] + 10, ty + 13, fill=C['red'] if active else C['panel'],
@@ -947,7 +953,7 @@ class Launcher:
         # The info box: what the setting under the pointer does.
         ix0, iy0, ix1, iy1 = x0 + 28, y1 - INFO + 6, x1 - 28, y1 - 14
         cv.create_rectangle(ix0, iy0, ix1, iy1, outline=C['line'], fill=C['bg'])
-        item = cv.create_text(ix0 + 16, iy0, text='INFO', anchor='w', fill=C['ink'], font=self.f(8, 'bold'))
+        item = cv.create_text(ix0 + 16, iy0, text=T('INFO'), anchor='w', fill=C['ink'], font=self.f(8, 'bold'))
         b = cv.bbox(item)
         cv.tag_lower(cv.create_rectangle(b[0] - 6, b[1], b[2] + 6, b[3], fill=C['red'], outline=''), item)
         self.desc_item = cv.create_text(ix0 + 16, iy0 + 18, text='', anchor='nw', fill=C['muted'], font=self.f(9),
@@ -1007,7 +1013,7 @@ class Launcher:
 
     def describe(self, text, instant=False):
         """Types the text into the info box, as a terminal would."""
-        text = text or 'Point at a setting to read what it does. Keys 1-6 switch the pages, Enter plays.'
+        text = T(text or 'Point at a setting to read what it does. Keys 1-6 switch the pages, Enter plays.')
         if text == self.desc_target:
             return
         self.desc_target = text
@@ -1038,9 +1044,9 @@ class Launcher:
         top, bottom = y - height / 2 + 1, y + height / 2 - 1
         glow = cv.create_rectangle(x0 + 16, top, x1 - 16, bottom, fill='', outline='')
         tick = cv.create_rectangle(x0 + 16, top, x0 + 19, bottom, fill='', outline='')
-        cv.create_text(x0 + 32, y, text=label, anchor='w', fill=C['dim'] if locked else C['text'], font=self.f(10))
+        cv.create_text(x0 + 32, y, text=T(label), anchor='w', fill=C['dim'] if locked else C['text'], font=self.f(10))
         cv.create_line(x0 + 28, y + height / 2, x1 - 28, y + height / 2, fill=C['hair'])
-        self.region((x0 + 16, top, x1 - 16, bottom), desc, ((glow, C['hi']), (tick, C['red'])))
+        self.region((x0 + 16, top, x1 - 16, bottom), T(desc), ((glow, C['hi']), (tick, C['red'])))
         self.row_y += height
         return y, f'row{y}'
 
@@ -1054,7 +1060,7 @@ class Launcher:
         current = self.getv(key)
         index = next((i for i, (v, _) in enumerate(options) if v == current), 0)
         box = cv.create_rectangle(x0, y - 13, x1, y + 13, outline=C['line'], fill=C['bg'], tags=(tag,))
-        cv.create_text((x0 + x1) / 2, y, text=options[index][1], fill=C['dim'] if locked else C['text'],
+        cv.create_text((x0 + x1) / 2, y, text=T(options[index][1]), fill=C['dim'] if locked else C['text'],
                        font=self.f(10, 'bold'), tags=(tag,))
         arrows = [cv.create_text(ax, y, text=t, fill=C['dim'] if locked else C['red'], font=self.f(11, 'bold'),
                                  tags=(tag,)) for ax, t in ((x0 + 14, '<'), (x1 - 14, '>'))]
@@ -1082,7 +1088,7 @@ class Launcher:
             fill = (C['red'] if text == 'ON' else C['track']) if lit and not locked else C['bg']
             box = cv.create_rectangle(sx, y - 12, sx + half, y + 12, fill=fill, outline=C['line'], tags=(tag,))
             color = (C['ink'] if text == 'ON' else C['text']) if lit and not locked else C['dim']
-            cv.create_text(sx + half / 2, y, text=text, fill=color, font=self.f(9, 'bold'), tags=(tag,))
+            cv.create_text(sx + half / 2, y, text=T(text), fill=color, font=self.f(9, 'bold'), tags=(tag,))
             parts.append((box, 'outline', C['line'], C['red']))
         if locked:
             return
@@ -1129,7 +1135,7 @@ class Launcher:
         cv.tag_bind(tag, '<Leave>', lambda e: cv.configure(cursor=''))
 
     def note(self, text, color=None, height=30):
-        self.canvas.create_text(PANEL[0] + 32, self.row_y - 16, text=text, anchor='nw', fill=color or C['muted'],
+        self.canvas.create_text(PANEL[0] + 32, self.row_y - 16, text=T(text), anchor='nw', fill=color or C['muted'],
                                 font=self.f(9), width=PANEL[2] - PANEL[0] - 64)
         self.row_y += height
 
@@ -1139,7 +1145,7 @@ class Launcher:
             self.row_y += 14
         y = self.row_y - 8
         cv.create_rectangle(PANEL[0] + 28, y - 4, PANEL[0] + 36, y + 4, fill=C['red'], outline='')
-        item = cv.create_text(PANEL[0] + 44, y, text=text, anchor='w', fill=C['red'], font=self.f(8, 'bold'))
+        item = cv.create_text(PANEL[0] + 44, y, text=T(text), anchor='w', fill=C['red'], font=self.f(8, 'bold'))
         cv.create_line(cv.bbox(item)[2] + 10, y, PANEL[2] - 28, y, fill=C['hair'])
         self.row_y += 24
 
@@ -1147,13 +1153,13 @@ class Launcher:
         """An outlined button; returns its right edge."""
         cv = self.canvas
         tag = f'button_{x}_{y}'
-        label = cv.create_text(x + 14, y, text=text, anchor='w', fill=C['text'], font=self.f(9, 'bold'), tags=(tag,))
+        label = cv.create_text(x + 14, y, text=T(text), anchor='w', fill=C['text'], font=self.f(9, 'bold'), tags=(tag,))
         b = cv.bbox(label)
         box = cv.create_rectangle(x, y - 13, b[2] + 14, y + 13, outline=C['line'], fill=C['bg'], tags=(tag,))
         cv.tag_lower(box, label)
         self.clickable(tag, lambda e: command(), ((box, 'outline', C['line'], C['red']),
                                                   (box, 'fill', C['bg'], C['red_dark'])))
-        self.region((x, y - 13, b[2] + 14, y + 13), desc)
+        self.region((x, y - 13, b[2] + 14, y + 13), T(desc))
         return b[2] + 14
 
     # ---- pages
@@ -1214,8 +1220,8 @@ class Launcher:
             x = x0 + (i % 2) * half
             y = self.row_y - 8 + (i // 2) * 22
             tag = f'profile_{i}'
-            cv.create_text(x, y, text=label, anchor='w', fill=C['dim'], font=self.f(8), tags=(tag,))
-            item = cv.create_text(x + 130, y, text=value, anchor='w', fill=C['text'], font=self.f(9, 'bold'),
+            cv.create_text(x, y, text=T(label), anchor='w', fill=C['dim'], font=self.f(8), tags=(tag,))
+            item = cv.create_text(x + 130, y, text=T(value), anchor='w', fill=C['text'], font=self.f(9, 'bold'),
                                   tags=(tag,))
             self.clickable(tag, lambda e, p=page: self.switch_tab(p), ((item, 'fill', C['text'], C['red_hot']),))
         self.row_y += (len(lines) + 1) // 2 * 22
@@ -1259,16 +1265,17 @@ class Launcher:
                     'no dead zone or speed limit (F7 switches it in game).', 'mouse_look')
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
                     'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])
-        groups = [(g, en) for g, en, _ in proto_controls.GROUPS]
+        groups = [(g, ru if lang.russian() else en) for g, en, ru in proto_controls.GROUPS]
         self.stepper('Keys for', 'Click a key box, then press the key or mouse button for it (click the box '
                      'again for the left button). Delete clears the box; a click anywhere else cancels. A key is '
                      'only on one action at a time.', 'controls_group', groups)
         full = self.layout()
         clashes = proto_controls.conflicts(full)
         group = self.values.get('controls_group', 'move')
-        for action, _, label, _, _, action_group in proto_controls.ACTIONS:
+        for action, _, label, label_ru, _, action_group in proto_controls.ACTIONS:
             if action_group != group:
                 continue
+            label = label_ru if lang.russian() else label
             y, tag = self.row(label, 'Click a box, then press a key or a mouse button (click the box again '
                               'for the left button). Delete clears it; a click anywhere else cancels.', height=34)
             keys = full.get(action, [])
@@ -1279,7 +1286,7 @@ class Launcher:
                 if capturing:
                     self.capture_box = (bx0, y - 12, bx1, y + 12)
                 key = keys[slot] if slot < len(keys) else ''
-                text = 'PRESS A KEY_' if capturing else (self.key_text(key) if key else '—')
+                text = T('PRESS A KEY_') if capturing else (T(self.key_text(key)) if key else '—')
                 color = (C['red_hot'] if capturing else C['warn'] if key and key.casefold() in clashes
                          else C['text'] if key else C['dim'])
                 box_tag = f'key_{action}_{slot}'
@@ -1293,7 +1300,7 @@ class Launcher:
         bx = self.small_button(x0 + 32, self.row_y, 'RESET KEYS', self.reset_controls,
                                'Puts every key back to the port\'s layout.')
         if clashes:
-            cv.create_text(bx + 14, self.row_y, text='Orange: a key on two different buttons', anchor='w',
+            cv.create_text(bx + 14, self.row_y, text=T('Orange: a key on two different buttons'), anchor='w',
                            fill=C['warn'], font=self.f(8))
 
     def tab_controller(self):
@@ -1396,7 +1403,7 @@ class Launcher:
         cv = self.canvas
         x0, _, x1, _ = PANEL
         self.section('GAME FOLDER', first=True)
-        folder = self.values['game_dir'] or 'Not selected'
+        folder = self.values['game_dir'] or T('Not selected')
         if len(folder) > 62:
             folder = '…' + folder[-61:]
         y = self.row_y - 4
@@ -1408,8 +1415,8 @@ class Launcher:
         for label, state, detail in self.checks:
             cv.create_text(x0 + 32, self.row_y - 7, text=STATE_TAGS[state], anchor='w', fill=C[state],
                            font=self.f(9, 'bold'))
-            cv.create_text(x0 + 100, self.row_y - 7, text=label, anchor='w', fill=C['text'], font=self.f(9))
-            cv.create_text(x1 - 32, self.row_y - 7, text=detail, anchor='e', fill=C['muted'], font=self.f(9))
+            cv.create_text(x0 + 100, self.row_y - 7, text=T(label), anchor='w', fill=C['text'], font=self.f(9))
+            cv.create_text(x1 - 32, self.row_y - 7, text=T(detail), anchor='e', fill=C['muted'], font=self.f(9))
             self.row_y += 22
         self.row_y += 18
         bx = x0 + 32
@@ -1428,6 +1435,10 @@ class Launcher:
         self.small_button(bx, self.row_y, 'OPEN BACKUPS', self.open_backups,
                           'A copy of your saves is made at every start (the latest ones are kept).')
         self.row_y += 30
+        self.section('LAUNCHER')
+        self.stepper('Launcher language', 'The launcher\'s language. Automatic: Russian when Windows is in Russian. '
+                     'The game\'s own language comes from your game files.', 'ui_language',
+                     [('auto', 'Automatic'), ('en', 'English'), ('ru', 'Русский')])
 
     # ---- animation
     def tick_fast(self):
@@ -1493,7 +1504,7 @@ class Launcher:
             return
         start = self.values['game_dir'] or str(Path.home())
         folder = filedialog.askdirectory(parent=self.root, initialdir=start,
-                                         title='PROTOTYPE BIOHAZARD BUNDLE folder (eboot.bin, sce_sys, p1, p2)')
+                                         title=T('PROTOTYPE BIOHAZARD BUNDLE folder (eboot.bin, sce_sys, p1, p2)'))
         if not folder:
             return
         self.values['game_dir'] = str(Path(folder))
@@ -1584,7 +1595,7 @@ class Launcher:
         if not items:
             return
         names = '\n'.join(p.name for p, _ in items)
-        if not messagebox.askyesno('Restore original files', f'Replace these with their original backups?\n\n{names}',
+        if not messagebox.askyesno(T('Restore original files'), T(f'Replace these with their original backups?\n\n{names}'),
                                    parent=self.root):
             return
         try:
@@ -1603,9 +1614,9 @@ class Launcher:
             return
         size = sum(p.stat().st_size for p in files) / 1e6
         names = '\n'.join(p.name for p in files[:14]) + ('\n…' if len(files) > 14 else '')
-        if not messagebox.askyesno('Clean up the game folder',
-                                   f'Delete {len(files)} leftover files ({size:.0f} MB)?\n\n{names}\n\n'
-                                   'The game files themselves are kept.', parent=self.root):
+        if not messagebox.askyesno(T('Clean up the game folder'),
+                                   T(f'Delete {len(files)} leftover files ({size:.0f} MB)?\n\n{names}\n\n'
+                                     'The game files themselves are kept.'), parent=self.root):
             return
         failed = 0
         for p in files:
@@ -1630,7 +1641,7 @@ class Launcher:
         if self.process is not None and self.process.poll() is None:
             return
         if not self.ready:
-            self.set_status('Fix the game folder first (5 FOLDER)', C['bad'])
+            self.set_status('Fix the game folder first (6 FOLDER)', C['bad'])
             return
         write_ini(self.values)
         env = game_environment(self.values)

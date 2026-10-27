@@ -57,7 +57,7 @@ fix is applied in memory, and the port checks the executables against the untouc
   the game's hints and tutorials show your keys instead of the PS4 buttons.
 - **Graphics modding** — replace any of the game's shaders with your own GLSL ([docs/SHADER_MODS.md](docs/SHADER_MODS.md)),
   with an in-game shader browser that shows what each shader draws and exports it for editing.
-- A **launcher** (`Prototype.exe`) dressed as a Blackwatch terminal: a file for each game with its own resolution and frame rate,
+- A **launcher** (`Prototype.exe`, English or Russian) dressed as a Blackwatch terminal: a file for each game with its own resolution and frame rate,
   game folder check, shared graphics, display and controls settings, saves and backups, the log.
 
 ## Playing
