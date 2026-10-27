@@ -92,7 +92,8 @@ const char kGod[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageab
                     "local m=go_GetMaxRegenHealth(p) if m and go_GetHealth(p)<m then go_SetHealth(p,m) end end";
 const char kMortal[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageable(p,true) end";
 const char kCriticalMass[] = "local p=PLAYER_1 if p and go_IsValid(p) then local m=go_GetMaxHealth(p) "
-                             "if m and go_GetHealth(p)<m then go_SetHealth(p,m) end end";
+                             "if m and go_GetHealth(p)<m then go_SetHealth(p,m) end return go_GetHealth(p) end "
+                             "return -1";
 const char kAddEp[] = "local n='Proto_Save_EvolutionPoints' "
                       "if ep_AwardEP then ep_AwardEP(100000) "
                       "else db_SetInt(n,0,(db_GetInt(n,0,0) or 0)+100000,0) end "
@@ -137,7 +138,20 @@ void Switches(const TheOrderGameMenu* menu, bool playing) {
     frames = 0;
     bool ok = true;
     if (god) ok = RunLua(kGod) && ok;
-    if (mass) ok = RunLua(kCriticalMass) && ok;
+    if (mass) {
+        // What the game made of it, for the log: a few times, and whenever it is not at the top.
+        static int logged = 0;
+        float health = -1.0f;
+        ok = RunLua(kCriticalMass, &health) && ok;
+        float max = -1.0f;
+        if (logged < 3 || (health >= 0 && logged < 12 && RunLua("return go_GetMaxHealth(PLAYER_1)", &max) &&
+                           health < max)) {
+            ++logged;
+            char text[96];
+            std::snprintf(text, sizeof(text), "critical mass: health %.0f after setting it", health);
+            Log(text);
+        }
+    }
     if (!ok && failures++ < 3) Log("a switch's Lua failed (the game's log has the error)");
 }
 
