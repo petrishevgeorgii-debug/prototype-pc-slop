@@ -254,8 +254,14 @@ parameter block (0x30 bytes), `+0x28` a serial number. Primitive groups have no 
 first field is data).
 
 What a draw is (static world, character, vehicle) is therefore not in who calls the draw; it is
-in the material's program (skinned or not) and the group's vertex format. Next: the programs
-(how many, their names) and the vertex shaders per caller.
+in the material's program (skinned or not) and the group's vertex format. 
+
+A material's `+0x10` is its **template** (`pure3d::ps4ShaderTemplate`, vtable `0x105b9a0`; the
+material's slot 5, `0xa96990`, returns it): the kind of shader, shared by every material of that
+kind. Its constructor (`0x221aa0`) keeps only its name's hash (`+0x3c0`, from `0x9397f0`:
+`h = h * 31 + c` over the name, letters lowercased), so the names are matched offline against the
+strings in the game's files. From b12 the tag carries that hash, and under each caller the log
+counts the draws per template and per vertex shader (by hash).
 
 The primitive classes (vtables; slots 0-1 the destructors):
 

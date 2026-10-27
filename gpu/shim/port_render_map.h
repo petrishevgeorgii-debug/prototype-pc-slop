@@ -12,11 +12,12 @@ bool Enabled();
 /// frame (a flip).
 void Push(std::string_view name);
 void Pop();
-void Draw(std::uint64_t ps_address);
+void Draw(std::uint64_t ps_address, std::uint64_t vs_address);
 /// A draw tag (game/p1/render_map.cpp: ps4Context's DrawPrimGroup(s), slot 4 or 5) and its end:
-/// the caller, the primitive group's shader and the classes (vtables, image-relative).
+/// the caller, the primitive group's shader (material), its class (vtable, image-relative) and
+/// its template's name hash.
 void Tag(std::uint32_t slot, std::uint32_t caller, std::uint64_t shader, std::uint32_t shader_class,
-         std::uint32_t group_class);
+         std::uint32_t template_name);
 void TagEnd();
 void Frame();
 } // namespace PortRenderMap

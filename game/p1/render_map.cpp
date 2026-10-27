@@ -148,12 +148,13 @@ void Pop() {
 // DrawPrimGroup (vtable slot 4, 0x234900: this, a key, the primitive group, ...) or
 // DrawPrimGroups (slot 5, 0x234db0: this, an array of them, their count). Around each call a tag
 // goes into the command buffer (a NOP the GPU side alone reads): the slot, who called it (the
-// return address, image-relative: the primitive's own code), the primitive group's shader (its
-// +0xa0, the ps4Context's default when 0) and the classes (vtables) of both. The GPU side gives
-// the draws up to the tag's end to it. Which caller is which primitive class (Mesh, Skin,
-// GpuSkin, ParticleSystem, the HUD...) is read off the executable from the log.
+// return address, image-relative: the pass's drawing loop), the primitive group's shader (its
+// material: +0xa0, the ps4Context's default when 0), its class and its template's name hash (the
+// kind of shader: the same for every material of a kind). The GPU side gives
+// the draws up to the tag's end to it.
 constexpr std::uint64_t kContextVtable = 0x105bc70; // pure3d::ps4Context's functions
 constexpr std::uint32_t kDrawTag = 0x6875d7a6u, kDrawTagEnd = 0x6875d7a7u;
+constexpr std::uint32_t kShaderVtable = 0x105b920, kTemplateVtable = 0x105b9a0; // ps4Shader, ps4ShaderTemplate
 struct DrawSlot {
     int slot;
     std::uint64_t function;
@@ -169,11 +170,22 @@ std::uint32_t ImageOffset(std::uint64_t value) { // a vtable's place in the imag
 void Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
     std::uint32_t* at = Room(10);
     if (!at) return;
-    std::uint64_t shader = 0, group_vtable = 0, shader_vtable = 0;
+    // The group's shader (a ps4Shader) and its template (+0x10, a ps4ShaderTemplate: the kind of
+    // shader, its name's hash at +0x3c0: h = h * 31 + c, letters lowercased, 0x9397f0).
+    std::uint64_t shader = 0, shader_vtable = 0, shader_template = 0, template_vtable = 0;
+    std::uint32_t template_name = 0;
     if (group) {
-        std::memcpy(&group_vtable, reinterpret_cast<const void*>(group), 8);
         std::memcpy(&shader, reinterpret_cast<const std::uint8_t*>(group) + 0xa0, 8);
-        if (shader) std::memcpy(&shader_vtable, reinterpret_cast<const void*>(shader), 8);
+        if (shader) {
+            std::memcpy(&shader_vtable, reinterpret_cast<const void*>(shader), 8);
+            if (ImageOffset(shader_vtable) == kShaderVtable) {
+                std::memcpy(&shader_template, reinterpret_cast<const std::uint8_t*>(shader) + 0x10, 8);
+                if (shader_template) std::memcpy(&template_vtable, reinterpret_cast<const void*>(shader_template), 8);
+                if (ImageOffset(template_vtable) == kTemplateVtable) {
+                    std::memcpy(&template_name, reinterpret_cast<const std::uint8_t*>(shader_template) + 0x3c0, 4);
+                }
+            }
+        }
     }
     at[0] = Nop(9);
     at[1] = kDrawTag;
@@ -182,7 +194,7 @@ void Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
     at[4] = std::uint32_t(shader);
     at[5] = std::uint32_t(shader >> 32);
     at[6] = ImageOffset(shader_vtable);
-    at[7] = ImageOffset(group_vtable);
+    at[7] = template_name;
     at[8] = at[9] = 0;
 }
 

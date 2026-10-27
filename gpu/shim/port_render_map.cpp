@@ -32,7 +32,8 @@ struct Caller {
     unsigned draws = 0, calls = 0;
     std::vector<std::uint64_t> materials; ///< distinct primitive group shaders (up to 256)
     std::vector<std::pair<std::uint32_t, unsigned>> classes; ///< their vtables, calls each
-    std::uint32_t group_class = 0;        ///< the primitive groups' vtable (the first seen)
+    std::vector<std::pair<std::uint64_t, unsigned>> templates; ///< shader templates (name hashes), draws each
+    std::vector<std::pair<std::uint64_t, unsigned>> vertex;    ///< vertex shader hashes, draws each
 };
 
 struct Entry {
@@ -46,9 +47,28 @@ struct Entry {
 
 struct Tagged {
     bool on = false;
-    std::uint32_t slot = 0, caller = 0, shader_class = 0, group_class = 0;
+    std::uint32_t slot = 0, caller = 0, shader_class = 0, template_name = 0;
     std::uint64_t shader = 0;
 } tag; ///< the draw tag open now
+
+void Count(std::vector<std::pair<std::uint64_t, unsigned>>& counts, std::uint64_t key) {
+    for (auto& [k, n] : counts) {
+        if (k == key) {
+            ++n;
+            return;
+        }
+    }
+    counts.emplace_back(key, 1);
+}
+
+void Top(const char* what, std::vector<std::pair<std::uint64_t, unsigned>> counts, size_t most) {
+    std::sort(counts.begin(), counts.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::printf("        %s (%zu):", what, counts.size());
+    for (size_t i = 0; i < counts.size() && i < most; ++i) {
+        std::printf(" %llx x%u", static_cast<unsigned long long>(counts[i].first), counts[i].second);
+    }
+    std::printf("%s\n", counts.size() > most ? " ..." : "");
+}
 
 /// The caller entry for the open tag in this entry.
 Caller& CallerOf(Entry& entry) {
@@ -59,7 +79,6 @@ Caller& CallerOf(Entry& entry) {
     auto& c = entry.callers.back();
     c.slot = tag.slot;
     c.caller = tag.caller;
-    c.group_class = tag.group_class;
     return c;
 }
 
@@ -120,13 +139,14 @@ void Log() {
         std::sort(e.callers.begin(), e.callers.end(), [](const Caller& a, const Caller& b) { return a.draws > b.draws; });
         for (auto& c : e.callers) {
             std::sort(c.classes.begin(), c.classes.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-            std::printf("      draw %u from %x: %u draws in %u calls, %zu%s materials, group %x, shader", c.slot,
-                        c.caller, c.draws, c.calls, c.materials.size(), c.materials.size() >= 256 ? "+" : "",
-                        c.group_class);
+            std::printf("      draw %u from %x: %u draws in %u calls, %zu%s materials, class", c.slot, c.caller, c.draws,
+                        c.calls, c.materials.size(), c.materials.size() >= 256 ? "+" : "");
             for (size_t i = 0; i < c.classes.size() && i < 3; ++i) {
                 std::printf(" %x x%u", c.classes[i].first, c.classes[i].second);
             }
             std::printf("\n");
+            if (!c.templates.empty()) Top("templates", c.templates, 8);
+            if (!c.vertex.empty()) Top("vertex shaders", c.vertex, 8);
         }
         if (e.untagged && !e.callers.empty()) std::printf("      untagged: %u draws\n", e.untagged);
     }
@@ -160,8 +180,8 @@ void Pop() {
 }
 
 void Tag(std::uint32_t slot, std::uint32_t caller, std::uint64_t shader, std::uint32_t shader_class,
-         std::uint32_t group_class) {
-    tag = {true, slot, caller, shader_class, group_class, shader};
+         std::uint32_t template_name) {
+    tag = {true, slot, caller, shader_class, template_name, shader};
     if (stack.empty() || frame.empty()) return;
     auto& c = CallerOf(frame.back());
     ++c.calls;
@@ -181,7 +201,7 @@ void TagEnd() {
     tag.on = false;
 }
 
-void Draw(std::uint64_t ps_address) {
+void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
     if (stack.empty() || frame.empty()) {
         ++loose;
         return;
@@ -189,7 +209,10 @@ void Draw(std::uint64_t ps_address) {
     auto& entry = frame.back();
     ++entry.draws;
     if (tag.on) {
-        ++CallerOf(entry).draws;
+        auto& c = CallerOf(entry);
+        ++c.draws;
+        Count(c.templates, tag.template_name);
+        Count(c.vertex, Hash(vs_address));
     } else {
         ++entry.untagged;
     }

@@ -56,7 +56,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.0.5'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 11
+BETA = 12
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
