@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 6        # of this script's output (part of the cache key)
+VERSION = 7        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -203,6 +203,11 @@ class Asm:
 
     def label(self, name):
         self.labels[name] = sum(len(p) for p in self.parts)
+
+    def function(self, body):
+        """An anonymous function (DefineFunction, no parameters) of `body` (bytes), left on the stack."""
+        record = b'\0' + struct.pack('<HH', 0, len(body))
+        self.parts.append(b'\x9b' + struct.pack('<H', len(record)) + record + body)
 
     def branch(self, kind, name):
         self.fixups.append((len(self.parts), name))
@@ -441,6 +446,45 @@ DISPLAY_INPUTS = (*PAUSE_SCREENS, *MAIN_SCREENS, HUB, MAIN, 'protodebug.gfx', 'p
 QUIT_INPUTS = ('protomainmenu.gfx', 'protoquit.gfx')
 
 
+def main_pointer(data):
+    """protomain.gfx: the PC version's mouse cursor (mMouseCursor) for the mouse in the menus
+    (game/p1/menu_mouse.cpp): _global.gMouseCursor (the menus' controls light it up), and every
+    frame it asks the port (port_Pointer) whether to show, telling it whether the menus are up
+    (_global.gPortPointerMode, set where the game switches the menus' sounds between the front end,
+    the pause menu and the game), and follows the mouse."""
+    data = on_pc(data, lambda v: 'gMouseCursor' in v, 'the PC cursor')
+    for name, mode in (('AS_InstallFrontEndFESounds', 1), ('AS_InstallPauseMenuFESounds', 1),
+                       ('AS_InstallInGameFESounds', 0)):
+        def set_mode(params, mode=mode):
+            a = Asm()
+            a.get('_global'); a.push('gPortPointerMode', mode); a.op('SetMember')
+            return a.bytes()
+        data = insert_at_function(data, name, set_mode)
+
+    body = Asm()  # var v = DoCallBack("port_Pointer", mode); this._visible = v; if (v) follow the mouse
+    body.push('v')
+    body.get('_global'); body.push('gPortPointerMode'); body.op('GetMember')
+    body.push('port_Pointer', 2, 'commonregisters'); body.op('GetVariable'); body.push('DoCallBack')
+    body.op('CallMethod', 'DefineLocal')
+    body.get('this'); body.push('_visible'); body.get('v'); body.op('SetMember')
+    body.get('v'); body.op('Not'); body.branch('If', 'end')
+    for axis in ('x', 'y'):
+        body.get('this'); body.push('_' + axis); body.get('this'); body.push('_parent'); body.op('GetMember')
+        body.push(f'_{axis}mouse'); body.op('GetMember', 'SetMember')
+    body.label('end')
+
+    def follower(acts):
+        for i, a in enumerate(acts):
+            if is_push(a, exact=['gMouseCursor', 'mMouseCursor']):
+                j = next(k for k in range(i, len(acts)) if acts[k][1] == 0x4F)
+                at = whole(acts[j])[1]
+                code = Asm()
+                code.get('mMouseCursor'); code.push('onEnterFrame'); code.function(body.bytes()); code.op('SetMember')
+                return at, at, code.bytes()
+        return None
+    return edit_code(data, follower, 'the PC cursor\'s place')
+
+
 def patch_main(data):
     """protomain.gfx: the Display screens' files are the debug screens' (see above)."""
     for screen, (target, _) in NEW_SCREENS.items():
@@ -495,6 +539,11 @@ def patch_all(movies, label):
         out[MAIN] = patch_main(movies[MAIN])
         for screen, (target, source) in NEW_SCREENS.items():
             out[target] = display_screen(movies[source], screen == 'protopausegame', label)
+    if MAIN in movies:
+        try:
+            out[MAIN] = main_pointer(out.get(MAIN) or movies[MAIN])
+        except (ValueError, StopIteration, IndexError):
+            pass  # another build of protomain: no mouse cursor
     for name in QUIT_INPUTS:
         if name in movies:
             try:
@@ -508,12 +557,13 @@ def on_pc(data, follows, what, within=4):
     """The movie with one `if (_global.PLATFORM == _global.RAD_WIN32)` made always true: the
     first one whose next `within` actions have a Push whose values `follows` takes."""
     def locate(acts):
-        for i in range(len(acts) - 7):
-            if is_push(acts[i], 'PLATFORM') and acts[i + 1][1] == 0x4E and is_push(acts[i + 2], 'RAD_WIN32') \
-                    and acts[i + 3][1] == 0x4E and acts[i + 4][1] == 0x49 and acts[i + 5][1] == 0x12 \
-                    and acts[i + 6][1] == 0x9D \
-                    and any(a[1] == 0x96 and a[4] and follows(a[4]) for a in acts[i + 7:i + 7 + within]):
-                lo, hi = whole(acts[i + 6])
+        for i in range(4, len(acts) - 3):
+            if acts[i][1] != 0x49 or acts[i + 1][1] != 0x12 or acts[i + 2][1] != 0x9D:
+                continue
+            before = [v for a in acts[max(0, i - 6):i] if a[1] == 0x96 and a[4] for v in a[4]]
+            if 'PLATFORM' in before and 'RAD_WIN32' in before and \
+                    any(a[1] == 0x96 and a[4] and follows(a[4]) for a in acts[i + 3:i + 3 + within]):
+                lo, hi = whole(acts[i + 2])
                 return lo, hi, bytes([0x17])  # Pop the condition instead of branching on it
         return None
     return edit_code(data, locate, what)
@@ -901,7 +951,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
     display_sources = [hud / n for n in DISPLAY_INPUTS]
-    quit_sources = [hud / n for n in QUIT_INPUTS]
+    quit_sources = [hud / n for n in (*QUIT_INPUTS, MAIN)]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
@@ -942,7 +992,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
             display = all(d.is_file() for d in display_sources)
             if display:
                 movies.update({d.name: loose_movie(d) for d in display_sources})
-            movies.update({q.name: loose_movie(q) for q in quit_sources if q.is_file()})
+            movies.update({q.name: loose_movie(q) for q in quit_sources if q.is_file() and q.name not in movies})
             target.mkdir(parents=True, exist_ok=True)
             patched = patch_all(movies, label if display else None)
             for name, data in patched.items():
@@ -971,6 +1021,8 @@ def generate(game, out, log=print, base_roots=(), language=None):
     stamp.write_text(json.dumps({'key': key, 'display': display}), encoding='utf-8')
     log(f'Menu: the port\'s settings in Options > Video and Controller{" and a Display screen" if display else ""} '
         f'({"loose files" if loose else "archive patches"})')
+    log('Menu: the mouse in the menus, with the PC cursor' if b'port_Pointer' in patched.get(MAIN, b'') else
+        'Menu: no mouse in the menus (protomain.gfx not found or not recognised)')
     quits = [n for n in QUIT_INPUTS if n in patched]
     log(f'Menu: quit to the desktop from {" and ".join({"protomainmenu.gfx": "the main menu", "protoquit.gfx": "the pause menu"}[n] for n in quits)}'
         if quits else 'Menu: no quit to the desktop (the main menu and quit screens were not found or not recognised)')

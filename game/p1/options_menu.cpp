@@ -149,6 +149,12 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     const TheOrderGameMenu* menu = Native::Menu();
     const char* function = Text(args, argc, 0);
     if (!menu || !function || !ret) return false;
+    // The mouse in the menus (menu_mouse.cpp): protomain's cursor asks every frame, with whether
+    // the menus are up (1) or the game is played (0); the answer shows or hides it.
+    if (!std::strcmp(function, "port_Pointer")) {
+        ReturnNumber(ret, menu->pointer_mode ? menu->pointer_mode(Int(args, argc, 1) ? 1 : 0) : 0);
+        return true;
+    }
     if (std::strncmp(function, "port_", 5) == 0) {
         const int page = Int(args, argc, 1);
         const int count = page >= 0 && page < THEORDER_MENU_PAGES ? menu->count(page) : 0;

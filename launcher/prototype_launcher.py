@@ -133,7 +133,7 @@ DEFAULTS = {
     'show_fps': False, 'language': 1, 'panel': 'GAME',
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
-    'haptics': True, 'haptics_sound': 2, 'discord': True, 'ui_language': 'auto',
+    'haptics': True, 'haptics_sound': 2, 'discord': True, 'ui_language': 'auto', 'menu_mouse': True,
     'game': 'p1',
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
@@ -164,7 +164,8 @@ def load_settings():
                           ('rcas', bool), ('rcas_strength', int), ('anisotropy', int),
                           ('mouse_look', bool), ('mouse_sensitivity', int), ('vibration', int),
                           ('light_bar', bool), ('menu_vibration', int), ('extra_vibration', bool),
-                          ('haptics', bool), ('haptics_sound', int), ('discord', bool)):
+                          ('haptics', bool), ('haptics_sound', int), ('discord', bool),
+                          ('menu_mouse', bool)):
             if key in ini:
                 raw = ini[key]
                 values[key] = raw if kind is str else (raw not in ('0', '') if kind is bool else int(float(raw)))
@@ -234,7 +235,7 @@ def write_ini(values):
             'menu_vibration': int(values['menu_vibration']),
             'extra_vibration': int(bool(values['extra_vibration'])),
             'haptics': int(bool(values['haptics'])), 'haptics_sound': int(values['haptics_sound']),
-            'discord': int(bool(values['discord'])),
+            'discord': int(bool(values['discord'])), 'menu_mouse': int(bool(values['menu_mouse'])),
             # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
             'proto_res': values['per_game']['p1']['render_res'],
             'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
@@ -1265,6 +1266,9 @@ class Launcher:
                     'no dead zone or speed limit (F7 switches it in game).', 'mouse_look')
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',
                     'mouse_sensitivity', 10, 400, locked=not self.values['mouse_look'])
+        self.toggle('Mouse in menus', 'Point and click in the game\'s menus with the PC version\'s cursor: the main '
+                    'menu, the pause menu, options, lists and sliders; the wheel scrolls. In game the mouse looks '
+                    'around as before.', 'menu_mouse')
         groups = [(g, ru if lang.russian() else en) for g, en, ru in proto_controls.GROUPS]
         self.stepper('Keys for', 'Click a key box, then press the key or mouse button for it (click the box '
                      'again for the left button). Delete clears the box; a click anywhere else cancels. A key is '

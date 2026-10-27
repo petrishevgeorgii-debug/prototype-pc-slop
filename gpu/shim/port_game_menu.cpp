@@ -444,7 +444,8 @@ void Quit() {
     SDL_PushEvent(&event);
 }
 
-const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit};
+const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
+                                theordergpu_pointer_mode, theordergpu_pointer_take};
 
 } // namespace
 

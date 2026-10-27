@@ -69,6 +69,12 @@ constexpr std::uint64_t kHit = 0x8683c0, kHitSlot = 0x109c8a0 + 0x30, kPlayer = 
 // stand-in manager at kManager.
 // The Discord status: verified at a read of the player's handle; the object table's pointer at
 // kObjects to a stand-in table at kTable (the player's entry: index 0x12, generation 7).
+// The mouse in the menus: GFxMovieRoot's Advance (its vtable slot) and the functions it calls,
+// their first bytes as in the game, stand-ins put in after installing that note their arguments
+// at kGfxNotes: NotifyMouseState x, y, buttons, mouse; the cursor count; HandleEvent's calls and
+// last event type.
+constexpr std::uint64_t kAdvance = 0x3ff610, kAdvanceSlot = 0x1065d30 + 31 * 8, kHandleEvent = 0x402250,
+                        kNotifyMouse = 0x402ad0, kCursorCount = 0xad0410, kGfxNotes = 0x1f600;
 constexpr std::uint64_t kPresenceSite = 0x505de2, kObjects = 0x1233670, kTable = 0x1f400;
 int (*g_presence)(char*, int) = nullptr;
 void PresenceSource(int (*source)(char*, int)) { g_presence = source; }
@@ -133,6 +139,13 @@ void BuildGame() {
     std::uint8_t* manager = g_base + kManager;
     std::memcpy(g_base + kCameraManager, &manager, 8);
     Put(kPresenceSite, {0x48, 0x8d, 0x05, 0xd7, 0x33, 0xe4, 0x00, 0x8b, 0x00, 0x89, 0x45, 0x98});
+    Put(kAdvance, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53});
+    Put(kHandleEvent, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x53, 0x50, 0x48, 0x89, 0xf3});
+    Put(kNotifyMouse, {0x55, 0x41, 0x56, 0x53, 0x39, 0x97, 0x80, 0x0a, 0x00, 0x00});
+    Put(kCursorCount, {0x83, 0xfe, 0x04, 0xb8, 0x04, 0x00, 0x00, 0x00, 0x0f, 0x46, 0xc6});
+    const std::uintptr_t advance = reinterpret_cast<std::uintptr_t>(g_base + kAdvance);
+    std::memcpy(g_base + kAdvanceSlot, &advance, 8);
+    std::memset(g_base + kGfxNotes, 0, 32);
     std::uint8_t* table = g_base + kTable;
     std::memcpy(g_base + kObjects, &table, 8);
     std::memset(table + 0x12 * 16, 0, 16);
@@ -151,8 +164,11 @@ void MenuSave() { ++g_saved; }
 const char* MenuLinked(int page, int row) { return page == 1 && row == 0 ? "GameSwitch" : nullptr; }
 int g_quits = 0;
 void MenuQuit() { ++g_quits; }
+int g_pointer_mode = -1;
+int MenuPointerMode(int mode) { g_pointer_mode = mode; return mode; }
+void MenuPointerTake(TheOrderPointer* out) { *out = {1, 1, 0.5f, 0.25f, 1u, 2}; }
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
-                                MenuLinked, MenuQuit};
+                                MenuLinked, MenuQuit, MenuPointerMode, MenuPointerTake};
 
 struct Value {
     std::uint32_t type, pad;
@@ -382,6 +398,42 @@ int main() {
         const std::uint16_t other = 8; // a later object in the same slot: not the player
         std::memcpy(g_base + kTable + 0x12 * 16 + 8, &other, 2);
         CHECK(g_presence(mission, sizeof(mission)) == 0);
+    }
+
+    // The mouse in the menus: the cursor asks whether to show; a frame of a movie hands GFx the
+    // mouse (once a cursor count and the focus), then runs the game's Advance.
+    {
+        CHECK(LuaCall({Str("port_Pointer"), Num(1)}).number == 1 && g_pointer_mode == 1);
+        CHECK(LuaCall({Str("port_Pointer"), Num(0)}).number == 0 && g_pointer_mode == 0);
+        // Stand-ins: Advance returns 3.0f; NotifyMouseState and the cursor count note their
+        // arguments, HandleEvent counts its calls and notes the event's type.
+        Put(kAdvance, {0xb8, 0x00, 0x00, 0x40, 0x40, 0x66, 0x0f, 0x6e, 0xc0, 0xc3});
+        Put(kNotifyMouse, {0xf3, 0x0f, 0x11, 0x05, 0, 0, 0, 0, 0xf3, 0x0f, 0x11, 0x0d, 0, 0, 0, 0,
+                           0x89, 0x35, 0, 0, 0, 0, 0x89, 0x15, 0, 0, 0, 0, 0xc3});
+        PutRel32(kNotifyMouse + 4, kGfxNotes, kNotifyMouse + 8);
+        PutRel32(kNotifyMouse + 12, kGfxNotes + 4, kNotifyMouse + 16);
+        PutRel32(kNotifyMouse + 18, kGfxNotes + 8, kNotifyMouse + 22);
+        PutRel32(kNotifyMouse + 24, kGfxNotes + 12, kNotifyMouse + 28);
+        Put(kCursorCount, {0x89, 0x35, 0, 0, 0, 0, 0xc3});
+        PutRel32(kCursorCount + 2, kGfxNotes + 16, kCursorCount + 6);
+        Put(kHandleEvent, {0x8b, 0x06, 0x89, 0x05, 0, 0, 0, 0, 0xff, 0x05, 0, 0, 0, 0, 0xc3});
+        PutRel32(kHandleEvent + 4, kGfxNotes + 20, kHandleEvent + 8);
+        PutRel32(kHandleEvent + 10, kGfxNotes + 24, kHandleEvent + 14);
+        std::uintptr_t slot;
+        std::memcpy(&slot, g_base + kAdvanceSlot, 8);
+        CHECK(slot != reinterpret_cast<std::uintptr_t>(g_base + kAdvance));
+        static std::uint8_t movie[0x1000] = {};
+        const std::int32_t buffer[2] = {1920, 1080};
+        std::memcpy(movie + 0x64, buffer, sizeof(buffer));
+        using Advance = float(GUEST_ABI*)(void*, float, std::uint32_t);
+        CHECK(reinterpret_cast<Advance>(slot)(movie, 0.033f, 2) == 3.0f);
+        float xy[2];
+        std::uint32_t notes[5];
+        std::memcpy(xy, g_base + kGfxNotes, 8);
+        std::memcpy(notes, g_base + kGfxNotes + 8, 20);
+        CHECK(xy[0] == 960.0f && xy[1] == 270.0f && notes[0] == 1 && notes[1] == 0); // buttons, mouse 0
+        CHECK(notes[2] == 1);                                                          // one cursor
+        CHECK(notes[4] == 3 && notes[3] == 4); // SetFocus, then the wheel's two notches
     }
 
     // Without the port's menu every call goes to the game.

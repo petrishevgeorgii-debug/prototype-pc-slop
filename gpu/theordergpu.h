@@ -68,6 +68,19 @@ int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
  * the current one `get`, `set` applies one (live) and `reset` the default; `save` writes the
  * settings file. Texts are in the game's language. Called on the game's thread. */
 enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_DISPLAY = 2, THEORDER_MENU_PAGES = 3 };
+/* The mouse as a pointer in the game's menus (gpu/shim/port_pointer.cpp, game/p1/menu_mouse.cpp):
+ * active while the menus are up and the Mouse in menus setting is on; x, y: the place in the
+ * game's frame (0..1); inside: over the game's picture; buttons: 1 left, 2 right, 4 middle;
+ * wheel: notches since the last take (up positive). */
+typedef struct {
+    int active, inside;
+    float x, y;
+    unsigned buttons;
+    int wheel;
+} TheOrderPointer;
+/* mode 1: the game's menus are up, 0: playing, -1: unchanged; returns 1 while the cursor shows. */
+int theordergpu_pointer_mode(int mode);
+void theordergpu_pointer_take(TheOrderPointer *out);
 typedef struct TheOrderGameMenu {
     int (*count)(int page);
     const char *(*label)(int page, int row);
@@ -83,6 +96,9 @@ typedef struct TheOrderGameMenu {
     /* Quit to the desktop (the game's own Quit buttons, fe_ExitGame): saves the settings and
      * closes the window as its close button does. Returns at once; the process ends shortly. */
     void (*quit)(void);
+    /* The mouse in the game's menus (theordergpu_pointer_mode, theordergpu_pointer_take). */
+    int (*pointer_mode)(int mode);
+    void (*pointer_take)(TheOrderPointer *out);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

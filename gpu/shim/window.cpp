@@ -11,6 +11,7 @@
 #include "port_overlay.h"
 #include "port_graphics.h"
 #include "port_settings.h"
+#include "port_pointer.h"
 #include "../theordergpu.h"
 
 namespace {
@@ -202,6 +203,7 @@ bool WindowSDL::PollEvents() {
     } else if (int w = 0, h = 0; mode != PortGraphics::Borderless && ChosenSize(w, h) && w * 100000 + h != applied_size) {
         ApplyDisplayMode(mode);
     }
+    const bool pointer = PortPointer::Wanted() && window_focused && !text_active && !PortOverlay::CapturesInput();
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (text_active && (event.type == SDL_EVENT_TEXT_INPUT || event.type == SDL_EVENT_KEY_DOWN)) {
@@ -233,6 +235,13 @@ bool WindowSDL::PollEvents() {
         }
         if (PortOverlay::HandleEvent(event)) {
             continue;
+        }
+        // The game's menus take the mouse as a pointer (port_pointer.cpp): not captured then.
+        if (!mouse.captured && pointer && (event.type == SDL_EVENT_MOUSE_MOTION ||
+                                           event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                                           event.type == SDL_EVENT_MOUSE_BUTTON_UP ||
+                                           event.type == SDL_EVENT_MOUSE_WHEEL)) {
+            PortPointer::Event(event, window);
         }
         if (mouse.captured) {
             std::scoped_lock lock{mouse_mutex};
@@ -286,7 +295,8 @@ bool WindowSDL::PollEvents() {
     // Captured (relative mode, cursor hidden) only while the game itself takes the input: a
     // click that focuses the window or picks a menu entry never reaches the pad.
     const bool capture = PortSettings::Get().mouse_look && window_focused && !text_active &&
-                         !PortOverlay::CapturesInput();
+                         !PortOverlay::CapturesInput() && !PortPointer::Wanted();
+    if (!pointer) PortPointer::Release();
     if (capture != bool(mouse.captured)) {
         SDL_SetWindowRelativeMouseMode(window, capture);
         std::scoped_lock lock{mouse_mutex};

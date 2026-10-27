@@ -119,6 +119,8 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         v.haptics_sound = std::clamp(i, 0, 3);
     } else if (key == "discord") {
         v.discord = i != 0;
+    } else if (key == "menu_mouse") {
+        v.menu_mouse = i != 0;
     } else if (key == "discord_app_id") {
         if (value.size() < sizeof(v.discord_app_id) && value.find_first_not_of("0123456789") == std::string::npos)
             std::snprintf(v.discord_app_id, sizeof(v.discord_app_id), "%s", value.c_str());
@@ -318,8 +320,8 @@ void Save() {
                  v.fov.load(), int(v.mouse_look.load()), v.mouse_sensitivity.load(), v.anisotropy.load());
     std::fprintf(file, "vibration=%d\nlight_bar=%d\nmenu_vibration=%d\nextra_vibration=%d\n", v.vibration.load(),
                  int(v.light_bar.load()), v.menu_vibration.load(), int(v.extra_vibration.load()));
-    std::fprintf(file, "haptics=%d\nhaptics_sound=%d\ndiscord=%d\n", int(v.haptics.load()), v.haptics_sound.load(),
-                 int(v.discord.load()));
+    std::fprintf(file, "haptics=%d\nhaptics_sound=%d\ndiscord=%d\nmenu_mouse=%d\n", int(v.haptics.load()),
+                 v.haptics_sound.load(), int(v.discord.load()), int(v.menu_mouse.load()));
     if (v.discord_app_id[0]) std::fprintf(file, "discord_app_id=%s\n", v.discord_app_id);
     // PROTOTYPE's render resolution and frame rate: read by run.py and the launcher at start.
     if (v.proto_res >= 0 && v.proto_res < ProtoResolutionCount) std::fprintf(file, "proto_res=%s\n", ProtoResolutions[v.proto_res]);

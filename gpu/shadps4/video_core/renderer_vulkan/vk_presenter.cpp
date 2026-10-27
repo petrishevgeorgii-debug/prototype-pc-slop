@@ -13,6 +13,7 @@
 #include "video_core/renderdoc.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
 #include "port_overlay.h"
+#include "port_pointer.h"
 #include "port_settings.h"
 #include "port_graphics.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
@@ -822,11 +823,14 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
         };
         cmdbuf.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer,
                                vk::DependencyFlagBits::eByRegion, clear_done, {}, {});
+        const vk::ImageBlit picture_blit = MakeImageBlitPicture(s32(frame->width), s32(frame->height), picture,
+                                                                s32(extent.width), s32(extent.height));
         cmdbuf.blitImage(frame->image, vk::ImageLayout::eTransferSrcOptimal, swapchain_image,
-                         vk::ImageLayout::eTransferDstOptimal,
-                         MakeImageBlitPicture(s32(frame->width), s32(frame->height), picture,
-                                              s32(extent.width), s32(extent.height)),
-                         vk::Filter::eLinear);
+                         vk::ImageLayout::eTransferDstOptimal, picture_blit, vk::Filter::eLinear);
+        // port: where the picture is in the window, for the mouse in the game's menus.
+        PortPointer::SetPicture(picture_blit.dstOffsets[0].x, picture_blit.dstOffsets[0].y,
+                                picture_blit.dstOffsets[1].x - picture_blit.dstOffsets[0].x,
+                                picture_blit.dstOffsets[1].y - picture_blit.dstOffsets[0].y, picture.data());
         // port: the settings menu / FPS counter over the frame, at display resolution.
         const bool overlay = PortOverlay::Visible();
         const std::array post_barriers{

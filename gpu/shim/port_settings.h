@@ -85,6 +85,8 @@ struct Values {
     /// The Discord status (src/runtime_discord.c, started by run.py): on/off, and an application id
     /// that replaces the port's (digits only; empty: the port's). Kept here so saving keeps them.
     std::atomic<bool> discord{true};
+    /// The mouse as a pointer in the game's own menus (port_pointer.cpp, game/p1/menu_mouse.cpp).
+    std::atomic<bool> menu_mouse{true};
     char discord_app_id[24] = "";
     /// PROTOTYPE's render resolution (index into ProtoResolutions) and 60 FPS patch: run.py turns
     /// them into patches at start (THEORDER_PROTO_RES, THEORDER_FPS60), so they apply on the next

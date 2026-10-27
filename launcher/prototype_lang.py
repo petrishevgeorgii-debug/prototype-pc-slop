@@ -171,6 +171,11 @@ RU = {
     'Mouse sensitivity': 'Чувствительность мыши',
     'How fast the mouse turns the camera (also in the in-game menu).':
         'Как быстро мышь поворачивает камеру (есть и в меню игры).',
+    'Mouse in menus': 'Мышь в меню',
+    'Point and click in the game\'s menus with the PC version\'s cursor: the main menu, the pause menu, options, '
+    'lists and sliders; the wheel scrolls. In game the mouse looks around as before.':
+        'Наводите и щёлкайте в меню игры курсором из ПК-версии: главное меню, пауза, настройки, списки и '
+        'ползунки; колесо прокручивает. В игре мышь, как и раньше, управляет камерой.',
     'Keys for': 'Клавиши для',
     'Click a key box, then press the key or mouse button for it (click the box again for the left button). Delete '
     'clears the box; a click anywhere else cancels. A key is only on one action at a time.':
