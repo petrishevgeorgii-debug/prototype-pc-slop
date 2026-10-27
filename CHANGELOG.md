@@ -3,7 +3,7 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
-## Unreleased
+## 1.0.5 — October 27, 2026 ([notes](docs/releases/v1.0.5.md))
 
 ### Added
 - **The mouse in the game's menus, with the PC version's cursor.** In the main menu, the pause menu and every screen under them, the mouse points and clicks: lists, buttons, toggles and sliders react to it as in the PC version, the wheel scrolls, and the right button goes back, as in the PC version (Esc does too, as before). A left click skips the intros and cutscene movies, as on PC. The cursor is the PC version's own red arrow, which the PS4 game still carries; it shows when the mouse moves. In game the mouse looks around as before. **Mouse in menus** on the launcher's CONTROLS page (`menu_mouse` in `theorder.ini`).
