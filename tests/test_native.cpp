@@ -405,6 +405,8 @@ int main() {
     {
         CHECK(LuaCall({Str("port_Pointer"), Num(1)}).number == 1 && g_pointer_mode == 1);
         CHECK(LuaCall({Str("port_Pointer"), Num(0)}).number == 0 && g_pointer_mode == 0);
+        // With the cursor's frame and place (for the log).
+        CHECK(LuaCall({Str("port_Pointer"), Num(1), Num(2), Num(640), Num(360)}).number == 1);
         // Stand-ins: Advance returns 3.0f; NotifyMouseState and the cursor count note their
         // arguments, HandleEvent counts its calls and notes the event's type.
         Put(kAdvance, {0xb8, 0x00, 0x00, 0x40, 0x40, 0x66, 0x0f, 0x6e, 0xc0, 0xc3});
@@ -423,15 +425,17 @@ int main() {
         std::memcpy(&slot, g_base + kAdvanceSlot, 8);
         CHECK(slot != reinterpret_cast<std::uintptr_t>(g_base + kAdvance));
         static std::uint8_t movie[0x1000] = {};
-        const std::int32_t buffer[2] = {1920, 1080};
-        std::memcpy(movie + 0x64, buffer, sizeof(buffer));
+        // The PS4 game's viewport with a render resolution patch: a 1280x720 buffer, the movie
+        // drawn at 2560x1440. The mouse is in the drawn rect's pixels.
+        const std::int32_t viewport[6] = {1280, 720, 0, 0, 2560, 1440};
+        std::memcpy(movie + 0x64, viewport, sizeof(viewport));
         using Advance = float(GUEST_ABI*)(void*, float, std::uint32_t);
         CHECK(reinterpret_cast<Advance>(slot)(movie, 0.033f, 2) == 3.0f);
         float xy[2];
         std::uint32_t notes[5];
         std::memcpy(xy, g_base + kGfxNotes, 8);
         std::memcpy(notes, g_base + kGfxNotes + 8, 20);
-        CHECK(xy[0] == 960.0f && xy[1] == 270.0f && notes[0] == 1 && notes[1] == 0); // buttons, mouse 0
+        CHECK(xy[0] == 1280.0f && xy[1] == 360.0f && notes[0] == 1 && notes[1] == 0); // buttons, mouse 0
         CHECK(notes[2] == 1);                                                          // one cursor
         CHECK(notes[4] == 3 && notes[3] == 4); // SetFocus, then the wheel's two notches
     }

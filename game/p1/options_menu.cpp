@@ -152,7 +152,18 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     // The mouse in the menus (menu_mouse.cpp): protomain's cursor asks every frame, with whether
     // the menus are up (1) or the game is played (0); the answer shows or hides it.
     if (!std::strcmp(function, "port_Pointer")) {
-        ReturnNumber(ret, menu->pointer_mode ? menu->pointer_mode(Int(args, argc, 1) ? 1 : 0) : 0);
+        const int shown = menu->pointer_mode ? menu->pointer_mode(Int(args, argc, 1) ? 1 : 0) : 0;
+        ReturnNumber(ret, shown);
+        // The cursor's frame: 2 ('enable') while a control is under it (the controls' OnRollOver),
+        // 1 ('disable') otherwise; and where it is on the stage. Logged as it changes.
+        static int over = -1;
+        const int frame = Int(args, argc, 2);
+        if (shown && argc >= 5 && frame && (frame == 2) != (over == 1)) {
+            over = frame == 2 ? 1 : 0;
+            std::printf("Menu mouse: %s at %d,%d on the stage\n", over ? "over a control" : "off the controls",
+                        Int(args, argc, 3), Int(args, argc, 4));
+            std::fflush(stdout);
+        }
         return true;
     }
     if (std::strncmp(function, "port_", 5) == 0) {

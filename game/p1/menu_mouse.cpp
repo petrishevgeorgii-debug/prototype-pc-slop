@@ -11,8 +11,8 @@
 // the game's picture, the buttons, the wheel): once SetMouseCursorCount(1) (slot 46: GFx ignores
 // mice beyond the count, which the PS4 game leaves at 0) and a SetFocus event (HandleEvent, slot
 // 36, drops other events for an unfocused movie), then NotifyMouseState (slot 38) every frame and a
-// MouseWheel event per notch. The position is in the movie's buffer pixels (its viewport at
-// +0x64: buffer width, height, left, top, width, height...). scripts/proto_menu.py makes protomain
+// MouseWheel event per notch. The position is in the pixels of the rect the movie is drawn in (its
+// viewport at +0x64: buffer width, height, then that rect's left, top, width, height). scripts/proto_menu.py makes protomain
 // draw its cursor there and tell the port when the menus are up (port_Pointer, options_menu.cpp).
 
 #include <cstdint>
@@ -38,13 +38,36 @@ struct GfxEvent {
 static_assert(sizeof(GfxEvent) == 0x1c, "GFxMouseEvent");
 constexpr std::uint32_t kMouseWheel = 4, kSetFocus = 8;
 
+/// The movie's viewport (GFxViewport at +0x64): its render buffer and the rect the movie is drawn
+/// in. GFx takes the mouse in the rect's pixels (NotifyMouseState maps them to the stage the way
+/// the movie is drawn): the buffer can be smaller (the PS4 game says 1280x720 while the menus are
+/// drawn at the render resolution, 2560x1440 with that patch: the mouse reached only the top left
+/// quarter).
+struct Viewport {
+    std::int32_t buffer_width, buffer_height, left, top, width, height;
+};
+
+Viewport ViewportOf(const void* movie) {
+    Viewport v;
+    std::memcpy(&v, static_cast<const std::uint8_t*>(movie) + 0x64, sizeof(v));
+    return v;
+}
+
 /// Movies seen (the root and any other): each gets its cursor count once, and is told when the
 /// mouse leaves it.
 struct Movie {
     void* movie;
     bool pointed;
+    Viewport viewport;
+    std::uint32_t buttons;
 };
 Movie g_movies[8];
+
+void LogViewport(const void* movie, const Viewport& v, const char* what) {
+    std::printf("Menu mouse: movie %p %s (viewport %d,%d %dx%d in a %dx%d buffer)\n", movie, what, v.left, v.top,
+                v.width, v.height, v.buffer_width, v.buffer_height);
+    std::fflush(stdout);
+}
 
 Movie* Seen(void* movie) {
     for (Movie& m : g_movies) {
@@ -52,10 +75,8 @@ Movie* Seen(void* movie) {
         if (!m.movie) {
             m.movie = movie;
             Guest::Call<void>(kSetMouseCursorCount, movie, 1u);
-            std::int32_t buffer[2];
-            std::memcpy(buffer, static_cast<const std::uint8_t*>(movie) + 0x64, sizeof(buffer));
-            std::printf("Menu mouse: movie %p (viewport %dx%d) takes the mouse\n", movie, buffer[0], buffer[1]);
-            std::fflush(stdout);
+            m.viewport = ViewportOf(movie);
+            LogViewport(movie, m.viewport, "takes the mouse");
             return &m;
         }
     }
@@ -74,10 +95,21 @@ GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
             focus.type = kSetFocus;
             Guest::Call<std::uint32_t>(kHandleEvent, movie, &focus);
         }
-        std::int32_t buffer[2];
-        std::memcpy(buffer, m + 0x64, sizeof(buffer));
-        const float x = p.x * float(buffer[0]), y = p.y * float(buffer[1]);
+        const Viewport v = ViewportOf(movie);
+        if (std::memcmp(&v, &seen->viewport, sizeof(v))) {
+            seen->viewport = v;
+            LogViewport(movie, v, "changed");
+        }
+        // The game's picture is the movie's rect (the menus cover the screen).
+        const bool rect = v.width > 0 && v.height > 0;
+        const float x = float(rect ? v.left : 0) + p.x * float(rect ? v.width : v.buffer_width);
+        const float y = float(rect ? v.top : 0) + p.y * float(rect ? v.height : v.buffer_height);
         Guest::Call<void>(kNotifyMouseState, movie, x, y, p.buttons, 0u);
+        if ((p.buttons & 1u) && !(seen->buttons & 1u)) {
+            std::printf("Menu mouse: click at %.0f,%.0f (%.3f,%.3f of the picture)\n", x, y, p.x, p.y);
+            std::fflush(stdout);
+        }
+        seen->buttons = p.buttons;
         for (int n = p.wheel; n != 0; n += n > 0 ? -1 : 1) {
             GfxEvent wheel{};
             wheel.type = kMouseWheel;

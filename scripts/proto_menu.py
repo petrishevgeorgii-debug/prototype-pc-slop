@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 7        # of this script's output (part of the cache key)
+VERSION = 8        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -461,10 +461,14 @@ def main_pointer(data):
             return a.bytes()
         data = insert_at_function(data, name, set_mode)
 
-    body = Asm()  # var v = DoCallBack("port_Pointer", mode); this._visible = v; if (v) follow the mouse
+    # var v = DoCallBack("port_Pointer", mode, this._currentframe, this._x, this._y); this._visible = v;
+    # if (v) follow the mouse. (The frame, 'enable' over a control, and the place are for the log.)
+    body = Asm()
     body.push('v')
+    for name in ('_y', '_x', '_currentframe'):
+        body.get('this'); body.push(name); body.op('GetMember')
     body.get('_global'); body.push('gPortPointerMode'); body.op('GetMember')
-    body.push('port_Pointer', 2, 'commonregisters'); body.op('GetVariable'); body.push('DoCallBack')
+    body.push('port_Pointer', 5, 'commonregisters'); body.op('GetVariable'); body.push('DoCallBack')
     body.op('CallMethod', 'DefineLocal')
     body.get('this'); body.push('_visible'); body.get('v'); body.op('SetMember')
     body.get('v'); body.op('Not'); body.branch('If', 'end')

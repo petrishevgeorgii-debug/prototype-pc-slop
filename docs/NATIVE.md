@@ -130,11 +130,14 @@ react to it, but the PS4 game never does. `GFxMovieRoot`'s vtable (`0x1065d30`) 
 `Advance` (`0x3ff610`): it now first calls `SetMouseCursorCount(1)` (slot 46, once per movie: GFx
 ignores mice beyond the count), sends a `SetFocus` event (`HandleEvent`, slot 36, type 8: an
 unfocused movie drops the others) while the movie's focus byte (`+0xc91`) is clear, then
-`NotifyMouseState(x, y, buttons, 0)` (slot 38) with the place in the movie's buffer (its viewport
-at `+0x64`) and a `MouseWheel` event (type 4, delta at `+0x10`) per notch. The window's side
+`NotifyMouseState(x, y, buttons, 0)` (slot 38) with the place in the rect the movie is drawn in
+(its viewport at `+0x64`: buffer width and height, then the rect's left, top, width, height;
+GFx maps the rect's pixels to the stage. The PS4 game's buffer says 1280x720 while the rect is the
+render resolution, so the buffer's size kept the mouse in the top left of the screen) and a `MouseWheel` event (type 4, delta at `+0x10`) per notch. The window's side
 (`gpu/shim/port_pointer.cpp`) maps the mouse onto the game's picture with the presenter's
 letterbox; protomain's PC cursor (`mMouseCursor`) follows `_xmouse`/`_ymouse` and asks
-`port_Pointer` whether to show, saying whether the menus are up.
+`port_Pointer` whether to show, saying whether the menus are up (and, for the log, its frame:
+`enable` while a control is under it, and its place).
 
 ## Next
 
