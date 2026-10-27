@@ -12,9 +12,16 @@
 // mice beyond the count, which the PS4 game leaves at 0) and a SetFocus event (HandleEvent, slot
 // 36, drops other events for an unfocused movie), then NotifyMouseState (slot 38) every frame and a
 // MouseWheel event per notch. The position is in the pixels of the rect the movie is drawn in (its
-// viewport at +0x64: buffer width, height, then that rect's left, top, width, height). scripts/proto_menu.py makes protomain
-// draw its cursor there and tell the port when the menus are up (port_Pointer, options_menu.cpp).
+// viewport at +0x64: buffer width, height, then that rect's left, top, width, height).
+//
+// Whether the menus are up is the screen on top of protomain's screen stack, read with the movie's
+// GetVariable (slot 13): IGHUD while playing (the mouse looks around), any other is a menu (the
+// main menu, the pause menu, the map, loading...: it points). The PC cursor (mMouseCursor, which
+// scripts/proto_menu.py makes _global.gMouseCursor for the controls to light up) is shown and
+// moved with SetVariable (slot 12). (protomain's own frame script asking the port, as before, did
+// not run once the game had been played.)
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -37,6 +44,56 @@ struct GfxEvent {
 };
 static_assert(sizeof(GfxEvent) == 0x1c, "GFxMouseEvent");
 constexpr std::uint32_t kMouseWheel = 4, kSetFocus = 8;
+
+/// GFxMovie::SetVariable(path, const GFxValue&, SetVarType) and GetVariable(GFxValue*, path).
+constexpr std::uint64_t kSetVariable = 0x403ee0, kGetVariable = 0x404630;
+
+/// GFxValue (GFx 2.x: 16 bytes).
+struct GfxValue {
+    enum : std::uint32_t { Undefined = 0, Null = 1, Boolean = 2, Number = 3, String = 4 };
+    std::uint32_t type;
+    std::uint32_t pad;
+    union {
+        double number;
+        const char* string;
+        std::uint8_t boolean;
+        std::uint64_t raw;
+    };
+};
+static_assert(sizeof(GfxValue) == 16, "GFxValue");
+
+bool GetVariable(void* movie, const char* path, GfxValue* out) {
+    *out = GfxValue{};
+    return Guest::Call<std::uint8_t>(kGetVariable, movie, out, path) != 0;
+}
+
+void SetVariable(void* movie, const char* path, const GfxValue& value) {
+    Guest::Call<std::uint8_t>(kSetVariable, movie, path, &value, 0u); // SV_Normal
+}
+
+GfxValue Bool(bool on) {
+    GfxValue v{};
+    v.type = GfxValue::Boolean;
+    v.boolean = on ? 1 : 0;
+    return v;
+}
+
+/// The screen on top of the movie's screen stack (protomain's screen manager) into `out`; false
+/// for a movie without one.
+bool TopScreen(void* movie, char* out, std::size_t size) {
+    static const char kStack[] = "_global.managers.screen.arrScreenStack";
+    GfxValue v;
+    char path[96];
+    std::snprintf(path, sizeof(path), "%s.length", kStack);
+    if (!GetVariable(movie, path, &v) || v.type != GfxValue::Number) return false;
+    const int count = int(v.number);
+    out[0] = 0;
+    if (count <= 0) return true;
+    std::snprintf(path, sizeof(path), "%s.%d", kStack, count - 1);
+    if (GetVariable(movie, path, &v) && v.type == GfxValue::String && v.string)
+        std::snprintf(out, size, "%s", v.string);
+    return true;
+}
 
 /// The movie's viewport (GFxViewport at +0x64): its render buffer and the rect the movie is drawn
 /// in. GFx takes the mouse in the rect's pixels (NotifyMouseState maps them to the stage the way
@@ -101,9 +158,44 @@ void SkipMovie(const TheOrderGameMenu* menu) {
     std::fflush(stdout);
 }
 
+/// protomain: the menus up or not from its top screen, and its PC cursor shown where the mouse is.
+void Screens(void* movie, const TheOrderGameMenu* menu) {
+    char screen[64];
+    if (!menu || !menu->pointer_mode || !TopScreen(movie, screen, sizeof(screen))) return;
+    static char last[64] = "?";
+    if (std::strcmp(last, screen)) {
+        std::snprintf(last, sizeof(last), "%s", screen);
+        std::printf("Menu mouse: screen %s\n", *screen ? screen : "(none)");
+        std::fflush(stdout);
+    }
+    const bool up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE");
+    const bool shown = menu->pointer_mode(up ? 1 : 0) != 0;
+    static int was_shown = -1;
+    if (shown || was_shown != 0) SetVariable(movie, "_root.mMouseCursor._visible", Bool(shown));
+    was_shown = shown ? 1 : 0;
+    if (!shown) return;
+    GfxValue x, y;
+    if (GetVariable(movie, "_root._xmouse", &x) && x.type == GfxValue::Number &&
+        GetVariable(movie, "_root._ymouse", &y) && y.type == GfxValue::Number) {
+        SetVariable(movie, "_root.mMouseCursor._x", x);
+        SetVariable(movie, "_root.mMouseCursor._y", y);
+    }
+    // The cursor's frame: 2 ('enable') while a control is under it (the controls' OnRollOver).
+    GfxValue frame;
+    static int over = -1;
+    if (GetVariable(movie, "_root.mMouseCursor._currentframe", &frame) && frame.type == GfxValue::Number &&
+        (frame.number == 2) != (over == 1)) {
+        over = frame.number == 2 ? 1 : 0;
+        std::printf("Menu mouse: %s at %.0f,%.0f on the stage\n", over ? "over a control" : "off the controls",
+                    x.number, y.number);
+        std::fflush(stdout);
+    }
+}
+
 GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
     const TheOrderGameMenu* menu = Native::Menu();
     SkipMovie(menu);
+    Screens(movie, menu);
     TheOrderPointer p{};
     if (menu && menu->pointer_take) menu->pointer_take(&p);
     Movie* seen = p.active ? Seen(movie) : nullptr;
@@ -162,7 +254,11 @@ bool InstallMenuMouse(std::uint64_t) {
     if (slot != image + kAdvance) return false;
     if (!Matches(kHandleEvent, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x53, 0x50, 0x48, 0x89, 0xf3}) ||
         !Matches(kNotifyMouseState, {0x55, 0x41, 0x56, 0x53, 0x39, 0x97, 0x80, 0x0a, 0x00, 0x00}) ||
-        !Matches(kSetMouseCursorCount, {0x83, 0xfe, 0x04, 0xb8, 0x04, 0x00, 0x00, 0x00, 0x0f, 0x46, 0xc6}))
+        !Matches(kSetMouseCursorCount, {0x83, 0xfe, 0x04, 0xb8, 0x04, 0x00, 0x00, 0x00, 0x0f, 0x46, 0xc6}) ||
+        !Matches(kSetVariable, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48,
+                                0x83, 0xec, 0x38, 0x41, 0x89, 0xcf}) ||
+        !Matches(kGetVariable, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48,
+                                0x83, 0xec, 0x38, 0x49, 0x89, 0xd5}))
         return false;
     slot = reinterpret_cast<std::uintptr_t>(&Advance);
     // The movie skip: fmv_Skip and fmv_IsPlaying as this build has them.

@@ -54,6 +54,10 @@ T = lang.tr
 
 APP_NAME = 'PROTOTYPE'
 VERSION = '1.0.5'
+# A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
+# PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
+BETA = 1
+VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
 ORIGINAL_SHA256 = {
@@ -732,7 +736,7 @@ class Launcher:
         item = cv.create_text(38, y, text='BLACKWATCH', anchor='w', fill=C['text'], font=self.f(11, 'bold'))
         cv.create_text(cv.bbox(item)[2] + 12, y, text=T('//  CONTAINMENT TERMINAL 7-A  ·  MANHATTAN ISLAND'),
                        anchor='w', fill=C['muted'], font=self.f(9))
-        cv.create_text(W - 270, y, text=T(f'BIOHAZARD BUNDLE  ·  NATIVE PC PORT v{VERSION}'), anchor='e',
+        cv.create_text(W - 270, y, text=T(f'BIOHAZARD BUNDLE  ·  NATIVE PC PORT v{VERSION_LABEL}'), anchor='e',
                        fill=C['dim'], font=self.f(8))
         cv.create_text(W - 16, y, text=self.clock(), anchor='e', fill=C['text'], font=self.f(10, 'bold'),
                        tags=('clock',))

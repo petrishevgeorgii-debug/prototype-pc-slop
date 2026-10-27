@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 10        # of this script's output (part of the cache key)
+VERSION = 11        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -449,44 +449,11 @@ CONTROLS = 'protocontrols.gfx'
 
 
 def main_pointer(data):
-    """protomain.gfx: the PC version's mouse cursor (mMouseCursor) for the mouse in the menus
-    (game/p1/menu_mouse.cpp): _global.gMouseCursor (the menus' controls light it up), and every
-    frame it asks the port (port_Pointer) whether to show, telling it the screen on top of the
-    screen manager's stack (IGHUD while playing: the mouse looks around; the main menu, the pause
-    menu, the map... it points), and follows the mouse."""
-    data = on_pc(data, lambda v: 'gMouseCursor' in v, 'the PC cursor')
-
-    # var v = DoCallBack("port_Pointer", screen, this._currentframe, this._x, this._y);
-    # this._visible = v; if (v) follow the mouse. screen: the top of
-    # _global.managers.screen.arrScreenStack. (The frame, 'enable' over a control, and the place
-    # are for the log.)
-    body = Asm()
-    body.push('v')
-    for name in ('_y', '_x', '_currentframe'):
-        body.get('this'); body.push(name); body.op('GetMember')
-    body.get('_global')
-    for name in ('managers', 'screen', 'arrScreenStack'):
-        body.push(name); body.op('GetMember')
-    body.op('PushDuplicate'); body.push('length'); body.op('GetMember'); body.push(1); body.op('Subtract', 'GetMember')
-    body.push('port_Pointer', 5, 'commonregisters'); body.op('GetVariable'); body.push('DoCallBack')
-    body.op('CallMethod', 'DefineLocal')
-    body.get('this'); body.push('_visible'); body.get('v'); body.op('SetMember')
-    body.get('v'); body.op('Not'); body.branch('If', 'end')
-    for axis in ('x', 'y'):
-        body.get('this'); body.push('_' + axis); body.get('this'); body.push('_parent'); body.op('GetMember')
-        body.push(f'_{axis}mouse'); body.op('GetMember', 'SetMember')
-    body.label('end')
-
-    def follower(acts):
-        for i, a in enumerate(acts):
-            if is_push(a, exact=['gMouseCursor', 'mMouseCursor']):
-                j = next(k for k in range(i, len(acts)) if acts[k][1] == 0x4F)
-                at = whole(acts[j])[1]
-                code = Asm()
-                code.get('mMouseCursor'); code.push('onEnterFrame'); code.function(body.bytes()); code.op('SetMember')
-                return at, at, code.bytes()
-        return None
-    return edit_code(data, follower, 'the PC cursor\'s place')
+    """protomain.gfx: the PC version's mouse cursor (mMouseCursor) for the mouse in the menus:
+    _global.gMouseCursor, which the menus' controls light up (its 'enable' frame) while the mouse
+    is over them. game/p1/menu_mouse.cpp shows it and moves it with the mouse (SetVariable), from
+    the screen on top of the screen manager's stack (read with GetVariable)."""
+    return on_pc(data, lambda v: 'gMouseCursor' in v, 'the PC cursor')
 
 
 def button_hit_boxes(data):
@@ -599,6 +566,7 @@ def patch_all(movies, label):
     if MAIN in movies:
         try:
             out[MAIN] = main_pointer(out.get(MAIN) or movies[MAIN])
+            out['.cursor'] = b'1'
         except (ValueError, StopIteration, IndexError):
             pass  # another build of protomain: no mouse cursor
     if CONTROLS in movies:
@@ -1057,6 +1025,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
             movies.update({q.name: loose_movie(q) for q in quit_sources if q.is_file() and q.name not in movies})
             target.mkdir(parents=True, exist_ok=True)
             patched = patch_all(movies, label if display else None)
+            cursor = patched.pop('.cursor', None)
             for name, data in patched.items():
                 (target / name.lower()).write_bytes(data)
         else:
@@ -1068,6 +1037,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
                 return None
             display = all(n in found for n in DISPLAY_INPUTS)
             patched = patch_all({n: places[0][2] for n, places in found.items()}, label if display else None)
+            cursor = patched.pop('.cursor', None)
             per_archive = {}
             for name, data in patched.items():
                 for path, entry_at, _, packed in found[name]:
@@ -1083,7 +1053,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     stamp.write_text(json.dumps({'key': key, 'display': display}), encoding='utf-8')
     log(f'Menu: the port\'s settings in Options > Video and Controller{" and a Display screen" if display else ""} '
         f'({"loose files" if loose else "archive patches"})')
-    log('Menu: the mouse in the menus, with the PC cursor' if b'port_Pointer' in patched.get(MAIN, b'') else
+    log('Menu: the mouse in the menus, with the PC cursor' if cursor else
         'Menu: no mouse in the menus (protomain.gfx not found or not recognised)')
     quits = [n for n in QUIT_INPUTS if n in patched]
     log(f'Menu: quit to the desktop from {" and ".join({"protomainmenu.gfx": "the main menu", "protoquit.gfx": "the pause menu"}[n] for n in quits)}'

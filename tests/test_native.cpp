@@ -74,7 +74,8 @@ constexpr std::uint64_t kHit = 0x8683c0, kHitSlot = 0x109c8a0 + 0x30, kPlayer = 
 // at kGfxNotes: NotifyMouseState x, y, buttons, mouse; the cursor count; HandleEvent's calls and
 // last event type.
 constexpr std::uint64_t kAdvance = 0x3ff610, kAdvanceSlot = 0x1065d30 + 31 * 8, kHandleEvent = 0x402250,
-                        kNotifyMouse = 0x402ad0, kCursorCount = 0xad0410, kGfxNotes = 0x1f600;
+                        kNotifyMouse = 0x402ad0, kCursorCount = 0xad0410, kGfxNotes = 0x1f600,
+                        kSetVariable = 0x403ee0, kGetVariable = 0x404630;
 constexpr std::uint64_t kPresenceSite = 0x505de2, kObjects = 0x1233670, kTable = 0x1f400;
 int (*g_presence)(char*, int) = nullptr;
 void PresenceSource(int (*source)(char*, int)) { g_presence = source; }
@@ -143,6 +144,10 @@ void BuildGame() {
     Put(kHandleEvent, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x53, 0x50, 0x48, 0x89, 0xf3});
     Put(kNotifyMouse, {0x55, 0x41, 0x56, 0x53, 0x39, 0x97, 0x80, 0x0a, 0x00, 0x00});
     Put(kCursorCount, {0x83, 0xfe, 0x04, 0xb8, 0x04, 0x00, 0x00, 0x00, 0x0f, 0x46, 0xc6});
+    Put(kSetVariable, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec,
+                       0x38, 0x41, 0x89, 0xcf});
+    Put(kGetVariable, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x83, 0xec,
+                       0x38, 0x49, 0x89, 0xd5});
     const std::uintptr_t advance = reinterpret_cast<std::uintptr_t>(g_base + kAdvance);
     std::memcpy(g_base + kAdvanceSlot, &advance, 8);
     std::memset(g_base + kGfxNotes, 0, 32);
@@ -422,6 +427,8 @@ int main() {
         PutRel32(kNotifyMouse + 12, kGfxNotes + 4, kNotifyMouse + 16);
         PutRel32(kNotifyMouse + 18, kGfxNotes + 8, kNotifyMouse + 22);
         PutRel32(kNotifyMouse + 24, kGfxNotes + 12, kNotifyMouse + 28);
+        Put(kGetVariable, {0x31, 0xc0, 0xc3}); // no screen stack in this movie
+        Put(kSetVariable, {0xc3});
         Put(kCursorCount, {0x89, 0x35, 0, 0, 0, 0, 0xc3});
         PutRel32(kCursorCount + 2, kGfxNotes + 16, kCursorCount + 6);
         Put(kHandleEvent, {0x8b, 0x06, 0x89, 0x05, 0, 0, 0, 0, 0xff, 0x05, 0, 0, 0, 0, 0xc3});

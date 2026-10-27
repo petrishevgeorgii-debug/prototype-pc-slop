@@ -10,7 +10,10 @@ set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 source ./msys2-env.sh
 version=$(sed -n "s/^VERSION = '\(.*\)'/\1/p" launcher/prototype_launcher.py)
+beta=$(sed -n "s/^BETA = \([0-9]*\).*/\1/p" launcher/prototype_launcher.py)
+# A test build (BETA = 1 in the launcher): PROTOTYPE-PC-Port-v1.0.5-b1.
 name="PROTOTYPE-PC-Port-v${version}"
+if [[ -n $beta && $beta != 0 ]]; then name="$name-b$beta"; fi
 [[ -f out/theorder-probe.exe && -f out/theorder-gpu-capabilities.exe ]] || { echo 'Build first: bash build.sh' >&2; exit 1; }
 [[ -x out/pyenv/Scripts/python.exe ]] || { echo 'Run setup.bat first (it makes out\pyenv)' >&2; exit 1; }
 [[ -f fsr4_shaders/LICENSE-FSR4-v07.txt ]] || bash tools/fetch_fsr4_assets.sh

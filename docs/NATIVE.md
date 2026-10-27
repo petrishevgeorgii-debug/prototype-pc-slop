@@ -135,10 +135,11 @@ unfocused movie drops the others) while the movie's focus byte (`+0xc91`) is cle
 GFx maps the rect's pixels to the stage. The PS4 game's buffer says 1280x720 while the rect is the
 render resolution, so the buffer's size kept the mouse in the top left of the screen) and a `MouseWheel` event (type 4, delta at `+0x10`) per notch. The window's side
 (`gpu/shim/port_pointer.cpp`) maps the mouse onto the game's picture with the presenter's
-letterbox; protomain's PC cursor (`mMouseCursor`) follows `_xmouse`/`_ymouse` and asks
-`port_Pointer` whether to show, saying which screen is on top of
-`_global.managers.screen.arrScreenStack` (`IGHUD` while playing; any other is a menu) (and, for the log, its frame:
-`enable` while a control is under it, and its place). The right button, while the menus are up, is the pad's Circle
+letterbox. The same hook reads the screen on top of protomain's
+`_global.managers.screen.arrScreenStack` with the movie's `GetVariable` (slot 13, `0x404630`):
+`IGHUD` while playing, any other is a menu; and shows the PC cursor (`_root.mMouseCursor`) at
+`_root._xmouse`/`_ymouse` with `SetVariable` (slot 12, `0x403ee0`). (A frame script in protomain
+asking the port stopped reaching it once the game had been played.) The right button, while the menus are up, is the pad's Circle
 (back; `TheOrderMouse::menu_back`, `src/runtime_pad.c`). The main menu's buttons (`protoButton` in
 `protocontrols.gfx`) are pointed at by their label alone, a text box 64 px tall for 29 px between
 buttons; the one above is on top, so its box took the next one's text. `scripts/proto_menu.py`
