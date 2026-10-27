@@ -144,6 +144,75 @@ void Pop() {
     at[2] = at[3] = at[4] = at[5] = 0;
 }
 
+// Draw tags. Every draw of a Pure3D primitive group goes through pure3d::ps4Context's
+// DrawPrimGroup (vtable slot 4, 0x234900: this, a key, the primitive group, ...) or
+// DrawPrimGroups (slot 5, 0x234db0: this, an array of them, their count). Around each call a tag
+// goes into the command buffer (a NOP the GPU side alone reads): the slot, who called it (the
+// return address, image-relative: the primitive's own code), the primitive group's shader (its
+// +0xa0, the ps4Context's default when 0) and the classes (vtables) of both. The GPU side gives
+// the draws up to the tag's end to it. Which caller is which primitive class (Mesh, Skin,
+// GpuSkin, ParticleSystem, the HUD...) is read off the executable from the log.
+constexpr std::uint64_t kContextVtable = 0x105bc70; // pure3d::ps4Context's functions
+constexpr std::uint32_t kDrawTag = 0x6875d7a6u, kDrawTagEnd = 0x6875d7a7u;
+struct DrawSlot {
+    int slot;
+    std::uint64_t function;
+};
+constexpr DrawSlot kDrawSlots[] = {{4, 0x234900}, {5, 0x234db0}};
+std::uint64_t g_draw_original[2];
+
+std::uint32_t ImageOffset(std::uint64_t value) { // a vtable's place in the image, or 0
+    const auto image = reinterpret_cast<std::uint64_t>(Guest::Image());
+    return value >= image && value - image < 0x2000000 ? std::uint32_t(value - image) : 0;
+}
+
+void Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
+    std::uint32_t* at = Room(10);
+    if (!at) return;
+    std::uint64_t shader = 0, group_vtable = 0, shader_vtable = 0;
+    if (group) {
+        std::memcpy(&group_vtable, reinterpret_cast<const void*>(group), 8);
+        std::memcpy(&shader, reinterpret_cast<const std::uint8_t*>(group) + 0xa0, 8);
+        if (shader) std::memcpy(&shader_vtable, reinterpret_cast<const void*>(shader), 8);
+    }
+    at[0] = Nop(9);
+    at[1] = kDrawTag;
+    at[2] = slot;
+    at[3] = ImageOffset(caller);
+    at[4] = std::uint32_t(shader);
+    at[5] = std::uint32_t(shader >> 32);
+    at[6] = ImageOffset(shader_vtable);
+    at[7] = ImageOffset(group_vtable);
+    at[8] = at[9] = 0;
+}
+
+void TagEnd() {
+    std::uint32_t* at = Room(3);
+    if (!at) return;
+    at[0] = Nop(2);
+    at[1] = kDrawTagEnd;
+    at[2] = 0;
+}
+
+template <int I>
+GUEST_ABI std::uint64_t Draw(std::uint64_t context, std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d,
+                             std::uint64_t e) {
+    using Original = std::uint64_t(GUEST_ABI*)(std::uint64_t, std::uint64_t, std::uint64_t, std::uint64_t,
+                                               std::uint64_t, std::uint64_t);
+    const auto caller = reinterpret_cast<std::uint64_t>(__builtin_return_address(0));
+    // Slot 4: the group is the third argument; slot 5: the first of the array (when any).
+    std::uint64_t group = 0;
+    if (I == 0) {
+        group = b;
+    } else if (a && std::uint32_t(b) != 0) {
+        std::memcpy(&group, reinterpret_cast<const void*>(a), 8);
+    }
+    Tag(std::uint32_t(kDrawSlots[I].slot), caller, group);
+    const std::uint64_t result = reinterpret_cast<Original>(g_draw_original[I])(context, a, b, c, d, e);
+    TagEnd();
+    return result;
+}
+
 template <int I>
 GUEST_ABI std::uint64_t Render(std::uint64_t a, std::uint64_t b, std::uint64_t c, std::uint64_t d, std::uint64_t e,
                                std::uint64_t f) {
@@ -180,7 +249,19 @@ bool InstallRenderMap(std::uint64_t) {
         slot = reinterpret_cast<std::uintptr_t>(ThunkOf(i, std::make_integer_sequence<int, kPassCount>{}));
         ++hooked;
     }
-    std::printf("Render map: on, %d of %d pass classes marked\n", hooked, kPassCount);
+    int tagged = 0;
+    using DrawThunk = std::uint64_t(GUEST_ABI*)(std::uint64_t, std::uint64_t, std::uint64_t, std::uint64_t,
+                                                std::uint64_t, std::uint64_t);
+    constexpr DrawThunk kDrawThunks[] = {&Draw<0>, &Draw<1>};
+    for (int i = 0; i < 2; ++i) {
+        auto& slot = Guest::At<std::uintptr_t>(kContextVtable + kDrawSlots[i].slot * 8);
+        if (slot != image + kDrawSlots[i].function) continue;
+        g_draw_original[i] = slot;
+        slot = reinterpret_cast<std::uintptr_t>(kDrawThunks[i]);
+        ++tagged;
+    }
+    std::printf("Render map: on, %d of %d pass classes marked, %d of 2 draw functions tagged\n", hooked, kPassCount,
+                tagged);
     std::fflush(stdout);
     return hooked > 0;
 }

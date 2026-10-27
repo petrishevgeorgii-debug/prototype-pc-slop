@@ -211,6 +211,42 @@ alpha-tested version; the shader mods in the port's `mods` folder change these t
 (`f6c8b098`) and the sky (`f5131314`). The world and objects are the lit materials: about 50
 shaders between them.
 
+## Draw tags (step 2, b11)
+
+Every draw of a Pure3D primitive group goes through `ps4Context`'s **DrawPrimGroup** (vtable
+slot 4, `0x234900`: this, a key, the primitive group, ...) or **DrawPrimGroups** (slot 5,
+`0x234db0`: this, an array of groups, their count). A primitive group's shader (its material,
+a `pure3d` shader object) is at its `+0xa0` (when 0, the context's default at `+0x728`).
+
+With the render map on, `game/p1/render_map.cpp` wraps both: before each call a **draw tag** goes
+into the command buffer (a NOP with payload `0x6875d7a6`: the slot, the return address into the
+caller, the group's shader and the vtables of the shader and the group), after it a tag end
+(`0x6875d7a7`). The GPU side gives the draws in between to that caller, and under each pass the
+log lists them:
+
+    RootPass > ... > Opaque > Objects                         433  (29 shaders: ...)
+          draw 4 from 2bb4f3: 412 draws in 412 calls, 37 materials, group 105e000, shader 105c3a0 x400
+          untagged: 21 draws
+
+The caller (the code after the call) tells the primitive class (`Mesh`, `Skin`, `GpuSkin`,
+`ParticleSystem`, `proto::HUD`...): read off the executable from the first log with tags.
+Draws not tagged are drawn by other code (Scaleform's, full-screen passes).
+
+The primitive classes (vtables; slots 0-1 the destructors):
+
+| class | vtable |
+|---|---|
+| `pure3d::Mesh` | `0x105f920` |
+| `pure3d::Skin` | `0x105c1d0` |
+| `pure3d::GpuSkin` | `0x105f860` |
+| `pure3d::BillboardGroup` | `0x105f4a0` |
+| `pure3d::Decal` / `DeformableDecal` | `0x105f680` / `0x105f6f0` |
+| `pure3d::ParticleSystem` | `0x105e7c0` |
+| `pure3d::Sprite` | `0x105ff50` |
+| `proto::HUD` | `0x1092950` |
+| `proto::BloodSplatter`, `BulletTracer`, `LaserSight` | `0x10a3ea0`, `0x10926d0`, `0x10a3fc0` |
+| `engine::MotionTrail` | `0x104acd0` |
+
 ## Next
 
 - Primitives: their draw (`Mesh` vtable 0x105f920, `Skin` 0x105c1d0, `GpuSkin` 0x105f860...)

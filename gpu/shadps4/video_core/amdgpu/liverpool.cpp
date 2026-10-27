@@ -875,6 +875,17 @@ Liverpool::Task Liverpool::ProcessGraphics(std::span<const u32> dcb, std::span<c
                     }
                     break;
                 }
+                case 0x6875d7a6u: { // port: a draw tag (game/p1/render_map.cpp)
+                    if (PortRenderMap::Enabled() && nop->header.count.Value() >= 6) {
+                        const u32* d = &nop->data_block[1];
+                        PortRenderMap::Tag(d[0], d[1], u64(d[2]) | (u64(d[3]) << 32), d[4], d[5]);
+                    }
+                    break;
+                }
+                case 0x6875d7a7u: { // port: a draw tag's end
+                    if (PortRenderMap::Enabled()) PortRenderMap::TagEnd();
+                    break;
+                }
                 case PM4CmdNop::PayloadType::DebugMarkerPop: {
                     if (PortRenderMap::Enabled()) {
                         PortRenderMap::Pop();

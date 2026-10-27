@@ -26,12 +26,42 @@
 namespace PortRenderMap {
 namespace {
 
+/// Draws from one caller of ps4Context's DrawPrimGroup(s) in one pass.
+struct Caller {
+    std::uint32_t slot = 0, caller = 0; ///< 4 or 5; the return address (image-relative)
+    unsigned draws = 0, calls = 0;
+    std::vector<std::uint64_t> materials; ///< distinct primitive group shaders (up to 256)
+    std::vector<std::pair<std::uint32_t, unsigned>> classes; ///< their vtables, calls each
+    std::uint32_t group_class = 0;        ///< the primitive groups' vtable (the first seen)
+};
+
 struct Entry {
     std::string path;
     unsigned draws = 0;
     bool resumed = false; ///< the parent again after a child pass
     std::vector<std::pair<std::uint64_t, unsigned>> shaders; ///< pixel shader hash, its draws
+    std::vector<Caller> callers;       ///< the draw tags' callers (game/p1/render_map.cpp)
+    unsigned untagged = 0;              ///< draws outside every tag
 };
+
+struct Tagged {
+    bool on = false;
+    std::uint32_t slot = 0, caller = 0, shader_class = 0, group_class = 0;
+    std::uint64_t shader = 0;
+} tag; ///< the draw tag open now
+
+/// The caller entry for the open tag in this entry.
+Caller& CallerOf(Entry& entry) {
+    for (auto& c : entry.callers) {
+        if (c.slot == tag.slot && c.caller == tag.caller) return c;
+    }
+    entry.callers.push_back({});
+    auto& c = entry.callers.back();
+    c.slot = tag.slot;
+    c.caller = tag.caller;
+    c.group_class = tag.group_class;
+    return c;
+}
 
 std::unordered_map<std::uint64_t, std::uint64_t> hashes; ///< pixel shader address -> its hash
 
@@ -87,6 +117,18 @@ void Log() {
             std::printf("%s)", e.shaders.size() > 4 ? " ..." : "");
         }
         std::printf("\n");
+        std::sort(e.callers.begin(), e.callers.end(), [](const Caller& a, const Caller& b) { return a.draws > b.draws; });
+        for (auto& c : e.callers) {
+            std::sort(c.classes.begin(), c.classes.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+            std::printf("      draw %u from %x: %u draws in %u calls, %zu%s materials, group %x, shader", c.slot,
+                        c.caller, c.draws, c.calls, c.materials.size(), c.materials.size() >= 256 ? "+" : "",
+                        c.group_class);
+            for (size_t i = 0; i < c.classes.size() && i < 3; ++i) {
+                std::printf(" %x x%u", c.classes[i].first, c.classes[i].second);
+            }
+            std::printf("\n");
+        }
+        if (e.untagged && !e.callers.empty()) std::printf("      untagged: %u draws\n", e.untagged);
     }
     std::fflush(stdout);
 }
@@ -105,14 +147,38 @@ void Push(std::string_view name) {
     const auto end = name.find('\0');
     if (end != std::string_view::npos) name = name.substr(0, end);
     stack.emplace_back(name);
-    frame.push_back({Path(), 0, false, {}});
+    frame.push_back({Path(), 0, false, {}, {}, 0});
+    tag.on = false;
     if (frame.size() > 20000) Frame(); // no flips seen: a list never ends otherwise
 }
 
 void Pop() {
     if (!stack.empty()) stack.pop_back();
     // Draws after a child pass ends belong to its parent again: a new entry for the parent.
-    if (!stack.empty()) frame.push_back({Path(), 0, true, {}});
+    if (!stack.empty()) frame.push_back({Path(), 0, true, {}, {}, 0});
+    tag.on = false;
+}
+
+void Tag(std::uint32_t slot, std::uint32_t caller, std::uint64_t shader, std::uint32_t shader_class,
+         std::uint32_t group_class) {
+    tag = {true, slot, caller, shader_class, group_class, shader};
+    if (stack.empty() || frame.empty()) return;
+    auto& c = CallerOf(frame.back());
+    ++c.calls;
+    if (c.materials.size() < 256 && std::find(c.materials.begin(), c.materials.end(), shader) == c.materials.end()) {
+        c.materials.push_back(shader);
+    }
+    for (auto& [k, n] : c.classes) {
+        if (k == shader_class) {
+            ++n;
+            return;
+        }
+    }
+    c.classes.emplace_back(shader_class, 1);
+}
+
+void TagEnd() {
+    tag.on = false;
 }
 
 void Draw(std::uint64_t ps_address) {
@@ -122,6 +188,11 @@ void Draw(std::uint64_t ps_address) {
     }
     auto& entry = frame.back();
     ++entry.draws;
+    if (tag.on) {
+        ++CallerOf(entry).draws;
+    } else {
+        ++entry.untagged;
+    }
     const std::uint64_t hash = Hash(ps_address);
     for (auto& [h, draws] : entry.shaders) {
         if (h == hash) {
@@ -141,7 +212,8 @@ void Frame() {
     frame.clear();
     loose = 0;
     if (stack.size() > 64) stack.clear(); // markers lost: start over
-    if (!stack.empty()) frame.push_back({Path(), 0, true, {}});
+    if (!stack.empty()) frame.push_back({Path(), 0, true, {}, {}, 0});
+    tag.on = false;
 }
 
 } // namespace PortRenderMap
