@@ -77,7 +77,7 @@ int VideoChoices(int row) {
     case Upscaler: return int(Providers().size());
     case Quality: return 5;
     case Sharpening: return 11;
-    case ShadowDistance: return 4;
+    case ShadowDistance: return 6;
     default: return 0;
     }
 }
@@ -106,9 +106,9 @@ const char* VideoChoice(int row, int index) {
         text = std::to_string(std::min(index, 10) * 10) + "%";
         return text.c_str();
     case ShadowDistance: {
-        static const char* const en[] = {"GAME (120 M)", "250 M", "500 M", "1000 M"};
-        static const char* const ru[] = {"ИГРА (120 М)", "250 М", "500 М", "1000 М"};
-        index = std::clamp(index, 0, 3);
+        static const char* const en[] = {"GAME (120 M)", "250 M", "500 M", "1000 M", "2000 M", "3000 M"};
+        static const char* const ru[] = {"ИГРА (120 М)", "250 М", "500 М", "1000 М", "2000 М", "3000 М"};
+        index = std::clamp(index, 0, 5);
         return Russian() ? ru[index] : en[index];
     }
     default: return "";
@@ -125,7 +125,7 @@ int VideoGet(int row) {
     }
     case Quality: return std::clamp(s.preset.load(), 0, 4);
     case Sharpening: return s.rcas ? std::clamp(int(std::lround(s.rcas_strength.load() / 10.0)), 1, 10) : 0;
-    case ShadowDistance: return std::clamp(s.shadow_distance.load(), 0, 3);
+    case ShadowDistance: return std::clamp(s.shadow_distance.load(), 0, 5);
     default: return 0;
     }
 }
@@ -143,7 +143,7 @@ void VideoSet(int row, int index) {
         s.rcas = index > 0;
         if (index > 0) s.rcas_strength = std::min(index, 10) * 10;
         break;
-    case ShadowDistance: s.shadow_distance = std::clamp(index, 0, 3); break;
+    case ShadowDistance: s.shadow_distance = std::clamp(index, 0, 5); break;
     default: break;
     }
 }

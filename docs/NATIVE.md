@@ -192,7 +192,7 @@ step for a full command buffer, `0x921101`). Group `framesubmit`. Details in
 
 ## The shadow distance (`game/p1/shadows.cpp`)
 
-Options > Video > **SHADOW DISTANCE**: GAME (about 120 m), 250, 500 or 1000 m, live (the row is
+Options > Video > **SHADOW DISTANCE**: GAME (about 120 m), 250, 500, 1000, 2000 or 3000 m, live (the row is
 `THEORDER_VIDEO_SHADOW_DISTANCE`, saved as `shadow_distance` in `theorder.ini`).
 
 `pure3d::Shadow` (built by `0x2c5e20`) is the sun's cascaded shadow: cascade count `+0x300`,
@@ -207,7 +207,7 @@ debug box for any other value.
 Both of the renderer's calls to `Shadow::Update` (`0x330dca`, `0x344eb3`) come to native code
 first. With a distance set, the two nearest cascades stay the game's (the same detail around
 Alex), the other two end a constant factor further each, the last at the distance (250 m: 5, 10,
-50, 250; 1000 m: 5, 10, 100, 1000), the range becomes 1.1 x the distance with the divisor keeping
+50, 250; 1000 m: 5, 10, 100, 1000; 3000 m: 5, 10, about 173, 3000), the range becomes 1.1 x the distance with the divisor keeping
 the unit at 10 m, and the range check reads a native value that follows the range. GAME puts the
 game's values back. The casters come with it: the shadow pass culls the scene once per cascade
 against that cascade's planes (`0x349160`: `0x2b02c0` for each), so a longer cascade draws more
@@ -218,9 +218,9 @@ themselves, `saturate(dist_to_vertex * 0.02 - 3.0)` squared, from 150 to 200 m (
 beside the binaries in `art/startup_shaders.p3d`; about 414 of its 1134 shaders have it). On the
 GPU side (`gpu/shim/port_shadow_fade.cpp`) a pixel shader whose GCN code has those two literals
 (0.02 `0x3ca3d70a` and -3.0 `0xc0400000`, each after an instruction taking a literal, a few dwords
-apart) gets the setting in its runtime info (`hw.fs.shadow_fade`, two spare bits: the stored
+apart) gets the setting in its runtime info (`hw.fs.shadow_fade`, three spare bits: the stored
 specializations keep their size) and so its own permutation, translated from a copy of its code
-with the fade over the last 15% of the distance (1000 m: 850 to 1000 m). Changing the setting
+with the fade over the last 15% of the distance (1000 m: 850 to 1000 m, 3000 m: 2550 to 3000 m). Changing the setting
 builds those permutations in the background: lit objects can blink for a moment the first time.
 
 An earlier try (0.7.0) was removed in 1.0.0 (it did not show a difference in play). It spread all

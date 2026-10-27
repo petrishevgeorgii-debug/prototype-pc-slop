@@ -12,8 +12,8 @@
 // numbers are literals (0.02 = 0x3ca3d70a, -3.0 = 0xc0400000, each after an instruction taking a
 // literal operand, a few dwords apart). A fragment shader that has them gets the shadow distance
 // setting in its runtime info (hw.fs.shadow_fade: its own permutation), and its code is translated
-// from a copy with the fade moved to the last 15% of the distance (250 m: 212 to 250 m, 1000 m:
-// 850 to 1000 m).
+// from a copy with the fade moved to the last 15% of the distance (250 m: 212 to 250 m, 3000 m:
+// 2550 to 3000 m).
 
 #pragma once
 
@@ -23,8 +23,8 @@
 
 namespace PortShadowFade {
 
-/// The level a fragment shader gets (0: the game's own fade, or a shader without it; 1-3: the
-/// setting's 250, 500, 1000 m). `hash` is the shader's hash, `code` its GCN code.
+/// The level a fragment shader gets (0: the game's own fade, or a shader without it; 1-5: the
+/// setting's 250, 500, 1000, 2000, 3000 m). `hash` is the shader's hash, `code` its GCN code.
 std::uint32_t Level(std::uint64_t hash, std::span<const std::uint32_t> code);
 
 /// `code` with the fade's literals replaced for `level` (the copy kept in `storage`), or `code`

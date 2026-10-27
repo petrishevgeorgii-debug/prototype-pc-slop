@@ -15,7 +15,7 @@ namespace {
 constexpr std::uint32_t kScale = 0x3ca3d70au;  // 0.02
 constexpr std::uint32_t kOffset = 0xc0400000u; // -3.0
 constexpr std::size_t kWindow = 8;             // dwords between the two
-constexpr float kDistances[] = {0.0f, 250.0f, 500.0f, 1000.0f};
+constexpr float kDistances[] = {0.0f, 250.0f, 500.0f, 1000.0f, 2000.0f, 3000.0f};
 
 /// A literal operand: the dword before it is an instruction whose source field says "literal"
 /// (0xff in its low byte: SOP1/SOP2/VOP1/VOP2 src0).
@@ -46,7 +46,7 @@ std::unordered_map<std::uint64_t, bool> g_has_fade;
 } // namespace
 
 std::uint32_t Level(std::uint64_t hash, std::span<const std::uint32_t> code) {
-    const int level = std::clamp(PortSettings::Get().shadow_distance.load(std::memory_order_relaxed), 0, 3);
+    const int level = std::clamp(PortSettings::Get().shadow_distance.load(std::memory_order_relaxed), 0, 5);
     if (level == 0 || code.empty()) {
         return 0;
     }
@@ -71,7 +71,7 @@ std::uint32_t Level(std::uint64_t hash, std::span<const std::uint32_t> code) {
 
 std::span<const std::uint32_t> Apply(std::span<const std::uint32_t> code, std::uint32_t level,
                                      std::vector<std::uint32_t>& storage) {
-    if (level == 0 || level > 3) {
+    if (level == 0 || level > 5) {
         return code;
     }
     const auto found = Find(code);

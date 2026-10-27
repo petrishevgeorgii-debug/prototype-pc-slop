@@ -98,7 +98,7 @@ void Set(Values& v, const std::string& key, const std::string& value) {
     } else if (key == "rcas") {
         v.rcas = i != 0;
     } else if (key == "shadow_distance") {
-        v.shadow_distance = std::clamp(i, 0, 3);
+        v.shadow_distance = std::clamp(i, 0, 5);
     } else if (key == "rcas_strength") {
         v.rcas_strength = PortGraphics::ParseRcasStrength(value.empty() ? -1 : i);
     } else if (key == "frames_queued") {

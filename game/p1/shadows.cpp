@@ -18,7 +18,7 @@
 // fixed debug box around (0, 0, -300) for any other value.
 //
 // Native: both of the renderer's calls to Update come here first. With SHADOW DISTANCE above
-// GAME (the in-game Options > Video row, THEORDER_VIDEO_SHADOW_DISTANCE: 250, 500 or 1000 m) the
+// GAME (the in-game Options > Video row, THEORDER_VIDEO_SHADOW_DISTANCE: 250, 500, 1000, 2000 or 3000 m) the
 // sun's two nearest cascades stay the game's (5 and 10 m: the same detail around Alex), the
 // others spread out to that distance (each ending a constant factor further), the box grows to
 // hold them and the range check compares with the native range instead of 200. GAME puts the
@@ -50,7 +50,7 @@ constexpr float kUnit = 10.0f; ///< metres, as the game's
 constexpr int kKeptCascades = 2; ///< the game's own nearest cascades, kept
 
 /// Metres for the row's choices (0: the game's own).
-constexpr int kDistances[] = {0, 250, 500, 1000};
+constexpr int kDistances[] = {0, 250, 500, 1000, 2000, 3000};
 
 int Distance() {
     const TheOrderGameMenu* menu = Native::Menu();

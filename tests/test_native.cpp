@@ -510,6 +510,11 @@ int main() {
         CHECK(near(field(0x318), 1) && near(field(0x31c), 2) && near(field(0x320), 20) && near(field(0x324), 200));
         CHECK(field(0x328) == 25); // a cascade the shadow does not use is left alone
         CHECK(near(global(), 1100) && near(*range_check, -1100) && near(field(0x32c), 220));
+        // 3000 m: 5, 10, about 173, 3000 m; box +- 3300 m.
+        g_values[0][3] = 5;
+        update(0x344eb3)(shadow, nullptr, nullptr, nullptr);
+        CHECK(near(field(0x318), 1) && near(field(0x31c), 2) && near(field(0x320), 34.641f) && near(field(0x324), 600));
+        CHECK(near(global(), 3300) && near(*range_check, -3300) && near(field(0x32c), 660));
         // 250 m: 5, 10, 50, 250 m; box +- 275 m.
         g_values[0][3] = 1;
         update(0x344eb3)(shadow, nullptr, nullptr, nullptr);

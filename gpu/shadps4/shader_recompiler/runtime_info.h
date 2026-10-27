@@ -242,8 +242,8 @@ struct HwFragmentRuntimeInfo {
     u32 vs_direct_triangles : 1;
     /// port: PROTOTYPE's shadow fade moved out with the shadow distance (0 the game's; the
     /// literals are replaced before translation, gpu/shim/port_shadow_fade.h).
-    u32 shadow_fade : 2;
-    u32 : 8;
+    u32 shadow_fade : 3;
+    u32 : 7;
 
     bool operator==(const HwFragmentRuntimeInfo& other) const noexcept {
         return std::ranges::equal(color_buffers, other.color_buffers) &&
