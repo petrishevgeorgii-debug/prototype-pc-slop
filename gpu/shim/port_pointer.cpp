@@ -104,6 +104,12 @@ void Release() {
     state.wheel = 0;
 }
 
+std::atomic<int> clicks{0};
+
+void NoteClick() {
+    ++clicks;
+}
+
 bool BackHeld() {
     std::scoped_lock guard{lock};
     return Wanted() && (state.buttons & 2u);
@@ -125,6 +131,10 @@ extern "C" int theordergpu_pointer_mode(int on) {
     // The cursor shows a while after the mouse moved or clicked (not over a menu worked with a
     // controller or keys).
     return Wanted() && moved_ms.load() && NowMs() - moved_ms.load() < 8000 ? 1 : 0;
+}
+
+extern "C" int theordergpu_pointer_clicks(void) {
+    return PortPointer::clicks.exchange(0);
 }
 
 extern "C" void theordergpu_pointer_take(TheOrderPointer* out) {

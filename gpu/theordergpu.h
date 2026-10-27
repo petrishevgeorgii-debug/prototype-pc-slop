@@ -82,6 +82,9 @@ typedef struct {
 /* mode 1: the game's menus are up, 0: playing, -1: unchanged; returns 1 while the cursor shows. */
 int theordergpu_pointer_mode(int mode);
 void theordergpu_pointer_take(TheOrderPointer *out);
+/* Left clicks in the window since the last call (in game, in the menus, in a movie): the game
+ * layer skips a playing movie with one, as the PC version did (game/p1/menu_mouse.cpp). */
+int theordergpu_pointer_clicks(void);
 typedef struct TheOrderGameMenu {
     int (*count)(int page);
     const char *(*label)(int page, int row);
@@ -100,6 +103,7 @@ typedef struct TheOrderGameMenu {
     /* The mouse in the game's menus (theordergpu_pointer_mode, theordergpu_pointer_take). */
     int (*pointer_mode)(int mode);
     void (*pointer_take)(TheOrderPointer *out);
+    int (*pointer_clicks)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

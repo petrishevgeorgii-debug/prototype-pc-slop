@@ -20,5 +20,7 @@ void Release();
 /// The right button is held while the mouse points in the game's menus: the pad's Circle (back),
 /// like the PC version's right click.
 bool BackHeld();
+/// A left click in the window (any mode): theordergpu_pointer_clicks.
+void NoteClick();
 
 } // namespace PortPointer

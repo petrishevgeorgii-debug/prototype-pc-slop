@@ -83,8 +83,27 @@ Movie* Seen(void* movie) {
     return nullptr;
 }
 
+// A left click skips the movie playing (the intros, the story's cutscenes), as on PC: the game's
+// fmv_Skip (its Lua's, 0x19840) when fmv_IsPlaying (0x19890) would say so: the player is set up
+// (0x122f3b8), a movie is playing (0x122f358) and loaded (0x122f3c0), not skipped yet (0x122f3c8).
+constexpr std::uint64_t kFmvSkip = 0x19840, kFmvIsPlaying = 0x19890;
+constexpr std::uint64_t kFmvReady = 0x122f3b8, kFmvPlaying = 0x122f358, kFmvMovie = 0x122f3c0,
+                        kFmvSkipped = 0x122f3c8;
+bool g_skip = false;
+
+void SkipMovie(const TheOrderGameMenu* menu) {
+    if (!g_skip || !menu || !menu->pointer_clicks || !menu->pointer_clicks()) return;
+    if (!Guest::At<std::uint8_t>(kFmvReady) || !Guest::At<std::uint32_t>(kFmvPlaying) ||
+        !Guest::At<std::uint64_t>(kFmvMovie) || Guest::At<std::uint8_t>(kFmvSkipped))
+        return;
+    Guest::Call<std::uint8_t>(kFmvSkip);
+    std::printf("Menu mouse: the movie skipped (left click)\n");
+    std::fflush(stdout);
+}
+
 GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
     const TheOrderGameMenu* menu = Native::Menu();
+    SkipMovie(menu);
     TheOrderPointer p{};
     if (menu && menu->pointer_take) menu->pointer_take(&p);
     Movie* seen = p.active ? Seen(movie) : nullptr;
@@ -146,6 +165,15 @@ bool InstallMenuMouse(std::uint64_t) {
         !Matches(kSetMouseCursorCount, {0x83, 0xfe, 0x04, 0xb8, 0x04, 0x00, 0x00, 0x00, 0x0f, 0x46, 0xc6}))
         return false;
     slot = reinterpret_cast<std::uintptr_t>(&Advance);
+    // The movie skip: fmv_Skip and fmv_IsPlaying as this build has them.
+    g_skip = Matches(kFmvSkip, {0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0x3d, 0x74, 0x5b, 0x21, 0x01, 0x00, 0x74, 0x0e,
+                                0x8a, 0x05, 0x74, 0x5b, 0x21, 0x01}) &&
+             Matches(kFmvIsPlaying, {0x55, 0x48, 0x89, 0xe5, 0x41, 0x56, 0x53, 0x8a, 0x05, 0x1b, 0x5b, 0x21, 0x01,
+                                     0x84, 0xc0, 0x74, 0x23});
+    if (!g_skip) {
+        std::printf("Menu mouse: no movie skip (fmv_Skip is not where it was)\n");
+        std::fflush(stdout);
+    }
     return true;
 }
 

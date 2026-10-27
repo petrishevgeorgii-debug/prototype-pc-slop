@@ -237,6 +237,11 @@ bool WindowSDL::PollEvents() {
         if (PortOverlay::HandleEvent(event)) {
             continue;
         }
+        // A left click skips a playing movie (the game layer asks, port_pointer.cpp).
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_LEFT && window_focused &&
+            !text_active) {
+            PortPointer::NoteClick();
+        }
         // The game's menus take the mouse as a pointer (port_pointer.cpp): not captured then.
         if (!mouse.captured && pointer && (event.type == SDL_EVENT_MOUSE_MOTION ||
                                            event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||

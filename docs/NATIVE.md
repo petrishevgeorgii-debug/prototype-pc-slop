@@ -143,6 +143,12 @@ letterbox; protomain's PC cursor (`mMouseCursor`) follows `_xmouse`/`_ymouse` an
 buttons; the one above is on top, so its box took the next one's text. `scripts/proto_menu.py`
 sets the labels' AutoSize flag, so their boxes fit the text.
 
+A left click (any mode, `theordergpu_pointer_clicks`) skips the movie playing, checked in the same
+`Advance` hook (it runs on the thread of the game's Lua, which the menus call into): when
+`fmv_IsPlaying` (`0x19890`) would say yes (`0x122f3b8` set up, `0x122f358` playing, `0x122f3c0`
+loaded) and it is not skipped yet (`0x122f3c8`), the port calls the game's own `fmv_Skip`
+(`0x19840`), the Lua function its scripts call to skip.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,
