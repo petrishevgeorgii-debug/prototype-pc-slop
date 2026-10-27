@@ -88,9 +88,13 @@ void Log(const char* text) {
 
 // ---- what the rows do
 
-const char kGod[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageable(p,false) "
+// go_SetDamageable counts (the health behaviour adds 1 or -1: +0x28), so it is said once per
+// player object: __port_god holds the one made undamageable, and only that one is given back.
+const char kGod[] = "local p=PLAYER_1 if p and go_IsValid(p) then "
+                    "if __port_god~=p then go_SetDamageable(p,false) __port_god=p end "
                     "local m=go_GetMaxRegenHealth(p) if m and go_GetHealth(p)<m then go_SetHealth(p,m) end end";
-const char kMortal[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamageable(p,true) end";
+const char kMortal[] = "local p=PLAYER_1 if p and __port_god==p and go_IsValid(p) then go_SetDamageable(p,true) end "
+                       "__port_god=nil";
 // Critical mass: Alex's health behaviour (proto::PrototypeHealthBehaviour) takes a SetHealth above
 // its normal top only scaled by criticalMassHealthGainFactor, so the game's own go_SetHealth
 // never filled it. The trainer asks with a marker value instead, which HealthMessage below (its
