@@ -290,7 +290,22 @@ wraps the hash call in the template's constructor, `0x21db06`, while the render 
 writes each name once into the command buffer, NOP `0x6875d7a8`), names the templates in the log,
 and sums each frame's draws by kind:
 
-    Render map: frame 7200 by kind: world 600, roads 12, people 42, vehicles 144, ...
+    Render map: frame 1200 by kind: world 978, roads 22, Alex 4, people 74, vehicles 83, decals 49,
+      distant city 144, sky 1, water 5, unlit 2, depth batches 1494, the rest 115
+
+(b13, the open city: every tagged draw's template named; "the rest" are the full-screen passes,
+the HUD, Scaleform and a few translucent draws outside the tags.)
+
+## Next: the scene's geometry (towards ray tracing)
+
+The plan for step 3: take each solid draw's triangles **after its vertex shader**. The port
+translates every vertex shader to SPIR-V already; a variant for tagged draws of the kinds that
+count (world, roads, Alex, people, vehicles) would also write each vertex's position to a
+storage buffer. That gives skinned characters in their pose and every object where it is, with
+no need to know the game's vertex formats, skinning or world matrices; the camera's matrices
+(`p3dViewProjectionMatrix` and the rest are named constants) turn clip space back into world
+space. The index buffer is the draw's own. Then acceleration structures from those triangles,
+rebuilt or refitted each frame, and ray-traced shadows as the first use.
 
 The primitive classes (vtables; slots 0-1 the destructors):
 
