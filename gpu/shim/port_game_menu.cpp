@@ -19,6 +19,7 @@
 
 #include "../theordergpu.h"
 #include "port_settings.h"
+#include "port_trainer.h"
 
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
 
@@ -337,6 +338,26 @@ void DisplayReset(int row) {
     }
 }
 
+// ---- the trainer (port_trainer.cpp, game/p1/trainer.cpp)
+
+const char* TrainerLabel(int row) {
+    switch (row) {
+    case THEORDER_TRAINER_GOD: return T("GOD MODE", "БЕССМЕРТИЕ");
+    case THEORDER_TRAINER_CRITICAL_MASS: return T("INFINITE CRITICAL MASS", "БЕСКОНЕЧНАЯ КРИТ. МАССА");
+    case THEORDER_TRAINER_EP: return T("EVOLUTION POINTS", "ОЧКИ ЭВОЛЮЦИИ");
+    case THEORDER_TRAINER_UNLOCK: return T("ALL POWERS AND UPGRADES", "ВСЕ СПОСОБНОСТИ");
+    default: return "";
+    }
+}
+
+const char* TrainerChoice(int row, int index) {
+    switch (row) {
+    case THEORDER_TRAINER_EP: return index ? T("+100,000 ADDED", "+100 000 ДОБАВЛЕНО") : T("ADD 100,000", "ДОБАВИТЬ 100 000");
+    case THEORDER_TRAINER_UNLOCK: return index ? T("UNLOCKED", "ОТКРЫТО") : T("UNLOCK", "ОТКРЫТЬ");
+    default: return OnOff(index);
+    }
+}
+
 // ---- the pages
 
 /// The Display screen exists (run.py: scripts/proto_menu.py made it, loose game files): Display
@@ -360,6 +381,7 @@ int Count(int page) {
     case THEORDER_MENU_VIDEO: return VideoCount() + (DisplayScreen() ? 0 : 2);
     case THEORDER_MENU_CONTROLLER: return PadRowCount;
     case THEORDER_MENU_DISPLAY: return DisplayRowCount;
+    case THEORDER_MENU_TRAINER: return THEORDER_TRAINER_ROWS;
     default: return 0;
     }
 }
@@ -369,6 +391,7 @@ const char* Label(int page, int row) {
     case THEORDER_MENU_VIDEO: return VideoExtra(row) >= 0 ? DisplayLabel(VideoExtra(row)) : VideoLabel(row);
     case THEORDER_MENU_CONTROLLER: return PadLabel(row);
     case THEORDER_MENU_DISPLAY: return DisplayLabel(row);
+    case THEORDER_MENU_TRAINER: return TrainerLabel(row);
     default: return "";
     }
 }
@@ -378,6 +401,7 @@ int Choices(int page, int row) {
     case THEORDER_MENU_VIDEO: return VideoExtra(row) >= 0 ? DisplayChoices(VideoExtra(row)) : VideoChoices(row);
     case THEORDER_MENU_CONTROLLER: return PadChoices(row);
     case THEORDER_MENU_DISPLAY: return DisplayChoices(row);
+    case THEORDER_MENU_TRAINER: return 2;
     default: return 0;
     }
 }
@@ -388,6 +412,7 @@ const char* Choice(int page, int row, int index) {
         return VideoExtra(row) >= 0 ? DisplayChoice(VideoExtra(row), index) : VideoChoice(row, index);
     case THEORDER_MENU_CONTROLLER: return PadChoice(row, index);
     case THEORDER_MENU_DISPLAY: return DisplayChoice(row, index);
+    case THEORDER_MENU_TRAINER: return TrainerChoice(row, index);
     default: return "";
     }
 }
@@ -397,6 +422,7 @@ int Get(int page, int row) {
     case THEORDER_MENU_VIDEO: return VideoExtra(row) >= 0 ? DisplayGet(VideoExtra(row)) : VideoGet(row);
     case THEORDER_MENU_CONTROLLER: return PadGet(row);
     case THEORDER_MENU_DISPLAY: return DisplayGet(row);
+    case THEORDER_MENU_TRAINER: return PortTrainer::Get(row);
     default: return 0;
     }
 }
@@ -409,6 +435,7 @@ void Set(int page, int row, int index) {
         break;
     case THEORDER_MENU_CONTROLLER: PadSet(row, index); break;
     case THEORDER_MENU_DISPLAY: DisplaySet(row, index); break;
+    case THEORDER_MENU_TRAINER: PortTrainer::Set(row, index); break;
     default: break;
     }
 }
@@ -421,6 +448,7 @@ void Reset(int page, int row) {
         break;
     case THEORDER_MENU_CONTROLLER: PadReset(row); break;
     case THEORDER_MENU_DISPLAY: DisplayReset(row); break;
+    case THEORDER_MENU_TRAINER: PortTrainer::Set(row, 0); break;
     default: break;
     }
 }
@@ -444,9 +472,21 @@ void Quit() {
     SDL_PushEvent(&event);
 }
 
+int TrainerOpen() {
+    return PortTrainer::TakeRequests();
+}
+
+unsigned TrainerActions() {
+    return PortTrainer::TakeActions();
+}
+
+void PressOptions() {
+    PortTrainer::PressOptions();
+}
+
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
-                                theordergpu_pointer_clicks};
+                                theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions};
 
 } // namespace
 

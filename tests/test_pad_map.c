@@ -9,6 +9,8 @@ int runtime_haptics_active(void) { return 0; }
 int theordergpu_overlay_captures_input(void) { return 0; }
 void theordergpu_pad_options(TheOrderPadOptions *out) { out->vibration=100; out->light_bar=1; out->menu_vibration=1; out->extra_vibration=1; }
 void theordergpu_mouse_take(TheOrderMouse *out) { memset(out,0,sizeof(*out)); }
+static int test_trainer_requests;
+void theordergpu_trainer_request(void) { ++test_trainer_requests; }
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

@@ -151,6 +151,22 @@ A left click (any mode, `theordergpu_pointer_clicks`) skips the movie playing, c
 loaded) and it is not skipped yet (`0x122f3c8`), the port calls the game's own `fmv_Skip`
 (`0x19840`), the Lua function its scripts call to skip.
 
+## The trainer
+
+`game/p1/trainer.cpp`, from protomain's `Advance` (the same hook as the menu mouse, on the thread
+that runs the game's Lua). Opening: F1 or the touchpad held (`gpu/shim/port_trainer.cpp`,
+`src/runtime_pad.c`); from the HUD (`IGHUD`) the port presses Options, waits for `PROTO_PAUSE` and
+`Invoke`s `_root.PortTrainerPush` (GFxMovie slot 18, `0x4055e0`), which `scripts/proto_menu.py`
+defines in protomain as `managers.screen.PushScreen(PROTO_PAUSE_DEBUG)`; leaving it for the pause
+menu presses Options again (the pause menu's `ExitPause` on the PS4). The screen's rows are page
+3 of `TheOrderGameMenu`.
+
+The rows run Lua through the game's script manager (`0xca650` returns it; `+0x18` is the
+`lua_State`): `PushFunction(name)` `0xd1ad0` (a global function), `PushString` `0xd1a80`,
+`Call(nargs)` `0xd1800` (`lua_pcall` with one result; errors go to `print`), `lua_type(-1)`
+`0xd1870`, `GetFloat(L, float*)` `0xd1960`, `gettop`/`settop` `0xd1b20`/`0xd1b30`. A chunk is
+`loadstring(code)` called, then called itself. The player is the scripts' global `PLAYER_1`.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

@@ -174,8 +174,12 @@ int MenuPointerMode(int mode) { g_pointer_mode = mode; return mode; }
 void MenuPointerTake(TheOrderPointer* out) { *out = {1, 1, 0.5f, 0.25f, 1u, 2}; }
 int g_clicks = 0;
 int MenuPointerClicks() { const int n = g_clicks; g_clicks = 0; return n; }
+int MenuTrainerOpen() { return 0; }
+unsigned MenuTrainerActions() { return 0; }
+void MenuPressOptions() {}
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
-                                MenuLinked, MenuQuit, MenuPointerMode, MenuPointerTake, MenuPointerClicks};
+                                MenuLinked, MenuQuit, MenuPointerMode, MenuPointerTake, MenuPointerClicks,
+                                MenuTrainerOpen, MenuTrainerActions, MenuPressOptions};
 
 struct Value {
     std::uint32_t type, pad;

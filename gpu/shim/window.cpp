@@ -12,6 +12,7 @@
 #include "port_graphics.h"
 #include "port_settings.h"
 #include "port_pointer.h"
+#include "port_trainer.h"
 #include "../theordergpu.h"
 
 namespace {
@@ -29,6 +30,7 @@ extern "C" void theordergpu_mouse_take(TheOrderMouse* out) {
     mouse.dx = mouse.dy = 0.0f; // buttons stay down until released
     mouse.wheel = 0;
     out->menu_back = PortPointer::BackHeld() ? 1 : 0;
+    out->press_options = PortTrainer::OptionsHeld() ? 1 : 0;
 }
 
 extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {
@@ -272,6 +274,8 @@ bool WindowSDL::PollEvents() {
         }
         switch (event.type) {
         case SDL_EVENT_KEY_DOWN:
+            // F1: PROTOTYPE's trainer (port_trainer.cpp, game/p1/trainer.cpp).
+            if (event.key.key == SDLK_F1 && !event.key.repeat && !text_active) PortTrainer::Request();
             if (event.key.key == SDLK_F7 && !event.key.repeat) {
                 auto& s = PortSettings::Get();
                 s.mouse_look = !s.mouse_look;

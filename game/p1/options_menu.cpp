@@ -188,8 +188,8 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
         static bool logged[THEORDER_MENU_PAGES] = {};
         if (!std::strcmp(function, "port_Count") && count && !logged[page]) {
             logged[page] = true;
-            static const char* const names[] = {"Video", "Controller", "Display"};
-            std::printf("Menu: the %s screen shows the port's %d settings\n", page < 3 ? names[page] : "?", count);
+            static const char* const names[] = {"Video", "Controller", "Display", "Trainer"};
+            std::printf("Menu: the %s screen shows the port's %d settings\n", page < 4 ? names[page] : "?", count);
             std::fflush(stdout);
         }
         if (!std::strcmp(function, "port_Count")) ReturnNumber(ret, count);
@@ -223,8 +223,8 @@ bool Answer(void* handler, const GfxValue* args, int argc, GfxValue* ret) {
     } else if (!std::strcmp(function, "db_SetInt")) {
         menu->set(page, row, Int(args, argc, 3));
         menu->save();
-        static const char* const pages[] = {"Video", "Controller", "Display"};
-        std::printf("Menu: %s > %s set to %s\n", page < 3 ? pages[page] : "?", menu->label(page, row),
+        static const char* const pages[] = {"Video", "Controller", "Display", "Trainer"};
+        std::printf("Menu: %s > %s set to %s\n", page < 4 ? pages[page] : "?", menu->label(page, row),
                     menu->choice(page, row, menu->get(page, row)));
         std::fflush(stdout);
         Link(handler, linked, menu->get(page, row) != 0, true, Arg(args, argc, 2), Arg(args, argc, 4));

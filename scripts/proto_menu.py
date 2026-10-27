@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 11        # of this script's output (part of the cache key)
+VERSION = 12        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -446,6 +446,14 @@ DISPLAY_INPUTS = (*PAUSE_SCREENS, *MAIN_SCREENS, HUB, MAIN, 'protodebug.gfx', 'p
 # the pause menu's Quit screen, which the PS4 game hides (patched when found, each on its own).
 QUIT_INPUTS = ('protomainmenu.gfx', 'protoquit.gfx')
 CONTROLS = 'protocontrols.gfx'
+# The trainer (game/p1/trainer.cpp): a screen of the pause menu with the port's page 3, made from
+# the pause Controller screen like the Display screen, registered as the developers' pause debug
+# screen (PROTO_PAUSE_DEBUG, which the PS4 game never opens) with the file of the promo code
+# screen (protopromocode.gfx, which nothing opens either).
+TRAINER = Page(3, 'Trainer', (), 'Proto_Profile_TargetToggleEnabled', 'mControllerOptions', 'mcControllerOverlay',
+               ('Proto_Profile_TargetToggleEnabled',), 'ControllerOptionsOverlay', 'tglInvertX')
+TRAINER_FILE = 'protopromocode.gfx'
+TRAINER_SOURCE = 'protopausecontroller.gfx'
 
 
 def main_pointer(data):
@@ -532,6 +540,7 @@ MARKERS = {
     'protomainmenu.gfx': (b'mcBtnQuit', b'GotoQuit', b'mcBtnSwitchProfile'),
     'protoquit.gfx': (b'QuitToDesktop', b'DetermineQuitOptions'),
     CONTROLS: (b'StdTypeWriter', b'protoPlainListButton', b'UpdateTypeWriter'),
+    TRAINER_FILE: (b'$PROMOCODE', b'CODE_LENGTH', b'mcEntry'),
     OVERLAY: (b'VideoOptionsOverlay', b'ControllerOptionsOverlay', b'tglResolution'),
 }
 
@@ -547,7 +556,7 @@ def identify(movie):
     return found[0] if len(found) == 1 else None
 
 
-def patch_all(movies, label):
+def patch_all(movies, label, trainer=None):
     """{name: patched movie} from {name: movie}: the Video and Controller rows, the overlay's
     toggles and, with `label` and every movie it needs, the Display screen."""
     out = {}
@@ -569,6 +578,14 @@ def patch_all(movies, label):
             out['.cursor'] = b'1'
         except (ValueError, StopIteration, IndexError):
             pass  # another build of protomain: no mouse cursor
+    if MAIN in out and TRAINER_SOURCE in movies and TRAINER_FILE in movies and trainer:
+        try:
+            screen = trainer_screen(movies[TRAINER_SOURCE], trainer)
+            out[MAIN] = main_trainer(out[MAIN])
+            out[TRAINER_FILE] = screen
+            out['.trainer'] = b'1'
+        except (ValueError, StopIteration, IndexError):
+            pass  # another build: no trainer
     if CONTROLS in movies:
         try:
             out[CONTROLS] = button_hit_boxes(movies[CONTROLS])
@@ -615,6 +632,84 @@ def main_menu_quit(data):
 def pause_quit(data):
     """protoquit.gfx (pause menu > Quit): Quit to desktop after Quit to main menu."""
     return on_pc(data, lambda v: '$QUITDESKTOP' in v, 'the Quit to desktop row', within=16)
+
+
+def trainer_label(language):
+    return 'ТРЕЙНЕР' if str(language) == '8' else 'TRAINER'
+
+
+def trainer_screen(data, label):
+    """The trainer's screen from the pause Controller screen's movie: its rows are the port's page
+    3, its one category the trainer (no Video, Audio, Controller tabs to switch to)."""
+    def rows(acts):
+        for i, a in enumerate(acts):
+            if is_push(a, exact=['mControllerOptions', 0, 'Array']) and acts[i + 1][1] == 0x40 \
+                    and acts[i + 2][1] in (0x3C, 0x1D):
+                lo = whole(acts[i + 2])[1]
+                last = next(k for k in range(i, len(acts)) if acts[k][1] == 0x96 and acts[k][4]
+                            and acts[k][4][0] == 'mConfirmParams')
+                return lo, acts[last][0], port_rows(TRAINER)
+        return None
+    data = edit_code(data, rows, 'the Controller rows')
+    rename = {'protopausecontroller': 'protopausetrainer', '$PAUSE_CONTROLLER': label,
+              'PauseControllerOptionSelection': 'PauseTrainerOptionSelection'}
+    data = replace_push(data, lambda a: is_push(a, 'protopausecontroller', 'InitializeOptions'),
+                        lambda v: [rename.get(x, x) if isinstance(x, str) else x for x in v], 'the screen\'s name')
+    data = replace_push(data, lambda a: is_push(a, 'PauseControllerOptionSelection'),
+                        lambda v: [rename.get(x, x) if isinstance(x, str) else x for x in v], 'the selection\'s name')
+    data = replace_push(data, lambda a: is_push(a, 'mCategoryNames', '$PAUSE_CONTROLLER', '$AUDIO', '$VIDEO'),
+                        lambda v: ['mCategoryNames', label, 1], 'the categories')
+    try:
+        data = replace_push(data, lambda a: is_push(a, exact=['mGamepadAvailable', True]),
+                            lambda v: ['mGamepadAvailable', False], 'the gamepad button')
+    except ValueError:
+        pass
+
+    def index(params):  # if (screenName === "protopausetrainer") return 0;
+        a = Asm()
+        a.push(params.get('screenName', Reg(1)), 'protopausetrainer'); a.op('StrictEquals', 'Not')
+        a.branch('If', 'skip'); a.push(0); a.op('Return'); a.label('skip')
+        return a.bytes()
+    data = insert_at_function(data, 'GetCategoryIndexFromScreenName', index)
+
+    def stay(params):  # one category: nothing to switch to
+        a = Asm()
+        a.push(UNDEF); a.op('Return')
+        return a.bytes()
+    return insert_at_function(data, 'OnCategoryChange', stay)
+
+
+def main_trainer(data):
+    """protomain.gfx: PROTO_PAUSE_DEBUG is the trainer's screen (its file protopromocode.swf), and
+    _root.PortTrainerPush / PortTrainerSwitch / PortTrainerBack (Invoked by game/p1/trainer.cpp)
+    open it over the pause menu, in place of another pause screen, or leave it."""
+    data = replace_push(data, lambda a: is_push(a, 'protodebug.swf', 'PROTO_PAUSE_DEBUG'),
+                        lambda v: ['protopromocode.swf' if x == 'protodebug.swf' else x for x in v],
+                        'the pause debug screen')
+
+    def call(method, screen=True):  # _global.managers.screen.<method>(_global.PROTO_PAUSE_DEBUG)
+        body = Asm()
+        if screen:
+            body.get('_global'); body.push('PROTO_PAUSE_DEBUG'); body.op('GetMember'); body.push(1)
+        else:
+            body.push(0)
+        body.get('_global'); body.push('managers'); body.op('GetMember'); body.push('screen'); body.op('GetMember')
+        body.push(method); body.op('CallMethod', 'Pop')
+        return body.bytes()
+
+    def define(acts):
+        for i, a in enumerate(acts):
+            if is_push(a, exact=['gMouseCursor', 'mMouseCursor']):
+                j = next(k for k in range(i, len(acts)) if acts[k][1] == 0x4F)
+                at = whole(acts[j])[1]
+                code = Asm()
+                for name, method, screen in (('PortTrainerPush', 'PushScreen', True),
+                                             ('PortTrainerSwitch', 'SwitchScreen', True),
+                                             ('PortTrainerBack', 'PopScreen', False)):
+                    code.push(name); code.function(call(method, screen)); code.op('SetVariable')
+                return at, at, code.bytes()
+        return None
+    return edit_code(data, define, 'the trainer\'s functions')
 
 
 def display_label(language):
@@ -981,7 +1076,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
     display_sources = [hud / n for n in DISPLAY_INPUTS]
-    quit_sources = [hud / n for n in (*QUIT_INPUTS, MAIN, CONTROLS)]
+    quit_sources = [hud / n for n in (*QUIT_INPUTS, MAIN, CONTROLS, TRAINER_FILE)]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
@@ -1009,7 +1104,8 @@ def generate(game, out, log=print, base_roots=(), language=None):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, *QUIT_INPUTS, CONTROLS, 'protopausegame.gfx', 'protogameoption.gfx']
+    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, *QUIT_INPUTS, CONTROLS, TRAINER_FILE, 'protopausegame.gfx',
+             'protogameoption.gfx']
 
     def clean():
         stamp.unlink(missing_ok=True)
@@ -1024,8 +1120,9 @@ def generate(game, out, log=print, base_roots=(), language=None):
                 movies.update({d.name: loose_movie(d) for d in display_sources})
             movies.update({q.name: loose_movie(q) for q in quit_sources if q.is_file() and q.name not in movies})
             target.mkdir(parents=True, exist_ok=True)
-            patched = patch_all(movies, label if display else None)
+            patched = patch_all(movies, label if display else None, trainer_label(language))
             cursor = patched.pop('.cursor', None)
+            trainer = patched.pop('.trainer', None)
             for name, data in patched.items():
                 (target / name.lower()).write_bytes(data)
         else:
@@ -1036,8 +1133,10 @@ def generate(game, out, log=print, base_roots=(), language=None):
                 clean()
                 return None
             display = all(n in found for n in DISPLAY_INPUTS)
-            patched = patch_all({n: places[0][2] for n, places in found.items()}, label if display else None)
+            patched = patch_all({n: places[0][2] for n, places in found.items()}, label if display else None,
+                                trainer_label(language))
             cursor = patched.pop('.cursor', None)
+            trainer = patched.pop('.trainer', None)
             per_archive = {}
             for name, data in patched.items():
                 for path, entry_at, _, packed in found[name]:
@@ -1055,6 +1154,8 @@ def generate(game, out, log=print, base_roots=(), language=None):
         f'({"loose files" if loose else "archive patches"})')
     log('Menu: the mouse in the menus, with the PC cursor' if cursor else
         'Menu: no mouse in the menus (protomain.gfx not found or not recognised)')
+    log('Menu: the trainer (F1, or hold the touchpad)' if trainer else
+        'Menu: no trainer (its screens were not found or not recognised)')
     quits = [n for n in QUIT_INPUTS if n in patched]
     log(f'Menu: quit to the desktop from {" and ".join({"protomainmenu.gfx": "the main menu", "protoquit.gfx": "the pause menu"}[n] for n in quits)}'
         if quits else 'Menu: no quit to the desktop (the main menu and quit screens were not found or not recognised)')

@@ -438,6 +438,8 @@ static void mouse_input(PadData *d) {
     theordergpu_mouse_take(&m);
     /* The mouse in the game's menus: the right button goes back (Circle), as on PC. */
     if (m.menu_back) { d->buttons|=BTN_CIRCLE; note_device(1); }
+    /* The trainer opening or closing the pause menu (gpu/shim/port_trainer.cpp). */
+    if (m.press_options) d->buttons|=BTN_OPTIONS;
     if (!m.captured) {
         mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; mouse_held=0;
         look_clear();
@@ -706,6 +708,20 @@ static void replay_sample(PadData *d) {
     d->left_x=s->axes[0]; d->left_y=s->axes[1]; d->right_x=s->axes[2]; d->right_y=s->axes[3];
     d->l2=s->l2; d->r2=s->r2;
 }
+/* PROTOTYPE's trainer: the touchpad held TRAINER_HOLD_US opens it (gpu/shim/port_trainer.cpp),
+ * once per hold. A short press is the game's as before. */
+enum { TRAINER_HOLD_US=700000 };
+static void trainer_hold(const PadData *d) {
+    static uint64_t since;
+    static int fired;
+    if (!(d->buttons & BTN_TOUCHPAD)) { since=0; fired=0; return; }
+    if (!since) since=d->timestamp ? d->timestamp : 1;
+    if (!fired && d->timestamp-since>=TRAINER_HOLD_US) {
+        fired=1;
+        puts("Runtime: pad: touchpad held: the trainer");
+        theordergpu_trainer_request();
+    }
+}
 /* After the menu or the text dialog closes, buttons still held (the Cross that accepted a
  * name) stay hidden until released: the game would take them as a new press. */
 static int hold_after_capture;
@@ -720,6 +736,7 @@ static void sample(PadData *d) {
     if (injected.buttons & BTN_R2) d->r2=255;
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
+    trainer_hold(d);
     play_click(d);
     /* Options and the touchpad change what the game shows (pause, Web of Intrigue): logged. */
     static uint32_t logged_before;

@@ -47,6 +47,7 @@ typedef struct {
     int captured;
     int wheel;
     int menu_back; /* the right button held over the game's menus (the mouse in the menus): back */
+    int press_options; /* the port presses Options (the trainer opens or closes the pause menu) */
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
 /* Gamepad options (theorder.ini, the port menu, the game's Controller screen, the launcher), read
@@ -68,7 +69,14 @@ int theordergpu_camera_forward(float *out, uint64_t *serial, uint64_t *ns);
  * game/p1/options_menu.cpp answers the screens' calls). Every row is a choice: `choices` texts,
  * the current one `get`, `set` applies one (live) and `reset` the default; `save` writes the
  * settings file. Texts are in the game's language. Called on the game's thread. */
-enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_DISPLAY = 2, THEORDER_MENU_PAGES = 3 };
+enum { THEORDER_MENU_VIDEO = 0, THEORDER_MENU_CONTROLLER = 1, THEORDER_MENU_DISPLAY = 2, THEORDER_MENU_TRAINER = 3,
+       THEORDER_MENU_PAGES = 4 };
+/* PROTOTYPE's trainer (page 3, its own screen in the pause menu, F1 or holding the touchpad;
+ * game/p1/trainer.cpp does what the rows say): two switches and two one-shot actions. */
+enum { THEORDER_TRAINER_GOD = 0, THEORDER_TRAINER_CRITICAL_MASS = 1, THEORDER_TRAINER_EP = 2,
+       THEORDER_TRAINER_UNLOCK = 3, THEORDER_TRAINER_ROWS = 4 };
+/* A request to open (or close) the trainer: F1 in the window, or the touchpad held (runtime_pad.c). */
+void theordergpu_trainer_request(void);
 /* The mouse as a pointer in the game's menus (gpu/shim/port_pointer.cpp, game/p1/menu_mouse.cpp):
  * active while the menus are up and the Mouse in menus setting is on; x, y: the place in the
  * game's frame (0..1); inside: over the game's picture; buttons: 1 left, 2 right, 4 middle;
@@ -104,6 +112,12 @@ typedef struct TheOrderGameMenu {
     int (*pointer_mode)(int mode);
     void (*pointer_take)(TheOrderPointer *out);
     int (*pointer_clicks)(void);
+    /* The trainer: requests to open it since the last call (F1, the touchpad held); the one-shot
+     * actions chosen since the last call (1 << THEORDER_TRAINER_EP, 1 << ..._UNLOCK); a press of
+     * Options for the game (opening and closing its pause menu). The switches are get(3, row). */
+    int (*trainer_open)(void);
+    unsigned (*trainer_actions)(void);
+    void (*press_options)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

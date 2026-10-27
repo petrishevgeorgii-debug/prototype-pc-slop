@@ -53,6 +53,7 @@ fix is applied in memory, and the port checks the executables against the untouc
   vibration on Alex's moves and powers (consuming, the whipfist, wall running, devastators, hits,
   landings, explosions) and in the menus, also in the game's own Options > Controller screen.
 - **Discord status** — "Playing PROTOTYPE" with the story mission and the time played.
+- **Trainer** — F1 (or hold the touchpad) opens a trainer screen in the game's pause menu: god mode, infinite critical mass, evolution points, all powers.
 - **Mouse in the menus** — point and click in the game's own menus with the PC version's cursor; right click goes back, left click skips movies.
 - **Keyboard and mouse** — a PC layout for PROTOTYPE's actions, remappable in the launcher, and
   the game's hints and tutorials show your keys instead of the PS4 buttons.
