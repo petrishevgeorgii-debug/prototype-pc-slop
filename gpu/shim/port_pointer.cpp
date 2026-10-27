@@ -104,6 +104,11 @@ void Release() {
     state.wheel = 0;
 }
 
+bool BackHeld() {
+    std::scoped_lock guard{lock};
+    return Wanted() && (state.buttons & 2u);
+}
+
 } // namespace PortPointer
 
 extern "C" int theordergpu_pointer_mode(int on) {

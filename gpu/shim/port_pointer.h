@@ -17,5 +17,8 @@ void Event(const SDL_Event& event, SDL_Window* window);
 
 /// The window: the pointer stopped (no buttons held, no wheel left).
 void Release();
+/// The right button is held while the mouse points in the game's menus: the pad's Circle (back),
+/// like the PC version's right click.
+bool BackHeld();
 
 } // namespace PortPointer

@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 8        # of this script's output (part of the cache key)
+VERSION = 9        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -444,6 +444,7 @@ DISPLAY_INPUTS = (*PAUSE_SCREENS, *MAIN_SCREENS, HUB, MAIN, 'protodebug.gfx', 'p
 # Quit to the desktop: the PC version's Quit button of the main menu and Quit to desktop row of
 # the pause menu's Quit screen, which the PS4 game hides (patched when found, each on its own).
 QUIT_INPUTS = ('protomainmenu.gfx', 'protoquit.gfx')
+CONTROLS = 'protocontrols.gfx'
 
 
 def main_pointer(data):
@@ -489,6 +490,58 @@ def main_pointer(data):
     return edit_code(data, follower, 'the PC cursor\'s place')
 
 
+def button_hit_boxes(data):
+    """protocontrols.gfx: the menus' buttons (protoButton: the main menu's, Extras', the
+    difficulty's...) only have their label to be pointed at, a text box twice as tall as a line,
+    so it covers the top of the next button down, and the one above is on top: pointing at
+    Options lit up Continue. The labels' boxes get the AutoSize flag: as tall as their text."""
+    start = movie_start(data)
+    top = tags(data, start, len(data))
+    button = None
+    for code, _, body, end in top:
+        if code == 56:  # ExportAssets
+            r, count = body + 2, struct.unpack_from('<H', data, body)[0]
+            for _ in range(count):
+                cid = struct.unpack_from('<H', data, r)[0]
+                name_end = data.index(b'\0', r + 2)
+                if data[r + 2:name_end] == b'protoButton':
+                    button = cid
+                r = name_end + 1
+    if button is None:
+        raise ValueError('no protoButton')
+
+    sprites = {struct.unpack_from('<H', data, body)[0]: (body + 4, end) for code, _, body, end in top if code == 39}
+
+    def placed(cid):
+        """The characters a sprite places."""
+        if cid not in sprites:
+            return set()
+        out = set()
+        for code, _, body, _ in tags(data, *sprites[cid]):
+            if code == 26 and data[body] & 0x02:  # PlaceObject2 with a character
+                out.add(struct.unpack_from('<H', data, body + 3)[0])
+            elif code == 70 and data[body] & 0x02:  # PlaceObject3
+                flags2, r = data[body + 1], body + 4
+                if flags2 & 0x08 or (flags2 & 0x10):  # a class name
+                    r = data.index(b'\0', r) + 1
+                out.add(struct.unpack_from('<H', data, r)[0])
+        return out
+
+    labels = {t for child in placed(button) for t in placed(child)}
+    out = bytearray(data)
+    done = 0
+    for code, _, body, end in top:
+        if code != 37 or struct.unpack_from('<H', data, body)[0] not in labels:
+            continue
+        nbits = data[body + 2] >> 3
+        flags = body + 2 + (5 + 4 * nbits + 7) // 8
+        out[flags + 1] |= 0x40  # AutoSize
+        done += 1
+    if not done:
+        raise ValueError('no protoButton labels')
+    return bytes(out)
+
+
 def patch_main(data):
     """protomain.gfx: the Display screens' files are the debug screens' (see above)."""
     for screen, (target, _) in NEW_SCREENS.items():
@@ -512,6 +565,7 @@ MARKERS = {
     'protodevmenu.gfx': (b'GotoMissionSelect', b'SELECT MISSION'),
     'protomainmenu.gfx': (b'mcBtnQuit', b'GotoQuit', b'mcBtnSwitchProfile'),
     'protoquit.gfx': (b'QuitToDesktop', b'DetermineQuitOptions'),
+    CONTROLS: (b'StdTypeWriter', b'protoPlainListButton', b'UpdateTypeWriter'),
     OVERLAY: (b'VideoOptionsOverlay', b'ControllerOptionsOverlay', b'tglResolution'),
 }
 
@@ -548,6 +602,11 @@ def patch_all(movies, label):
             out[MAIN] = main_pointer(out.get(MAIN) or movies[MAIN])
         except (ValueError, StopIteration, IndexError):
             pass  # another build of protomain: no mouse cursor
+    if CONTROLS in movies:
+        try:
+            out[CONTROLS] = button_hit_boxes(movies[CONTROLS])
+        except (ValueError, struct.error, IndexError):
+            pass  # another build: the buttons stay as they are
     for name in QUIT_INPUTS:
         if name in movies:
             try:
@@ -955,7 +1014,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     hud = Path(game) / HUD
     sources = [hud / n for n in (*SCREENS, OVERLAY)]
     display_sources = [hud / n for n in DISPLAY_INPUTS]
-    quit_sources = [hud / n for n in (*QUIT_INPUTS, MAIN)]
+    quit_sources = [hud / n for n in (*QUIT_INPUTS, MAIN, CONTROLS)]
     archives = sorted(p for p in (Path(game) / 'p1').glob('*.rcf') if p.is_file())
     loose = all(s.is_file() for s in sources)
     if not loose and not archives:
@@ -983,7 +1042,7 @@ def generate(game, out, log=print, base_roots=(), language=None):
     except (OSError, ValueError):
         pass
     target = out / str(HUD).replace('\\', '/').lower()
-    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, *QUIT_INPUTS, 'protopausegame.gfx', 'protogameoption.gfx']
+    names = [*SCREENS, OVERLAY, *DISPLAY_INPUTS, *QUIT_INPUTS, CONTROLS, 'protopausegame.gfx', 'protogameoption.gfx']
 
     def clean():
         stamp.unlink(missing_ok=True)

@@ -366,6 +366,13 @@ int main(void) {
     data=read_pad();
     assert(!(data.buttons & BTN_L1));
     runtime_set_chase_camera_input(NULL);
+    /* The mouse in the game's menus: the right button is Circle (back), the mouse not captured. */
+    test_mouse=(TheOrderMouse){.menu_back=1,.buttons=SDL_BUTTON_RMASK};
+    data=read_pad();
+    assert(data.buttons & BTN_CIRCLE);
+    test_mouse.menu_back=0;
+    data=read_pad();
+    assert(!(data.buttons & BTN_CIRCLE));
 
     SDL_Quit();
     unlink(path);

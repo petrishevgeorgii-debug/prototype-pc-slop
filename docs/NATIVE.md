@@ -137,7 +137,11 @@ render resolution, so the buffer's size kept the mouse in the top left of the sc
 (`gpu/shim/port_pointer.cpp`) maps the mouse onto the game's picture with the presenter's
 letterbox; protomain's PC cursor (`mMouseCursor`) follows `_xmouse`/`_ymouse` and asks
 `port_Pointer` whether to show, saying whether the menus are up (and, for the log, its frame:
-`enable` while a control is under it, and its place).
+`enable` while a control is under it, and its place). The right button, while the menus are up, is the pad's Circle
+(back; `TheOrderMouse::menu_back`, `src/runtime_pad.c`). The main menu's buttons (`protoButton` in
+`protocontrols.gfx`) are pointed at by their label alone, a text box 64 px tall for 29 px between
+buttons; the one above is on top, so its box took the next one's text. `scripts/proto_menu.py`
+sets the labels' AutoSize flag, so their boxes fit the text.
 
 ## Next
 

@@ -436,6 +436,8 @@ static uint32_t mouse_held; /* SDL_BUTTON_MASK bits and 1<<30 / 1<<31 for the wh
 static void mouse_input(PadData *d) {
     TheOrderMouse m;
     theordergpu_mouse_take(&m);
+    /* The mouse in the game's menus: the right button goes back (Circle), as on PC. */
+    if (m.menu_back) { d->buttons|=BTN_CIRCLE; note_device(1); }
     if (!m.captured) {
         mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; mouse_held=0;
         look_clear();

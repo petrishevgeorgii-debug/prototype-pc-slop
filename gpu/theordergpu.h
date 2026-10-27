@@ -46,6 +46,7 @@ typedef struct {
     uint32_t buttons;
     int captured;
     int wheel;
+    int menu_back; /* the right button held over the game's menus (the mouse in the menus): back */
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
 /* Gamepad options (theorder.ini, the port menu, the game's Controller screen, the launcher), read
