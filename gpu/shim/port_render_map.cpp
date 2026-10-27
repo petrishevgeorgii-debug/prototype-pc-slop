@@ -71,7 +71,6 @@ constexpr const char* kKindNames[kKinds] = {"world",  "roads", "Alex", "people",
                                             "sky",    "water", "effects", "unlit", "depth batches", "unnamed"};
 std::unordered_map<std::uint32_t, int> kinds; ///< template name hash -> Kind
 unsigned frame_kinds[kKinds];
-int last_kind = -1; ///< the last draw's kind (-1: not tagged), for the scene capture
 
 int KindOf(std::uint32_t slot, std::uint32_t hash) {
     if (slot == 5) return kBatched; // one call, many groups: the tag has the first group's template only
@@ -252,22 +251,6 @@ void TagEnd() {
     tag.on = false;
 }
 
-int CurrentKind() {
-    return last_kind;
-}
-
-const char* KindName(int kind) {
-    return kind >= 0 && kind < kKinds ? kKindNames[kind] : "?";
-}
-
-int KindCount() {
-    return kKinds;
-}
-
-bool Solid(int kind) {
-    return kind == kWorld || kind == kRoads || kind == kAlex || kind == kPeople || kind == kVehicles;
-}
-
 void Name(std::uint32_t hash, std::string_view name) {
     const auto end = name.find('\0');
     if (end != std::string_view::npos) name = name.substr(0, end);
@@ -277,7 +260,6 @@ void Name(std::uint32_t hash, std::string_view name) {
 }
 
 void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
-    last_kind = -1;
     if (stack.empty() || frame.empty()) {
         ++loose;
         return;
@@ -288,8 +270,7 @@ void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
         auto& c = CallerOf(entry);
         ++c.draws;
         Count(c.templates, tag.template_name);
-        last_kind = KindOf(tag.slot, tag.template_name);
-        ++frame_kinds[last_kind];
+        ++frame_kinds[KindOf(tag.slot, tag.template_name)];
         Count(c.vertex, Hash(vs_address));
     } else {
         ++entry.untagged;

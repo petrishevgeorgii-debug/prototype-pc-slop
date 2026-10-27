@@ -15,7 +15,6 @@
 #include "video_core/renderer_vulkan/vk_scene_resolution.h"
 #include "video_core/renderer_vulkan/vk_screen_reflections.h"
 #include "video_core/renderer_vulkan/vk_object_motion.h"
-#include "video_core/renderer_vulkan/vk_scene_capture.h"
 #include "video_core/renderer_vulkan/vk_draw_pipe.h"
 #include "video_core/renderer_vulkan/vk_draw_prep.h"
 #include "video_core/renderer_vulkan/vk_temporal_upscaler.h"
@@ -63,11 +62,6 @@ public:
     }
 
     void Draw(bool is_indexed, u32 index_offset = 0, const PreparedDraw* prepared = nullptr);
-
-    /// port: a flip parsed, on the command processor's thread (the scene capture's frames).
-    void OnFlipParsed() {
-        if (scene_capture) scene_capture->OnFlip();
-    }
 
     /// port: draw preparation workers (vk_draw_prep.h), fed and consumed by Liverpool.
     DrawPreparation& GetDrawPreparation() {
@@ -350,9 +344,6 @@ private:
     std::unique_ptr<SceneTargets> scene_targets;
     bool scene_started = false;
     std::unique_ptr<ObjectMotion> object_motion;
-    /// port: the scene capture (vk_scene_capture.h), towards ray tracing.
-    std::unique_ptr<SceneCapture> scene_capture;
-    u32 SceneCaptureParam(const GraphicsPipeline* pipeline, bool is_indexed, u32 index_offset);
     /// port: PROTOTYPE's water reflections (vk_screen_reflections.h).
     std::unique_ptr<ScreenReflections> screen_reflections;
     /// Before a draw is recorded: the water's snapshot and mask, and at the first
