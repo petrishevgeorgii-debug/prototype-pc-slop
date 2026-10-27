@@ -1,0 +1,131 @@
+# The renderer (PROTOTYPE)
+
+What the port knows about how PROTOTYPE draws a frame, mapped from the PS4 executable (its C++
+type information names the classes) and checked in the running game. The plan this serves: a
+native renderer, one step at a time, without the game ever drawing through anything but its own
+code until a step replaces it.
+
+1. **Map the draw path** (this document): the passes, the primitives, the shaders, down to the
+   GPU command each draw becomes. *In progress.*
+2. Tag every GPU draw with what it is (pass, primitive type, shader, material) as the port runs
+   it, so the GPU side can treat world geometry, characters, particles, the HUD differently.
+3. Replace parts of the frame with the port's own Vulkan passes (lighting, shadows), the game
+   still deciding what is drawn.
+4. Then ray tracing: the scene's geometry is known (2), so it can go into acceleration structures.
+
+## How a frame is drawn
+
+Pure3D (Radical's engine) draws a frame as a tree of **passes** (`pure3d::Pass`). Each pass's
+`Render(this, RenderParams*)` is its vtable slot 5 (`RootPass`'s does a little and goes on to
+0x2cdf30, presumably its children). The render schemes (`pure3d::ProtoRenderScheme`,
+`StandardRenderScheme`...) are likely what builds the tree: not checked yet.
+
+Passes draw **primitives** (`pure3d::Primitive`: `Mesh`, `Skin`, `GpuSkin`, `BillboardGroup`,
+`Sprite`, `Decal`, `ParticleSystem`, and the game's `proto::HUD`, `BloodSplatter`,
+`BulletTracer`, `LaserSight`), each with a **shader** (`pure3d::Shader`, a material: a
+`ps4Shader` program and its parameters).
+
+Everything ends in **`pure3d::ps4Context`** (Pure3D's PS4 device, `pure3d\pddi\src\ps4`), whose
+draw functions (vtable slots 4 and 5, 0x234900 and 0x234db0) set the state and write the draw
+packets into the current **Gnmx context**: its pointer is at **0x1277938**, and it starts with
+the `DrawCommandBuffer`:
+
+| offset | field |
+|---|---|
+| +0x00 | start |
+| +0x08 | end |
+| +0x10 | write pointer |
+| +0x18 | reserve callback `bool(buffer, dwords, user)`, called when the room left is too small |
+| +0x20 | its user data |
+| +0x28 | predication (bit 0, or-ed into packet headers) |
+
+The packets are written by the game's statically linked Gnm (0x969f20 writes `DRAW_INDEX_2`,
+0x96a040 `DRAW_INDEX_AUTO`; more draw packet writers follow it up to about 0x96a300). The game
+writes no debug markers of its own.
+
+## The render map (step 1, running)
+
+`game/p1/render_map.cpp` wraps every pass class's `Render` (below): a debug marker NOP with the
+class's name before it and one after (the packets `sceGnmInsertPushMarker` and
+`sceGnmInsertPopMarker` write), in the game's own command buffer. On the GPU side
+(`gpu/shim/port_render_map.cpp`, from `liverpool.cpp`) the draws between them are counted, and a
+frame's passes are logged in order with their draws (frames 300, 1200, then every 3600):
+
+    Render map: frame 300: 41 passes, 2310 draws (0 outside them)
+      RootPass > ProtoLitRootPass > ProtoZPass                412
+      ...
+
+`THEORDER_RENDER_MAP=1` turns it on (test builds of the launcher do). With
+`THEORDER_VK_MARKERS=1` too, the passes are named scopes in a RenderDoc capture.
+
+### The pass classes
+
+| class | vtable | Render |
+|---|---|---|
+| `engine::render::FrontEndPass` | `0x104ab60` | `0xc36f0` |
+| `engine::render::LetterboxRenderPass` | `0x10c5220` | `0x9d0ac0` |
+| `pure3d::BloomColourAdjustPass` | `0x1060e20` | `0x325bf0` |
+| `pure3d::BloomCompositePass` | `0x1060e80` | `0x3261b0` |
+| `pure3d::BloomPass` | `0x1060dc0` | `0x325610` |
+| `pure3d::BlurPass` | `0x1060f40` | `0x3268c0` |
+| `pure3d::CapturePass` | `0x1060fc0` | `0x328010` |
+| `pure3d::ColourMatrixPass` | `0x1061050` | `0x329120` |
+| `pure3d::CopyPass` | `0x10610d0` | `0x3293c0` |
+| `pure3d::Debug2DPass` | `0x1061150` | `0x329770` |
+| `pure3d::Debug3DPass` | `0x10611d0` | `0x329ce0` |
+| `pure3d::DebugPass` | `0x1062e70` | `0x3540d0` |
+| `pure3d::DepthOfFieldPass` | `0x10612b0` | `0x32b880` |
+| `pure3d::FastZPass` | `0x10618d0` | `0x334860` |
+| `pure3d::LetterBoxPass` | `0x1062f20` | `0x354640` |
+| `pure3d::OldWireframePass` | `0x1061770` | `0x333760` |
+| `pure3d::OpaquePass` | `0x10613e0` | `0x32eee0` |
+| `pure3d::OrthoNormalPass` | `0x1062fa0` | `0x354700` |
+| `pure3d::PrimColourPass` | `0x1063020` | `0x3549c0` |
+| `pure3d::ProtoAlphaTestZPass` | `0x10628f0` | `0x349a90` |
+| `pure3d::ProtoBloodPass` | `0x1061b50` | `0x3384c0` |
+| `pure3d::ProtoBloomColourAdjustPass` | `0x1061c30` | `0x3397e0` |
+| `pure3d::ProtoBloomCompositePass` | `0x1061c90` | `0x339de0` |
+| `pure3d::ProtoBloomPass` | `0x1061bd0` | `0x3391a0` |
+| `pure3d::ProtoCapturePass` | `0x1061d50` | `0x33a110` |
+| `pure3d::ProtoColourMatrixPass` | `0x1061df0` | `0x33b5f0` |
+| `pure3d::ProtoDecalPass` | `0x1061e70` | `0x33bab0` |
+| `pure3d::ProtoFBPass` | `0x1061ef0` | `0x33ccf0` |
+| `pure3d::ProtoFastZPass` | `0x1062890` | `0x349300` |
+| `pure3d::ProtoFogPass` | `0x1061ff0` | `0x33e2f0` |
+| `pure3d::ProtoHUDPass` | `0x1062070` | `0x33e8e0` |
+| `pure3d::ProtoLightDecalPass` | `0x10620f0` | `0x33ecf0` |
+| `pure3d::ProtoLitRootPass` | `0x10622f0` | `0x3427e0` |
+| `pure3d::ProtoMidgroundPass` | `0x1062170` | `0x33f300` |
+| `pure3d::ProtoMidgroundZPass` | `0x10627d0` | `0x348bd0` |
+| `pure3d::ProtoMotherPass` | `0x10621f0` | `0x3401e0` |
+| `pure3d::ProtoOpaquePass` | `0x1062270` | `0x3405b0` |
+| `pure3d::ProtoProperFadeBlurPass` | `0x1062c10` | `0x350e90` |
+| `pure3d::ProtoProperFadePass` | `0x1062c90` | `0x351800` |
+| `pure3d::ProtoRadialBlurPass` | `0x1062470` | `0x343e60` |
+| `pure3d::ProtoSSAOApplyPass` | `0x1062d10` | `0x352460` |
+| `pure3d::ProtoSSAOExtractionPass` | `0x1062d90` | `0x352a30` |
+| `pure3d::ProtoShadowPass` | `0x10624f0` | `0x344cd0` |
+| `pure3d::ProtoSlowZPass` | `0x1062830` | `0x348f00` |
+| `pure3d::ProtoThermalPass` | `0x1062570` | `0x3468f0` |
+| `pure3d::ProtoToneMapPass` | `0x1061f50` | `0x33d580` |
+| `pure3d::ProtoTranslucentPass` | `0x1062650` | `0x347390` |
+| `pure3d::ProtoTranslucentPassBase` | `0x10625f0` | `0x347390` |
+| `pure3d::ProtoWireframePass` | `0x10626f0` | `0x347b80` |
+| `pure3d::ProtoZPass` | `0x1062770` | `0x348560` |
+| `pure3d::RootPass` | `0x1061460` | `0x330380` |
+| `pure3d::ShadowDebugPass` | `0x10614e0` | `0x330550` |
+| `pure3d::ShadowPass` | `0x1061560` | `0x330ca0` |
+| `pure3d::SlowZPass` | `0x1061870` | `0x334690` |
+| `pure3d::ToneMapPass` | `0x10630a0` | `0x3555c0` |
+| `pure3d::TranslucentPass` | `0x10615e0` | `0x332310` |
+| `pure3d::ViewPass` | `0x1061660` | `0x332a00` |
+| `pure3d::WireframeOverlayPass` | `0x1061710` | `0x333610` |
+| `pure3d::ZPass` | `0x1061810` | `0x333fc0` |
+
+## Next
+
+- The frame's real pass order and draw counts (the first map from the game).
+- Primitives: their draw (`Mesh` vtable 0x105f920, `Skin` 0x105c1d0, `GpuSkin` 0x105f860...)
+  and the shader each uses, so draws can be tagged with what they are (step 2).
+- `ps4Context`'s state calls: render targets, the shader programs (`ps4Program`), constant
+  buffers (`ps4ShaderConstantBuffer`): where the camera, lights and materials reach the GPU.

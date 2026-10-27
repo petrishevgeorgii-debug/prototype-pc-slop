@@ -56,7 +56,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.0.5'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 8
+BETA = 9
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
@@ -265,6 +265,9 @@ def game_environment(values):
         'THEORDER_EBOOT': GAMES[values.get('game', 'p1')][1],
         'PYTHONIOENCODING': 'utf-8',
     })
+    # Test builds map the renderer's passes into the log (game/p1/render_map.cpp).
+    if BETA and 'THEORDER_RENDER_MAP' not in env:
+        env['THEORDER_RENDER_MAP'] = '1'
     return env
 
 
