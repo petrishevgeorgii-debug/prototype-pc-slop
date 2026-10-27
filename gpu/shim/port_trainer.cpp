@@ -18,7 +18,7 @@ namespace {
 std::atomic<int> requests{0};
 std::atomic<unsigned> actions{0};
 std::atomic<int> switches[THEORDER_TRAINER_ROWS];
-std::atomic<long long> options_until{0};
+std::atomic<long long> options_until{0}, pause_until{0};
 
 long long NowMs() {
     using namespace std::chrono;
@@ -66,6 +66,14 @@ void PressOptions() {
 
 bool OptionsHeld() {
     return NowMs() < options_until.load();
+}
+
+void PressPause() {
+    pause_until = NowMs() + 120;
+}
+
+bool PauseHeld() {
+    return NowMs() < pause_until.load();
 }
 
 } // namespace PortTrainer

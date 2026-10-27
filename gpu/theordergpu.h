@@ -47,7 +47,8 @@ typedef struct {
     int captured;
     int wheel;
     int menu_back; /* the right button held over the game's menus (the mouse in the menus): back */
-    int press_options; /* the port presses Options (the trainer opens or closes the pause menu) */
+    int press_options; /* the port presses Options (the trainer leaves the pause menu: ExitPause) */
+    int press_pause;   /* the port clicks the touchpad's right side (the trainer opens the pause menu) */
 } TheOrderMouse;
 void theordergpu_mouse_take(TheOrderMouse *out);
 /* Gamepad options (theorder.ini, the port menu, the game's Controller screen, the launcher), read
@@ -114,10 +115,12 @@ typedef struct TheOrderGameMenu {
     int (*pointer_clicks)(void);
     /* The trainer: requests to open it since the last call (F1, the touchpad held); the one-shot
      * actions chosen since the last call (1 << THEORDER_TRAINER_EP, 1 << ..._UNLOCK); a press of
-     * Options for the game (opening and closing its pause menu). The switches are get(3, row). */
+     * Options (in the pause menu: back to the game) and a click of the touchpad's right side (in
+     * the game: the pause menu, which opens on its map) for the game. The switches are get(3, row). */
     int (*trainer_open)(void);
     unsigned (*trainer_actions)(void);
     void (*press_options)(void);
+    void (*press_pause)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

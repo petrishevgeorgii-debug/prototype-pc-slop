@@ -10,4 +10,6 @@ int TakeRequests();
 unsigned TakeActions();
 void PressOptions();
 bool OptionsHeld();
+void PressPause();
+bool PauseHeld();
 } // namespace PortTrainer

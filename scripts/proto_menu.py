@@ -37,7 +37,7 @@ import zlib
 HUD = Path('p1') / 'art' / 'hud'
 OVERLAY = 'protooptionsoverlay.gfx'
 ROWS = 12          # toggles placed for the port's rows (the port uses as many as it has rows)
-VERSION = 12        # of this script's output (part of the cache key)
+VERSION = 13        # of this script's output (part of the cache key)
 
 
 class Page:
@@ -676,7 +676,34 @@ def trainer_screen(data, label):
         a = Asm()
         a.push(UNDEF); a.op('Return')
         return a.bytes()
-    return insert_at_function(data, 'OnCategoryChange', stay)
+    data = insert_at_function(data, 'OnCategoryChange', stay)
+
+    # Its rows act as they change (OnChange writes them: db_SetInt, the port's). Leaving it never
+    # asks to save, and nothing saves the profile: action() at once in PromptLeaveScreen, and
+    # SaveSettings (the Apply hint's) only goes on with what was next.
+    def leave(params):  # action(); return;
+        a = Asm()
+        a.push('mMaybeDirty', False); a.op('SetVariable')
+        reg = params.get('action')
+        a.push(0)
+        if reg is not None and int(reg):
+            a.push(reg)
+        else:
+            a.get('action')
+        a.push(UNDEF); a.op('CallMethod', 'Pop')
+        a.push(UNDEF); a.op('Return')
+        return a.bytes()
+    data = insert_at_function(data, 'PromptLeaveScreen', leave)
+
+    def no_save(params):  # mMaybeDirty = false; if (mNextAction) mNextAction(); return;
+        a = Asm()
+        a.push('mMaybeDirty', False); a.op('SetVariable')
+        a.get('mNextAction'); a.op('Not'); a.branch('If', 'done')
+        a.push(0); a.get('mNextAction'); a.push(UNDEF); a.op('CallMethod', 'Pop')
+        a.label('done')
+        a.push(UNDEF); a.op('Return')
+        return a.bytes()
+    return insert_at_function(data, 'SaveSettings', no_save)
 
 
 def main_trainer(data):

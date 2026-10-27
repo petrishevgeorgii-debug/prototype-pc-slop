@@ -172,6 +172,7 @@ enum class State { Idle, Asked, OpeningPause, Pushing, Open };
 State g_state = State::Idle;
 bool g_back_to_game = false; ///< leaving the trainer goes on to the game (not opened from PAUSEMENU)
 int g_wait = 0;
+bool g_left_web = false;
 
 bool Is(const char* screen, const char* name) {
     return std::strcmp(screen, name) == 0;
@@ -198,7 +199,7 @@ namespace Native {
 
 void TrainerFrame(void* movie, const char* screen) {
     const TheOrderGameMenu* menu = Native::Menu();
-    if (!menu || !menu->trainer_open || !menu->press_options || !Ready()) return;
+    if (!menu || !menu->trainer_open || !menu->press_options || !menu->press_pause || !Ready()) return;
     const bool trainer = Is(screen, kTrainer);
     if (menu->trainer_open()) {
         char text[96];
@@ -213,12 +214,14 @@ void TrainerFrame(void* movie, const char* screen) {
         } else {
             g_state = State::Asked;
             g_wait = 90; // the screen it was asked on may still be coming (NONE)
+            g_left_web = false;
         }
     }
     switch (g_state) {
     case State::Asked:
         if (Is(screen, "IGHUD")) {
-            menu->press_options();
+            // The PS4 game's pause menu is the touchpad's (Options is the Web of Intrigue).
+            menu->press_pause();
             g_state = State::OpeningPause;
             g_back_to_game = true;
             g_wait = 150;
@@ -232,7 +235,13 @@ void TrainerFrame(void* movie, const char* screen) {
             Opened(Invoke(movie, "PortTrainerSwitch"));
             g_state = State::Open;
             g_wait = 60;
-        } else if (!Passing(screen) || --g_wait <= 0) {
+        } else if (Is(screen, "WEBOFINTRIGUE") && !g_left_web) {
+            // The touchpad's left side (or Options) opens the Web of Intrigue: out of it first
+            // (Options), then the pause menu from the game.
+            menu->press_options();
+            g_left_web = true;
+            g_wait = 150;
+        } else if ((!Passing(screen) && !Is(screen, "WEBOFINTRIGUE")) || --g_wait <= 0) {
             char text[96];
             std::snprintf(text, sizeof(text), "not from here (screen %s)", *screen ? screen : "(none)");
             Log(text);
@@ -240,7 +249,7 @@ void TrainerFrame(void* movie, const char* screen) {
         }
         break;
     case State::OpeningPause:
-        if (Is(screen, kPause)) {
+        if (Is(screen, kPause) || PauseScreen(screen)) {
             g_state = State::Pushing;
             g_wait = 15; // the pause menu's own opening first
         } else if (--g_wait <= 0) {
@@ -251,10 +260,11 @@ void TrainerFrame(void* movie, const char* screen) {
     case State::Pushing:
         if (trainer) {
             g_state = State::Open;
-        } else if (!Is(screen, kPause)) {
+        } else if (!Is(screen, kPause) && !PauseScreen(screen)) {
             if (!Passing(screen)) g_state = State::Idle; // somewhere else meanwhile
         } else if (--g_wait <= 0) {
-            Opened(Invoke(movie, "PortTrainerPush"));
+            // On the pause menu: over it; on the map it opens with: in its place.
+            Opened(Invoke(movie, Is(screen, kPause) ? "PortTrainerPush" : "PortTrainerSwitch"));
             g_state = State::Open;
             g_wait = 60;
         }
@@ -268,7 +278,9 @@ void TrainerFrame(void* movie, const char* screen) {
         } else if (g_wait > 0) {
             --g_wait; // still on its way in
         } else {
-            if (Is(screen, kPause) && g_back_to_game) menu->press_options(); // left it: on to the game
+            // Left it for the pause menu, opened from the game: on to the game (Options is the
+            // pause menu's ExitPause).
+            if ((Is(screen, kPause) || PauseScreen(screen)) && g_back_to_game) menu->press_options();
             g_back_to_game = false;
             g_state = State::Idle;
         }

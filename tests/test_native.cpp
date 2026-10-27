@@ -177,9 +177,10 @@ int MenuPointerClicks() { const int n = g_clicks; g_clicks = 0; return n; }
 int MenuTrainerOpen() { return 0; }
 unsigned MenuTrainerActions() { return 0; }
 void MenuPressOptions() {}
+void MenuPressPause() {}
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
                                 MenuLinked, MenuQuit, MenuPointerMode, MenuPointerTake, MenuPointerClicks,
-                                MenuTrainerOpen, MenuTrainerActions, MenuPressOptions};
+                                MenuTrainerOpen, MenuTrainerActions, MenuPressOptions, MenuPressPause};
 
 struct Value {
     std::uint32_t type, pad;

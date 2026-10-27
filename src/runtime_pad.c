@@ -440,6 +440,7 @@ static void mouse_input(PadData *d) {
     if (m.menu_back) { d->buttons|=BTN_CIRCLE; note_device(1); }
     /* The trainer opening or closing the pause menu (gpu/shim/port_trainer.cpp). */
     if (m.press_options) d->buttons|=BTN_OPTIONS;
+    if (m.press_pause) d->buttons|=CLICK_RIGHT; /* played as a click (play_click) */
     if (!m.captured) {
         mouse_sample_us=0; mouse_stick_x=mouse_stick_y=0.0; mouse_held=0;
         look_clear();
@@ -710,7 +711,7 @@ static void replay_sample(PadData *d) {
 }
 /* PROTOTYPE's trainer: the touchpad held TRAINER_HOLD_US opens it (gpu/shim/port_trainer.cpp),
  * once per hold. A short press is the game's as before. */
-enum { TRAINER_HOLD_US=700000 };
+enum { TRAINER_HOLD_US=500000 };
 static void trainer_hold(const PadData *d) {
     static uint64_t since;
     static int fired;

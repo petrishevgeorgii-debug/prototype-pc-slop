@@ -31,6 +31,7 @@ extern "C" void theordergpu_mouse_take(TheOrderMouse* out) {
     mouse.wheel = 0;
     out->menu_back = PortPointer::BackHeld() ? 1 : 0;
     out->press_options = PortTrainer::OptionsHeld() ? 1 : 0;
+    out->press_pause = PortTrainer::PauseHeld() ? 1 : 0;
 }
 
 extern "C" void theordergpu_pad_options(TheOrderPadOptions* out) {

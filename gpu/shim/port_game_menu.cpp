@@ -484,9 +484,14 @@ void PressOptions() {
     PortTrainer::PressOptions();
 }
 
+void PressPause() {
+    PortTrainer::PressPause();
+}
+
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
-                                theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions};
+                                theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions,
+                                PressPause};
 
 } // namespace
 
