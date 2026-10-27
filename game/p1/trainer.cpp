@@ -94,10 +94,10 @@ const char kMortal[] = "local p=PLAYER_1 if p and go_IsValid(p) then go_SetDamag
 // Critical mass: Alex's health behaviour (proto::PrototypeHealthBehaviour) takes a SetHealth above
 // its normal top only scaled by criticalMassHealthGainFactor, so the game's own go_SetHealth
 // never filled it. The trainer asks with a marker value instead, which HealthMessage below (its
-// message handler, in the class's vtable) turns into the top itself: normal top + critical mass.
+// message handler, in the class's vtable) turns into the full bar: the top + critical mass.
 constexpr float kFillMarker = 98765.0f;
 const char kCriticalMass[] = "local p=PLAYER_1 if p and go_IsValid(p) then "
-                             "if go_GetHealth(p)<go_GetMaxHealth(p) then go_SetHealth(p,98765) end "
+                             "go_SetHealth(p,98765) "
                              "return go_GetHealth(p) end return -1";
 
 // proto::PrototypeHealthBehaviour: its vtable's message handler (slot 5 past the vtable's two
@@ -113,10 +113,12 @@ GUEST_ABI void HealthMessage(std::uint8_t* self, std::uint8_t* message) {
     std::memcpy(&kind, message + 0x0c, 2);
     std::memcpy(&value, message + 0x10, 4);
     if (type == 0x14 && kind == 0 && value == kFillMarker) { // SetHealth, from the trainer
-        float top, mass;
-        std::memcpy(&top, self + 0x1c, 4);  // the normal top (regenerates to)
+        // Topped up whenever below (a devastator spends it; the marker comes every few frames).
+        float health, top, mass;
+        std::memcpy(&health, self + 0x14, 4);
+        std::memcpy(&top, self + 0x1c, 4);  // the top (go_GetMaxHealth)
         std::memcpy(&mass, self + 0x1dc, 4); // critical mass on top of it
-        Guest::Call<void>(kSetHealth, self, top + mass);
+        if (health < top + mass) Guest::Call<void>(kSetHealth, self, top + mass);
         return;
     }
     Guest::Call<void>(kHealthMessage, self, message);
