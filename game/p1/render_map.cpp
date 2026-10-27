@@ -19,6 +19,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "game/guest.h"
@@ -167,9 +171,10 @@ std::uint32_t ImageOffset(std::uint64_t value) { // a vtable's place in the imag
     return value >= image && value - image < 0x2000000 ? std::uint32_t(value - image) : 0;
 }
 
-void Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
+/// Writes a draw tag; returns its template's name hash (0: none).
+std::uint32_t Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
     std::uint32_t* at = Room(10);
-    if (!at) return;
+    if (!at) return 0;
     // The group's shader (a ps4Shader) and its template (+0x10, a ps4ShaderTemplate: the kind of
     // shader, its name's hash at +0x3c0: h = h * 31 + c, letters lowercased, 0x9397f0).
     std::uint64_t shader = 0, shader_vtable = 0, shader_template = 0, template_vtable = 0;
@@ -196,6 +201,50 @@ void Tag(std::uint32_t slot, std::uint64_t caller, std::uint64_t group) {
     at[6] = ImageOffset(shader_vtable);
     at[7] = template_name;
     at[8] = at[9] = 0;
+    return template_name;
+}
+
+// Template names. A ps4ShaderTemplate keeps only its name's hash; its constructor (0x21daa0) gets
+// the hash from 0x9397f0 (the call at 0x21db06), which is wrapped here to remember the names. The
+// first draw tag with a template writes its name once into the command buffer (a NOP 0x6875d7a8:
+// the hash, the name), so the GPU side's log can say "char_ped" instead of 55a46486.
+constexpr std::uint64_t kTemplateNameHash = 0x21db06;
+constexpr std::uint32_t kTemplateName = 0x6875d7a8u;
+std::uint64_t g_name_hash = 0; ///< 0x9397f0(name, seed)
+std::mutex g_names_mutex;
+std::unordered_map<std::uint32_t, std::string> g_names; ///< template name hash -> name
+std::unordered_set<std::uint32_t> g_named;              ///< names written (the drawing thread's)
+
+GUEST_ABI std::uint32_t NameHash(const char* name, std::uint32_t seed) {
+    const std::uint32_t hash = Guest::Call<std::uint32_t>(g_name_hash, name, seed);
+    static const bool on = [] {
+        const char* env = std::getenv("THEORDER_RENDER_MAP");
+        return env && std::strcmp(env, "1") == 0;
+    }();
+    if (on && name && seed == 0) {
+        std::lock_guard lock(g_names_mutex);
+        g_names.emplace(hash, std::string(name, strnlen(name, 64)));
+    }
+    return hash;
+}
+
+void Name(std::uint32_t hash) {
+    if (!hash || !g_named.insert(hash).second) return;
+    std::string name;
+    {
+        std::lock_guard lock(g_names_mutex);
+        const auto it = g_names.find(hash);
+        if (it == g_names.end()) return;
+        name = it->second;
+    }
+    const std::uint32_t words = std::uint32_t(name.size() + 4) / 4; // NUL ended
+    std::uint32_t* at = Room(words + 3);
+    if (!at) return;
+    at[0] = Nop(words + 2);
+    at[1] = kTemplateName;
+    at[2] = hash;
+    std::memset(at + 3, 0, words * 4);
+    std::memcpy(at + 3, name.data(), name.size());
 }
 
 void TagEnd() {
@@ -219,7 +268,7 @@ GUEST_ABI std::uint64_t Draw(std::uint64_t context, std::uint64_t a, std::uint64
     } else if (a && std::uint32_t(b) != 0) {
         std::memcpy(&group, reinterpret_cast<const void*>(a), 8);
     }
-    Tag(std::uint32_t(kDrawSlots[I].slot), caller, group);
+    Name(Tag(std::uint32_t(kDrawSlots[I].slot), caller, group));
     const std::uint64_t result = reinterpret_cast<Original>(g_draw_original[I])(context, a, b, c, d, e);
     TagEnd();
     return result;
@@ -282,5 +331,11 @@ bool InstallRenderMap(std::uint64_t) {
 NATIVE_REPLACEMENT({"render map (Pure3D's passes as GPU markers)", "rendermap", Native::Kind::Custom, 0x234a82,
                     {0x48, 0x8d, 0x05, 0xaf, 0x2e, 0x04, 0x01, 0x4c, 0x8b, 0x38}, nullptr, nullptr,
                     &InstallRenderMap});
+
+// The names are kept only with the render map on (THEORDER_RENDER_MAP=1).
+NATIVE_REPLACEMENT({"render map's shader template names (ps4ShaderTemplate's name hash)", "rendermap",
+                    Native::Kind::CallSite, kTemplateNameHash,
+                    {0xe8, 0xe5, 0x7c, 0x71, 0x00, 0x89, 0x83, 0xc0, 0x03, 0x00, 0x00},
+                    reinterpret_cast<void*>(&NameHash), &g_name_hash});
 
 } // namespace

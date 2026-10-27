@@ -19,5 +19,8 @@ void Draw(std::uint64_t ps_address, std::uint64_t vs_address);
 void Tag(std::uint32_t slot, std::uint32_t caller, std::uint64_t shader, std::uint32_t shader_class,
          std::uint32_t template_name);
 void TagEnd();
+/// A shader template's name (game/p1/render_map.cpp writes each once): the log names templates and
+/// sums a frame's draws by kind (world, people, vehicles...) from them.
+void Name(std::uint32_t hash, std::string_view name);
 void Frame();
 } // namespace PortRenderMap

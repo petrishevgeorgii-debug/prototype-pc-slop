@@ -263,6 +263,35 @@ kind. Its constructor (`0x221aa0`) keeps only its name's hash (`+0x3c0`, from `0
 strings in the game's files. From b12 the tag carries that hash, and under each caller the log
 counts the draws per template and per vertex shader (by hash).
 
+The b12 log's 63 templates all match names in the game's shader file (`art/startup_shaders.p3d`)
+or the executable. In the open city:
+
+| pass (caller) | templates, by draws |
+|---|---|
+| Opaque > World | `zCBV2_env_color_noglass` 71, `zCBV2_env_color_glass` 60, `zCBV2_ao_building_glass_grime` 19, `zCBV2_ao_building_noglass` 18, `zCBV2_env_building_noglass` 10, `env_water` 8, `zCBV2_ao_billboard` 7, `zCBV2_env_sidewalk` 4 |
+| Opaque > Objects | `env_building_hive_noglass` 136, `env_vehicle_military` 53, `env_vehicle_colorvar` 46, `char_ped` 42, `env_car_tire_no_vertex_blend` 23, `env_building_hive` 22, `env_car_tire` 22 |
+| Opaque > Road | `zCBV2_env_road` |
+| Unlit | `env_alphacbv`, `unlit`; Sky: `env_sky_dynamic` |
+| Midground (distant city) | `env_midground_road`, `env_midground`, `env_midground_tree`, `env_midground_shoreline`, `env_midground_traffic` |
+| Decal | `decal_1c`, `env_decal`, `env_decal_nm`, `env_decal_bias_nm`, `env_hive_decal` |
+| Translucent | `env_vehicle_glass_fade` 43, `env_sign_alpha`, `env_haze`, `fx_cbvcolor_alpha` (mission markers) |
+| Shadows, Slow Z (one group at a time) | `env_alphacbv`, `env_vehicle_colorvar`, `env_car_tire`, `1c1a`, `1c1n`, `prop_damage_2nm_vtx`, `char_ped_lod`... |
+
+Others seen: `char_alex_cloth`, `char_alex_tendril`, `char_ped_colorvar`, `env_vehicle_lod`,
+`env_debris`, `env_lit_sign`, `env_litMarquee`, `env_videoticker`, `env_videoscreen1`,
+`env_bridgelights`, `env_hive_tower`, and generic ones named by their inputs (`1c`, `1cv`, `1c1n`,
+`1c1s1n1a`: colour, normal, specular, alpha maps). The depth-only batches (slot 5) carry the
+first group's template only, which says nothing about the rest.
+
+So the template is what a draw is: `char_alex*` Alex, `char_*` people, `env_vehicle*` and
+`env_car_tire*` vehicles, `*decal*` decals, `env_midground*` the distant city, the rest of
+`env_*`/`zCBV2_*` and the generic ones the world. From b13 the port learns the names itself (it
+wraps the hash call in the template's constructor, `0x21db06`, while the render map is on, and
+writes each name once into the command buffer, NOP `0x6875d7a8`), names the templates in the log,
+and sums each frame's draws by kind:
+
+    Render map: frame 7200 by kind: world 600, roads 12, people 42, vehicles 144, ...
+
 The primitive classes (vtables; slots 0-1 the destructors):
 
 | class | vtable |

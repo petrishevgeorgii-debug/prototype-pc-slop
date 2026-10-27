@@ -12,6 +12,7 @@
 // Called from the command processor's thread only.
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -61,11 +62,51 @@ void Count(std::vector<std::pair<std::uint64_t, unsigned>>& counts, std::uint64_
     counts.emplace_back(key, 1);
 }
 
-void Top(const char* what, std::vector<std::pair<std::uint64_t, unsigned>> counts, size_t most) {
+std::unordered_map<std::uint32_t, std::string> names; ///< shader template name hash -> name
+
+/// What a draw is, from its shader template's name (the kinds the log sums up per frame).
+enum Kind { kWorld, kRoads, kAlex, kPeople, kVehicles, kDecals, kDistant, kSky, kWater, kEffects, kUnlit, kBatched,
+            kUnnamed, kKinds };
+constexpr const char* kKindNames[kKinds] = {"world",  "roads", "Alex", "people", "vehicles", "decals", "distant city",
+                                            "sky",    "water", "effects", "unlit", "depth batches", "unnamed"};
+std::unordered_map<std::uint32_t, int> kinds; ///< template name hash -> Kind
+unsigned frame_kinds[kKinds];
+
+int KindOf(std::uint32_t slot, std::uint32_t hash) {
+    if (slot == 5) return kBatched; // one call, many groups: the tag has the first group's template only
+    const auto known = kinds.find(hash);
+    if (known != kinds.end()) return known->second;
+    const auto it = names.find(hash);
+    if (it == names.end()) return kUnnamed;
+    std::string n = it->second;
+    for (auto& c : n) c = char(std::tolower(static_cast<unsigned char>(c)));
+    if (n.rfind("zcbv2_", 0) == 0) n = n.substr(6);
+    auto has = [&](const char* t) { return n.find(t) != std::string::npos; };
+    int k = kWorld;
+    if (n.rfind("char_alex", 0) == 0) k = kAlex;
+    else if (n.rfind("char_", 0) == 0) k = kPeople;
+    else if (has("vehicle") || has("car_tire")) k = kVehicles;
+    else if (has("decal")) k = kDecals;
+    else if (n.rfind("env_midground", 0) == 0) k = kDistant;
+    else if (n.rfind("env_sky", 0) == 0) k = kSky;
+    else if (n.rfind("env_water", 0) == 0) k = kWater;
+    else if (n.rfind("fx_", 0) == 0 || n.rfind("pfx_", 0) == 0 || n.rfind("pp_", 0) == 0) k = kEffects;
+    else if (has("road") || has("sidewalk")) k = kRoads;
+    else if (n == "unlit") k = kUnlit;
+    kinds.emplace(hash, k);
+    return k;
+}
+
+void Top(const char* what, std::vector<std::pair<std::uint64_t, unsigned>> counts, size_t most, bool named = false) {
     std::sort(counts.begin(), counts.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
     std::printf("        %s (%zu):", what, counts.size());
     for (size_t i = 0; i < counts.size() && i < most; ++i) {
-        std::printf(" %llx x%u", static_cast<unsigned long long>(counts[i].first), counts[i].second);
+        const auto name = named ? names.find(std::uint32_t(counts[i].first)) : names.end();
+        if (name != names.end()) {
+            std::printf(" %s x%u", name->second.c_str(), counts[i].second);
+        } else {
+            std::printf(" %llx x%u", static_cast<unsigned long long>(counts[i].first), counts[i].second);
+        }
     }
     std::printf("%s\n", counts.size() > most ? " ..." : "");
 }
@@ -124,6 +165,15 @@ void Log() {
     unsigned draws = loose;
     for (const auto& e : frame) draws += e.draws;
     std::printf("Render map: frame %u: %zu passes, %u draws (%u outside them)\n", frames, frame.size(), draws, loose);
+    std::printf("Render map: frame %u by kind:", frames);
+    for (int k = 0; k < kKinds; ++k) {
+        if (frame_kinds[k]) std::printf(" %s %u,", kKindNames[k], frame_kinds[k]);
+    }
+    std::printf(" the rest %u (full-screen passes, HUD, menus)\n", draws - [] {
+        unsigned n = 0;
+        for (unsigned k : frame_kinds) n += k;
+        return n;
+    }());
     for (auto e : frame) {
         std::printf("  %-90s %u", e.path.c_str(), e.draws);
         if (!e.shaders.empty()) {
@@ -145,7 +195,7 @@ void Log() {
                 std::printf(" %x x%u", c.classes[i].first, c.classes[i].second);
             }
             std::printf("\n");
-            if (!c.templates.empty()) Top("templates", c.templates, 8);
+            if (!c.templates.empty()) Top(c.slot == 5 ? "template (of the first group)" : "templates", c.templates, 8, true);
             if (!c.vertex.empty()) Top("vertex shaders", c.vertex, 8);
         }
         if (e.untagged && !e.callers.empty()) std::printf("      untagged: %u draws\n", e.untagged);
@@ -201,6 +251,14 @@ void TagEnd() {
     tag.on = false;
 }
 
+void Name(std::uint32_t hash, std::string_view name) {
+    const auto end = name.find('\0');
+    if (end != std::string_view::npos) name = name.substr(0, end);
+    if (!hash || name.empty()) return;
+    names[hash] = std::string(name);
+    kinds.erase(hash);
+}
+
 void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
     if (stack.empty() || frame.empty()) {
         ++loose;
@@ -212,6 +270,7 @@ void Draw(std::uint64_t ps_address, std::uint64_t vs_address) {
         auto& c = CallerOf(entry);
         ++c.draws;
         Count(c.templates, tag.template_name);
+        ++frame_kinds[KindOf(tag.slot, tag.template_name)];
         Count(c.vertex, Hash(vs_address));
     } else {
         ++entry.untagged;
@@ -234,6 +293,7 @@ void Frame() {
     if (frames == 300 || frames == 1200 || frames == 2400 || frames % 3600 == 0) Log();
     frame.clear();
     loose = 0;
+    for (auto& k : frame_kinds) k = 0;
     if (stack.size() > 64) stack.clear(); // markers lost: start over
     if (!stack.empty()) frame.push_back({Path(), 0, true, {}, {}, 0});
     tag.on = false;
