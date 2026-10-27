@@ -180,6 +180,36 @@ frame's list began with them, unclosed, and then the whole frame again with the 
 does for a full buffer: the start of the draw buffer +0x108, of the other two +0x110 and +0x118,
 the kept ranges at +0x2b8 to none), so the last submit sends the rest of the frame only: about
 1870 fewer draws a frame in the city, of 5100. `THEORDER_NATIVE=-framesubmit` leaves it out.
+Checked in b10: the frame's list is one tree, every pass closed, and the frame stats' draws per
+frame in the city went from 3300-6150 (b9) to 1650-3550, with nothing missing on screen.
+
+### The pixel shaders (b10, frame 7200)
+
+The most used per part, by the hash shader mods are named after (`mods\<hash>_p0.frag`):
+
+| part | draws | shaders | most used |
+|---|---|---|---|
+| Shadows | 919 | 6 | `e5684a4c` (792), `8aaeb600` (75) |
+| Fast Z | 729 | 1 | `e5684a4c` |
+| Slow Z | 91 | 6 | `8aaeb600` (60) |
+| Midground Z | 26 | 2 | `e5684a4c` (22) |
+| SSAO: Linearize Z, Calc, Blur X/Y | 1 each | | `1f51c54f`, `f6c8b098`, `5e160f08` |
+| Decal | 95 | 4 | `3faccb42` (52), `c644fc6a` (38) |
+| Opaque: Unlit | 63 | 4 | `3013c54` (60) |
+| Opaque: World | 316 | 18 | `e3e8f4d` (115), `e9490c95` (92) |
+| Opaque: Objects | 433 | 29 | `9c16da53` (142), `6afa801b` (37) |
+| Sky | 1 | 1 | `f5131314` |
+| Midground (distant city) | 26 | 3 | `68fe1d0f` (13) |
+| SSAO Apply | 1 | 1 | `bb27e350` |
+| Translucent | 129 | 18 | `d497baf1` (28), `819705e3` (27), `4cfd3a02` (26) |
+| Particles | 3 | 1 | `f7814d18` |
+| Radial blur, depth of field, bloom, distortion | 1-4 each | | `1b837996`, `d9caa112`... |
+| Front End (Scaleform) | 108 | 4 | `9a490302` (75) |
+
+`e5684a4c` is the depth-only shader (shadow maps and the depth pre-pass), `8aaeb600` its
+alpha-tested version; the shader mods in the port's `mods` folder change these two, the SSAO
+(`f6c8b098`) and the sky (`f5131314`). The world and objects are the lit materials: about 50
+shaders between them.
 
 ## Next
 
