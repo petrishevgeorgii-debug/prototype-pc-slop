@@ -15,7 +15,7 @@
 namespace PortTrainer {
 namespace {
 
-std::atomic<int> requests{0};
+std::atomic<int> requests{0}, photo_requests{0};
 std::atomic<unsigned> actions{0};
 std::atomic<int> switches[THEORDER_TRAINER_ROWS];
 std::atomic<long long> options_until{0}, pause_until{0};
@@ -50,6 +50,14 @@ int TakeRequests() {
     return requests.exchange(0);
 }
 
+void PhotoRequest() {
+    ++photo_requests;
+}
+
+int TakePhotoRequests() {
+    return photo_requests.exchange(0);
+}
+
 unsigned TakeActions() {
     const unsigned a = actions.exchange(0);
     if (a) {
@@ -80,4 +88,8 @@ bool PauseHeld() {
 
 extern "C" void theordergpu_trainer_request(void) {
     PortTrainer::Request();
+}
+
+extern "C" void theordergpu_photo_request(void) {
+    PortTrainer::PhotoRequest();
 }

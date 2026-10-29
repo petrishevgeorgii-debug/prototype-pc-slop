@@ -28,6 +28,7 @@
 
 #include "game/guest.h"
 #include "game/native_registry.h"
+#include "game/p1/photo_mode.h"
 #include "game/p1/trainer.h"
 
 namespace {
@@ -170,6 +171,7 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
         std::fflush(stdout);
     }
     Native::TrainerFrame(movie, screen);
+    Native::PhotoFrame(movie, screen);
     const bool up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE");
     const bool shown = menu->pointer_mode(up ? 1 : 0) != 0;
     static int was_shown = -1;

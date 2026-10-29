@@ -14,6 +14,7 @@ static TheOrderMouse test_mouse;
 void theordergpu_mouse_take(TheOrderMouse *out) { *out=test_mouse; test_mouse.dx=test_mouse.dy=0; test_mouse.wheel=0; }
 static int test_trainer_requests;
 void theordergpu_trainer_request(void) { ++test_trainer_requests; }
+void theordergpu_photo_request(void) {}
 static TheOrderPadOptions test_options={100,1,1,1,0,0};
 void theordergpu_pad_options(TheOrderPadOptions *out) { *out=test_options; }
 /* What the virtual controller was asked for. */
