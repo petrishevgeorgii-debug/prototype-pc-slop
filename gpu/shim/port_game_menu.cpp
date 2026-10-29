@@ -488,14 +488,10 @@ void PressPause() {
     PortTrainer::PressPause();
 }
 
-int PhotoOpen() {
-    return PortTrainer::TakePhotoRequests();
-}
-
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
                                 theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions,
-                                PressPause, PhotoOpen};
+                                PressPause};
 
 } // namespace
 

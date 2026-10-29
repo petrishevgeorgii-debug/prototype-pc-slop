@@ -11,7 +11,6 @@ void theordergpu_pad_options(TheOrderPadOptions *out) { out->vibration=100; out-
 void theordergpu_mouse_take(TheOrderMouse *out) { memset(out,0,sizeof(*out)); }
 static int test_trainer_requests;
 void theordergpu_trainer_request(void) { ++test_trainer_requests; }
-void theordergpu_photo_request(void) {}
 uintptr_t runtime_lookup(const RuntimeExport *table, size_t count, const char *name) {
     (void)table; (void)count; (void)name;
     return 0;

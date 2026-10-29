@@ -78,9 +78,6 @@ enum { THEORDER_TRAINER_GOD = 0, THEORDER_TRAINER_CRITICAL_MASS = 1, THEORDER_TR
        THEORDER_TRAINER_UNLOCK = 3, THEORDER_TRAINER_ROWS = 4 };
 /* A request to open (or close) the trainer: F1 in the window, or the touchpad held (runtime_pad.c). */
 void theordergpu_trainer_request(void);
-/* A request to open (or close) photo mode: F2 in the window, or L3 and R3 pressed together
- * (runtime_pad.c); game/p1/photo_mode.cpp does the rest. */
-void theordergpu_photo_request(void);
 /* The mouse as a pointer in the game's menus (gpu/shim/port_pointer.cpp, game/p1/menu_mouse.cpp):
  * active while the menus are up and the Mouse in menus setting is on; x, y: the place in the
  * game's frame (0..1); inside: over the game's picture; buttons: 1 left, 2 right, 4 middle;
@@ -124,8 +121,6 @@ typedef struct TheOrderGameMenu {
     unsigned (*trainer_actions)(void);
     void (*press_options)(void);
     void (*press_pause)(void);
-    /* Photo mode: requests to open or close it since the last call (F2, L3 + R3). */
-    int (*photo_open)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */

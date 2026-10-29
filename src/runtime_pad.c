@@ -723,17 +723,6 @@ static void trainer_hold(const PadData *d) {
         theordergpu_trainer_request();
     }
 }
-/* Photo mode: L3 and R3 pressed together (the second of them going down) opens or closes it
- * (gpu/shim/port_trainer.cpp, game/p1/photo_mode.cpp). */
-static void photo_combo(const PadData *d) {
-    static int both;
-    const int now=(d->buttons & (BTN_L3|BTN_R3))==(BTN_L3|BTN_R3);
-    if (now && !both) {
-        puts("Runtime: pad: L3 + R3: photo mode");
-        theordergpu_photo_request();
-    }
-    both=now;
-}
 /* After the menu or the text dialog closes, buttons still held (the Cross that accepted a
  * name) stay hidden until released: the game would take them as a new press. */
 static int hold_after_capture;
@@ -749,7 +738,6 @@ static void sample(PadData *d) {
     uint8_t *axes[4]={&d->left_x,&d->left_y,&d->right_x,&d->right_y};
     for (int i=0;i<4;++i) if (injected.stick[i]>=0) *axes[i]=(uint8_t)injected.stick[i];
     trainer_hold(d);
-    photo_combo(d);
     play_click(d);
     /* Options and the touchpad change what the game shows (pause, Web of Intrigue): logged. */
     static uint32_t logged_before;

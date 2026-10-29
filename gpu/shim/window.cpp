@@ -277,8 +277,6 @@ bool WindowSDL::PollEvents() {
         case SDL_EVENT_KEY_DOWN:
             // F1: PROTOTYPE's trainer (port_trainer.cpp, game/p1/trainer.cpp).
             if (event.key.key == SDLK_F1 && !event.key.repeat && !text_active) PortTrainer::Request();
-            // F2: photo mode (game/p1/photo_mode.cpp).
-            if (event.key.key == SDLK_F2 && !event.key.repeat && !text_active) PortTrainer::PhotoRequest();
             if (event.key.key == SDLK_F7 && !event.key.repeat) {
                 auto& s = PortSettings::Get();
                 s.mouse_look = !s.mouse_look;

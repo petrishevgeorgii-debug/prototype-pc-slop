@@ -190,28 +190,6 @@ replaced by one that calls it and then moves the submission start to where it en
 step for a full command buffer, `0x921101`). Group `framesubmit`. Details in
 [RENDERER.md](RENDERER.md).
 
-## Photo mode (`game/p1/photo_mode.cpp`, in progress for 1.1)
-
-F2 in the window, or L3 and R3 pressed together, opens it straight from the game (no pause menu);
-again closes it. The plan: a screen of the game's own menus (made like the Display screen and the
-trainer, `scripts/proto_menu.py`) over the frozen game, a free camera, the look rows (filters,
-exposure, depth of field) and a screenshot without the menu.
-
-What the game has for it:
-
-- **Hide HUD**: `fe_ToggleHideHUDOption` (`0x1bd70`) flips the byte at `0x122f5c4`; the HUD's
-  elements ask `0x1c060` (16 callers), which also honours the `-HideHUD` switch.
-- **Time**: `go_SlowMotion` (`0x68ba60`) sets the time scale at `[+0x44]` of the clock
-  (`0xbc00` returns `[0x122c618]`).
-- **Cameras**: the CameraManager (`[0x135c5f0]`) keeps the camera director at `+0x18`: its mode
-  at `+0x34` (8 the game's cameras, 2 the debug camera), the developers' debug camera at `+0x70`
-  and the switch to it at `+0x7cd` (`cm_EnableDebugCamera`, `0x70d160`). The director's update
-  (`0x107a92`) turns the debug camera on (its vtable slot 9) when the switch changes. The retail
-  game never makes it: `engine::camera::DebugCamera`'s constructor (`0x103f10`) has no caller.
-
-Step 1 (1.1 b1) hides the HUD and nearly stops the clock (0.001) and logs the director's state
-(`Photo mode:` lines).
-
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

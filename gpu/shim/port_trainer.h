@@ -7,8 +7,6 @@ void Request();
 int Get(int row);
 void Set(int row, int index);
 int TakeRequests();
-void PhotoRequest();
-int TakePhotoRequests();
 unsigned TakeActions();
 void PressOptions();
 bool OptionsHeld();
