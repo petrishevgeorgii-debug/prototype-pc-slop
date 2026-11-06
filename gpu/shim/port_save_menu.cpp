@@ -19,7 +19,7 @@ State state = State::Idle;
 TheOrderSaveMenu pending{};
 int result = -2;
 std::chrono::steady_clock::time_point asked;
-std::vector<std::string> row_names, row_details;
+std::vector<std::string> row_names, row_details, row_folders;
 
 /// "Title\nSubtitle\nYYYY-MM-DD HH:MM" (runtime_services.c's save_label) into a row.
 void Row(const std::string& item, TheOrderSaveRow& row) {
@@ -46,10 +46,12 @@ void Row(const std::string& item, TheOrderSaveRow& row) {
 
 } // namespace
 
-void Rows(const std::vector<std::string>& names, const std::vector<std::string>& details) {
+void Rows(const std::vector<std::string>& names, const std::vector<std::string>& details,
+          const std::vector<std::string>& folders) {
     std::scoped_lock lock{mutex};
     row_names = names;
     row_details = details;
+    row_folders = folders;
 }
 
 bool Begin(const std::string& title, const std::vector<std::string>& items) {
@@ -73,10 +75,13 @@ bool Begin(const std::string& title, const std::vector<std::string>& items) {
             std::snprintf(row.name, sizeof(row.name), "%s", row_names[save].c_str());
         if (save < row_details.size())
             std::snprintf(row.detail, sizeof(row.detail), "%s", row_details[save].c_str());
+        if (save < row_folders.size())
+            std::snprintf(row.folder, sizeof(row.folder), "%s", row_folders[save].c_str());
         ++pending.count;
     }
     row_names.clear();
     row_details.clear();
+    row_folders.clear();
     state = State::Waiting;
     result = -2;
     asked = std::chrono::steady_clock::now();

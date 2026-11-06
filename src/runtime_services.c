@@ -318,7 +318,7 @@ static struct {
     char dirs[32][32];
     int dir_count, has_new, choosing;
 } save_dialog;
-static char save_labels[33][200], save_icons[33][720], save_names[32][129], save_details[32][129];
+static char save_labels[33][200], save_icons[33][720], save_names[32][129], save_details[32][129], save_folders[32][700];
 static void save_label(char *out, size_t size, const char *dir) {
     unsigned char param[RUNTIME_SAVE_PARAM_SIZE];
     if (runtime_savedata_param(USER_ID,dir,param)) { snprintf(out,size,"%s",dir); return; }
@@ -350,7 +350,7 @@ static ABI int32_t save_open(const unsigned char *p) {
         save_dialog.has_new=new_item!=NULL;
     }
     if (save_dialog.mode!=SAVE_MODE_LIST) return dialog_open_mode(2,p,52,5);
-    const char *labels[33], *icons[33], *names[32], *details[32]; int n=0;
+    const char *labels[33], *icons[33], *names[32], *details[32], *folders[32]; int n=0;
     if (save_dialog.has_new) { snprintf(save_labels[n],sizeof(save_labels[n]),"New save"); labels[n]=save_labels[n]; icons[n]=NULL; ++n; }
     for (int i=0;i<save_dialog.dir_count;++i) {
         save_label(save_labels[n],sizeof(save_labels[n]),save_dialog.dirs[i]); labels[n]=save_labels[n];
@@ -362,14 +362,15 @@ static ABI int32_t save_open(const unsigned char *p) {
                 snprintf(save_names[i],sizeof(save_names[i]),"%.128s",sub[0] ? sub : (const char *)param);
                 snprintf(save_details[i],sizeof(save_details[i]),"%.128s",(const char *)param+256);
             }
-            names[i]=save_names[i]; details[i]=save_details[i];
+            if (runtime_savedata_dir(USER_ID,save_dialog.dirs[i],save_folders[i],sizeof(save_folders[i]))) save_folders[i][0]=0;
+            names[i]=save_names[i]; details[i]=save_details[i]; folders[i]=save_folders[i];
         }
         icons[n]=runtime_savedata_icon(USER_ID,save_dialog.dirs[i],save_icons[n],sizeof(save_icons[n])) ? NULL : save_icons[n];
         ++n;
     }
     uint32_t type; memcpy(&type,p+56,4);
     const char *title=type==1 ? "Save game" : type==2 ? "Load game" : "Delete save";
-    theordergpu_choice_rows(names,details,save_dialog.dir_count);
+    theordergpu_choice_rows(names,details,folders,save_dialog.dir_count);
     if (!n || !theordergpu_choice_begin(title,labels,icons,n,0)) {
         printf("Runtime: SaveDataDialog list (%s): %s\n",title,n ? "no window, cancelled" : "no saves, cancelled");
         save_dialog.result=SAVE_RESULT_CANCELED;

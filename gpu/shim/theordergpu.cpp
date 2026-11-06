@@ -405,13 +405,15 @@ static std::vector<std::string> g_choice_items, g_choice_images;
 static std::string g_choice_title;
 static int g_choice_focus = 0;
 
-extern "C" void theordergpu_choice_rows(const char *const *names, const char *const *details, int count) {
-  std::vector<std::string> n, d;
+extern "C" void theordergpu_choice_rows(const char *const *names, const char *const *details,
+                                        const char *const *folders, int count) {
+  std::vector<std::string> n, d, f;
   for (int i = 0; i < count; ++i) {
     n.emplace_back(names && names[i] ? names[i] : "");
     d.emplace_back(details && details[i] ? details[i] : "");
+    f.emplace_back(folders && folders[i] ? folders[i] : "");
   }
-  PortSaveMenu::Rows(n, d);
+  PortSaveMenu::Rows(n, d, f);
 }
 
 extern "C" int theordergpu_choice_begin(const char *title, const char *const *items,

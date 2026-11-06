@@ -261,6 +261,12 @@ wide strings copy `2 * length` bytes), so b12 hands it UTF-16. As on PC, a row's
 subtitle (`MISSION( 3 )`) and its detail the difficulty (the param's detail), which
 `theordergpu_choice_rows` passes from `save_open` next to the overlay's labels.
 
+A row's picture is `GetSelectionIcon`, a frame of `slotImage` (protolistsaveimages.gfx): frame 1
+is the [PROTOTYPE] card, frames 2-33 one per mission, labelled with its id (`e01m01`...). The PC
+code that chose it is gone from the PS4 build (the setters `0xe8ed0` / `0xe8fa0` have no callers),
+but the game's save file keeps the mission id at `0x524`, so b13 reads it from the save's folder
+and shows that mission's frame.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

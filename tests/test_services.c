@@ -12,7 +12,8 @@ int64_t runtime_file_close(int fd) { (void)fd; return 0; }
 static int choice_next=-1;
 int theordergpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus) { (void)title; (void)items; (void)images; (void)focus; return count>0; }
 int theordergpu_choice_poll(void) { return choice_next; }
-void theordergpu_choice_rows(const char *const *names, const char *const *details, int count) { (void)names; (void)details; (void)count; }
+void theordergpu_choice_rows(const char *const *names, const char *const *details, const char *const *folders, int count) { (void)names; (void)details; (void)folders; (void)count; }
+int runtime_savedata_dir(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 int runtime_savedata_param(int32_t user, const char *dir, void *param) { (void)user; (void)dir; (void)param; return -1; }
 int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size) { (void)user; (void)dir; (void)out; (void)size; return -1; }
 

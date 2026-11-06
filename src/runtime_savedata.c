@@ -129,6 +129,14 @@ int runtime_savedata_icon(int32_t user, const char *dir, char *out, size_t size)
     snprintf(out,size,"%s/%s.sce_sys/icon0.png",base,dir);
     return 0;
 }
+/* Host path of a save's folder (the files the game wrote); 0 when named. */
+int runtime_savedata_dir(int32_t user, const char *dir, char *out, size_t size) {
+    if (!valid_name(dir,32)) return -1;
+    char base[600];
+    root(user,NULL,base,sizeof(base));
+    snprintf(out,size,"%s/%s",base,dir);
+    return 0;
+}
 static ABI int32_t save_initialize(const void *param) { (void)param; initialized=1; return 0; }
 static ABI int32_t save_terminate(void) {
     if (!initialized) return ERR_NOT_INITIALIZED;

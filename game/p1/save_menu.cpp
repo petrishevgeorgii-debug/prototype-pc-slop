@@ -12,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iterator>
 
 #include "game/guest.h"
@@ -63,6 +65,31 @@ const char16_t* Wide(const char* text, char16_t* out, std::size_t size) {
     }
     out[n] = 0;
     return out;
+}
+
+// The save pictures (protolistsaveimages.gfx, slotImage): frame 1 is the [PROTOTYPE] card, then
+// one per mission, labelled with the mission's id. The PC set a row's icon to its mission's frame.
+constexpr const char* kPictures[] = {
+    "none",   "e01m01", "e01m02", "e02m01", "e02m02", "e02m05", "e03m01", "e03m02", "e03m03",
+    "e04m01", "e04m02", "e04m03", "e04m04", "e04m05", "e05m01", "e05m02", "e05m03", "e06m01",
+    "e06m02", "e06m03", "e06m04", "e06m05", "e06m06", "e07m01", "e07m02", "e07m04", "e08m02",
+    "e08m03", "e08m04", "e09m01", "e09m03", "e10m04", "e11m01"};
+constexpr long kMissionAt = 0x524; ///< the save's mission id ("e03m02") in the game's save file
+
+/// The picture frame of a save's mission, read from the save the game wrote; 1 (the card) if unknown.
+int Picture(const char* folder) {
+    if (!folder || !*folder) return 1;
+    std::error_code error;
+    const std::filesystem::path path{std::u8string(reinterpret_cast<const char8_t*>(folder))};
+    for (const auto& entry : std::filesystem::directory_iterator(path, error)) {
+        if (!entry.is_regular_file(error)) continue;
+        std::ifstream file(entry.path(), std::ios::binary);
+        char id[7] = {};
+        if (!file.seekg(kMissionAt) || !file.read(id, 6)) continue;
+        for (int frame = 1; frame < int(std::size(kPictures)); ++frame)
+            if (std::strcmp(id, kPictures[frame]) == 0) return frame + 1;
+    }
+    return 1;
 }
 
 bool Matches(std::uint64_t at, std::initializer_list<std::uint8_t> bytes) {
@@ -118,7 +145,7 @@ void Show(std::uint8_t* dialog, void* movie) {
                                 : Date{std::uint16_t(r.year), std::uint8_t(r.month), std::uint8_t(r.day),
                                        std::uint8_t(r.hour), std::uint8_t(r.minute)};
         g_dates_of[i] = &g_dates[i];
-        g_icons[i] = 1;
+        g_icons[i] = Picture(r.folder);
     }
     if (g_menu.has_new) {
         // storage.gfx takes the last row for the new slot when its name is the game's text for
