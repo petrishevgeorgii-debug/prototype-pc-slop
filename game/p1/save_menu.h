@@ -4,5 +4,5 @@
 
 namespace Native {
 /// Every frame of protomain (menu_mouse.cpp), on the thread that runs the game's menus.
-void SaveMenuFrame();
+void SaveMenuFrame(void* movie);
 } // namespace Native

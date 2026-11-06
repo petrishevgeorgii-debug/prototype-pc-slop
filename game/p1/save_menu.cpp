@@ -21,6 +21,7 @@ namespace {
 
 constexpr std::uint64_t kDialog = 0x126dea0; ///< engine::StorageManager's dialog (0x98 bytes)
 constexpr std::uint64_t kButtons = 0xe9080, kShow = 0xe8320, kShown = 0xe8350;
+constexpr std::uint64_t kInvoke = 0x4055e0; ///< GFxMovie::Invoke(method, result, args, count)
 constexpr std::int32_t kPresetOkCancel = 2, kOk = 1;
 
 struct Date {
@@ -36,7 +37,8 @@ Date g_dates[33];
 std::int32_t g_icons[33];
 char g_new_name[64];
 bool g_active = false;
-int g_frames = 0;
+int g_frames = 0, g_gone = 0;
+bool g_seen = false;
 
 bool Matches(std::uint64_t at, std::initializer_list<std::uint8_t> bytes) {
     return std::memcmp(Guest::Image() + at, std::data(bytes), bytes.size()) == 0;
@@ -54,12 +56,34 @@ bool Ready() {
     return ready != 0;
 }
 
+struct GfxValue {
+    std::uint32_t type, pad;
+    union {
+        double number;
+        const char* string;
+        std::uint64_t raw;
+    };
+};
+
+/// The game's text for `key` (protomain's gLoc.Loc, as storage.gfx asks it), or nullptr.
+bool Localized(void* movie, const char* key, char* out, std::size_t size) {
+    if (!movie) return false;
+    GfxValue arg{};
+    arg.type = 4;
+    arg.string = key;
+    GfxValue result{};
+    if (!Guest::Call<std::uint8_t>(kInvoke, movie, "_global.gLoc.Loc", &result, &arg, 1u)) return false;
+    if (result.type != 4 || !result.string) return false;
+    std::snprintf(out, size, "%s", result.string);
+    return true;
+}
+
 bool Russian() {
     const char* language = std::getenv("THEORDER_LANGUAGE");
     return language && std::strcmp(language, "8") == 0;
 }
 
-void Show(std::uint8_t* dialog) {
+void Show(std::uint8_t* dialog, void* movie) {
     const int rows = g_menu.count + (g_menu.has_new ? 1 : 0);
     for (int i = 0; i < g_menu.count; ++i) {
         const auto& r = g_menu.rows[i];
@@ -72,16 +96,21 @@ void Show(std::uint8_t* dialog) {
         g_icons[i] = 1;
     }
     if (g_menu.has_new) {
-        std::snprintf(g_new_name, sizeof(g_new_name), "%s", Russian() ? "Создать новую ячейку" : "Create new slot");
+        // storage.gfx takes the last row for the new slot when its name is the game's text for
+        // $NewDataSlot (and puts it in its place).
+        if (!Localized(movie, "$NewDataSlot", g_new_name, sizeof(g_new_name)))
+            std::snprintf(g_new_name, sizeof(g_new_name), "%s", Russian() ? "Создать новую ячейку" : "Create new slot");
+        std::printf("Save menu: the new slot is \"%s\"\n", g_new_name);
         g_names[g_menu.count] = g_new_name;
         g_details[g_menu.count] = "";
         g_dates[g_menu.count] = Date{0, 0, 0, 0xff, 0};
         g_dates_of[g_menu.count] = &g_dates[g_menu.count];
         g_icons[g_menu.count] = 0;
     }
-    static const char* const kTitles[] = {"", "$SelectSaveEntry", "$SelectLoadEntry"};
-    Guest::Field<const char*>(dialog, 0x10) = kTitles[g_menu.mode == 2 ? 2 : 1];
-    Guest::Field<const char*>(dialog, 0x18) = "";
+    // storage.gfx shows the slots only when the message is one of these keys (isSaveLoad).
+    const bool load = g_menu.mode == 2;
+    Guest::Field<const char*>(dialog, 0x10) = load ? "$LOAD_GAME" : "$SAVE";
+    Guest::Field<const char*>(dialog, 0x18) = load ? "$SelectLoadEntry" : "$SelectSaveEntry";
     Guest::Field<std::int32_t>(dialog, 0x20) = kPresetOkCancel;
     Guest::Field<const char*>(dialog, 0x28) = nullptr;
     Guest::Field<std::int32_t*>(dialog, 0x30) = g_icons;
@@ -102,7 +131,7 @@ void Show(std::uint8_t* dialog) {
 
 namespace Native {
 
-void SaveMenuFrame() {
+void SaveMenuFrame(void* movie) {
     const TheOrderGameMenu* menu = Native::Menu();
     if (!menu || !menu->save_menu_ready || !menu->save_menu_take || !menu->save_menu_done || !Ready()) return;
     auto* dialog = Guest::At<std::uint8_t*>(kDialog);
@@ -110,14 +139,28 @@ void SaveMenuFrame() {
     menu->save_menu_ready();
     if (!g_active) {
         if (!menu->save_menu_take(&g_menu)) return;
-        Show(dialog);
+        Show(dialog, movie);
         g_active = true;
-        g_frames = 0;
+        g_frames = g_gone = 0;
+        g_seen = false;
         return;
     }
     ++g_frames;
     const std::int32_t button = Guest::Field<std::int32_t>(dialog, 0x58);
-    if (!button) return;
+    if (!button) {
+        // Closed without a button (or never came up): the port's own list takes over as a cancel.
+        if (Guest::Call<std::uint8_t>(kShown, dialog)) {
+            g_seen = true;
+            g_gone = 0;
+            return;
+        }
+        if (++g_gone < (g_seen ? 15 : 120)) return;
+        g_active = false;
+        std::printf("Save menu: the screen %s without a choice; cancelled\n", g_seen ? "closed" : "never came up");
+        std::fflush(stdout);
+        menu->save_menu_done(-2);
+        return;
+    }
     if (Guest::Call<std::uint8_t>(kShown, dialog) && g_frames < 600) return; // still closing
     g_active = false;
     const int row = Guest::Field<std::int32_t>(dialog, 0x5c);

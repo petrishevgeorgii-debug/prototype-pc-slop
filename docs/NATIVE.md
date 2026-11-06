@@ -248,6 +248,13 @@ list, the port fills those fields from the saves it keeps (title, subtitle, date
 last row) and shows this screen instead of the overlay's list, then answers the system dialog with
 the row chosen (OK) or a cancel. Not taken within a second: the overlay's list, as before.
 
+storage.gfx shows the slot list only when the *message* (`GetMessage`, `+0x18`) is
+`$SelectSaveEntry` or `$SelectLoadEntry`; anything else is a plain message box (b10 put the key in
+the title and got an empty frame). It takes the last row for the new slot when its name equals
+`gLoc.Loc("$NewDataSlot")`, so b11 asks protomain's `_global.gLoc.Loc` for that text through
+`GFxMovie::Invoke` (`0x4055e0`). A row's number is its index + 1 unless the name ends in `( N)`.
+If the screen closes without a button, the save or load is cancelled.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

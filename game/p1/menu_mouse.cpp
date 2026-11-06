@@ -178,7 +178,7 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
     Native::TrainerFrame(movie, screen);
     Native::ConsoleFrame();
     Native::HudFrame(screen);
-    Native::SaveMenuFrame();
+    Native::SaveMenuFrame(movie);
     const bool up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE");
     const bool shown = menu->pointer_mode(up ? 1 : 0) != 0;
     static int was_shown = -1;
