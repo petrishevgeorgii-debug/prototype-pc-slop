@@ -45,13 +45,13 @@ __port_console = function(src)
         'find <текст>   функции и значения игры, в имени которых есть этот текст\n' ..
         'clear          очищает журнал\n' ..
         'Например:  find go_Set    go_GetHealth(PLAYER_1)    go_SetHealth(PLAYER_1, 5000)\n' ..
-        'go_SlowMotion(0.5) — замедление (1 — обычная скорость)    fe_ToggleHideHUDOption() — скрыть HUD (или F3)'
+        'go_SlowMotion(0.5) — замедление (1 — обычная скорость)    F3 — скрыть HUD'
     end
     return '\2Type Lua and press Enter: statements run, an expression shows its value.\n' ..
       'find <text>   the game\'s functions and values whose names hold the text\n' ..
       'clear         empties this log\n' ..
       'For example:  find go_Set    go_GetHealth(PLAYER_1)    go_SetHealth(PLAYER_1, 5000)\n' ..
-      'go_SlowMotion(0.5) slows the game (1 is normal)    fe_ToggleHideHUDOption() hides the HUD (or F3)'
+      'go_SlowMotion(0.5) slows the game (1 is normal)    F3 hides the HUD'
   end
   if cmd == 'find' and arg ~= '' then
     local names, needle = {}, string.lower(arg)

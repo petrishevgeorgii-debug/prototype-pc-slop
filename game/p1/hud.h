@@ -4,5 +4,5 @@
 
 namespace Native {
 /// Every frame of protomain (menu_mouse.cpp).
-void HudFrame();
+void HudFrame(const char* screen);
 } // namespace Native
