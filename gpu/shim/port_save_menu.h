@@ -14,6 +14,8 @@
 namespace PortSaveMenu {
 
 /// The runtime (save dialog): true when the game's screen will show this list.
+/// Each save's own name and detail, for the next Begin (the saves only, no new-save item).
+void Rows(const std::vector<std::string>& names, const std::vector<std::string>& details);
 bool Begin(const std::string& title, const std::vector<std::string>& items);
 /// -1 still choosing, -2 cancelled, else the dialog's item; -3: not taken, show the overlay's.
 int Poll();

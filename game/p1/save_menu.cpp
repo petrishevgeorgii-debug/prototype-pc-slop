@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 
 #include "game/guest.h"
 #include "game/native_registry.h"
@@ -30,15 +31,39 @@ struct Date {
 };
 
 TheOrderSaveMenu g_menu;
-const char* g_names[33];
-const char* g_details[33];
+// The screen's names and details are wide strings (GFx StringW; the PS4's wchar_t is 16-bit).
+const char16_t* g_names[33];
+const char16_t* g_details[33];
+char16_t g_name_text[33][160], g_detail_text[33][160];
 const Date* g_dates_of[33];
 Date g_dates[33];
 std::int32_t g_icons[33];
-char g_new_name[64];
+char g_new_name[160];
 bool g_active = false;
 int g_frames = 0, g_gone = 0;
 bool g_seen = false;
+
+/// UTF-8 into the screen's 16-bit text.
+const char16_t* Wide(const char* text, char16_t* out, std::size_t size) {
+    std::size_t n = 0;
+    const auto* p = reinterpret_cast<const unsigned char*>(text ? text : "");
+    while (*p && n + 2 < size) {
+        std::uint32_t c = *p++;
+        int more = c >= 0xf0 ? 3 : c >= 0xe0 ? 2 : c >= 0xc0 ? 1 : 0;
+        if (more) c &= 0x3f >> more;
+        for (; more && (*p & 0xc0) == 0x80; --more) c = (c << 6) | (*p++ & 0x3f);
+        if (more || (c >= 0x80 && c < 0xa0)) c = u'?';
+        if (c >= 0x10000) {
+            c -= 0x10000;
+            out[n++] = char16_t(0xd800 + (c >> 10));
+            out[n++] = char16_t(0xdc00 + (c & 0x3ff));
+        } else {
+            out[n++] = char16_t(c);
+        }
+    }
+    out[n] = 0;
+    return out;
+}
 
 bool Matches(std::uint64_t at, std::initializer_list<std::uint8_t> bytes) {
     return std::memcmp(Guest::Image() + at, std::data(bytes), bytes.size()) == 0;
@@ -87,8 +112,8 @@ void Show(std::uint8_t* dialog, void* movie) {
     const int rows = g_menu.count + (g_menu.has_new ? 1 : 0);
     for (int i = 0; i < g_menu.count; ++i) {
         const auto& r = g_menu.rows[i];
-        g_names[i] = r.name;
-        g_details[i] = r.detail;
+        g_names[i] = Wide(r.name, g_name_text[i], std::size(g_name_text[i]));
+        g_details[i] = Wide(r.detail, g_detail_text[i], std::size(g_detail_text[i]));
         g_dates[i] = r.hour < 0 ? Date{0, 0, 0, 0xff, 0}
                                 : Date{std::uint16_t(r.year), std::uint8_t(r.month), std::uint8_t(r.day),
                                        std::uint8_t(r.hour), std::uint8_t(r.minute)};
@@ -101,8 +126,8 @@ void Show(std::uint8_t* dialog, void* movie) {
         if (!Localized(movie, "$NewDataSlot", g_new_name, sizeof(g_new_name)))
             std::snprintf(g_new_name, sizeof(g_new_name), "%s", Russian() ? "Создать новую ячейку" : "Create new slot");
         std::printf("Save menu: the new slot is \"%s\"\n", g_new_name);
-        g_names[g_menu.count] = g_new_name;
-        g_details[g_menu.count] = "";
+        g_names[g_menu.count] = Wide(g_new_name, g_name_text[g_menu.count], std::size(g_name_text[g_menu.count]));
+        g_details[g_menu.count] = Wide("", g_detail_text[g_menu.count], std::size(g_detail_text[g_menu.count]));
         g_dates[g_menu.count] = Date{0, 0, 0, 0xff, 0};
         g_dates_of[g_menu.count] = &g_dates[g_menu.count];
         g_icons[g_menu.count] = 0;
@@ -114,8 +139,8 @@ void Show(std::uint8_t* dialog, void* movie) {
     Guest::Field<std::int32_t>(dialog, 0x20) = kPresetOkCancel;
     Guest::Field<const char*>(dialog, 0x28) = nullptr;
     Guest::Field<std::int32_t*>(dialog, 0x30) = g_icons;
-    Guest::Field<const char**>(dialog, 0x38) = g_details;
-    Guest::Field<const char**>(dialog, 0x40) = g_names;
+    Guest::Field<const char16_t**>(dialog, 0x38) = g_details;
+    Guest::Field<const char16_t**>(dialog, 0x40) = g_names;
     Guest::Field<const Date**>(dialog, 0x48) = g_dates_of;
     Guest::Field<std::uint32_t>(dialog, 0x50) = std::uint32_t(rows);
     Guest::Field<std::uint32_t>(dialog, 0x54) = 0;

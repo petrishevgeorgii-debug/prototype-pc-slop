@@ -255,6 +255,12 @@ the title and got an empty frame). It takes the last row for the new slot when i
 `GFxMovie::Invoke` (`0x4055e0`). A row's number is its index + 1 unless the name ends in `( N)`.
 If the screen closes without a button, the save or load is cancelled.
 
+The rows' names and details are wide strings: the handler answers `GetSelectionName` /
+`GetSelectionDetail` as GFx `StringW` (type 5), and the PS4's `wchar_t` is 16-bit (the game's
+wide strings copy `2 * length` bytes), so b12 hands it UTF-16. As on PC, a row's name is the save's
+subtitle (`MISSION( 3 )`) and its detail the difficulty (the param's detail), which
+`theordergpu_choice_rows` passes from `save_open` next to the overlay's labels.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

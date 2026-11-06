@@ -19,6 +19,7 @@ State state = State::Idle;
 TheOrderSaveMenu pending{};
 int result = -2;
 std::chrono::steady_clock::time_point asked;
+std::vector<std::string> row_names, row_details;
 
 /// "Title\nSubtitle\nYYYY-MM-DD HH:MM" (runtime_services.c's save_label) into a row.
 void Row(const std::string& item, TheOrderSaveRow& row) {
@@ -45,6 +46,12 @@ void Row(const std::string& item, TheOrderSaveRow& row) {
 
 } // namespace
 
+void Rows(const std::vector<std::string>& names, const std::vector<std::string>& details) {
+    std::scoped_lock lock{mutex};
+    row_names = names;
+    row_details = details;
+}
+
 bool Begin(const std::string& title, const std::vector<std::string>& items) {
     if (!ready) return false;
     const int mode = title == "Save game" ? 1 : title == "Load game" ? 2 : 0;
@@ -57,7 +64,19 @@ bool Begin(const std::string& title, const std::vector<std::string>& items) {
         pending.has_new = 1;
         first = 1;
     }
-    for (std::size_t i = first; i < items.size() && pending.count < 32; ++i) Row(items[i], pending.rows[pending.count++]);
+    for (std::size_t i = first; i < items.size() && pending.count < 32; ++i) {
+        TheOrderSaveRow& row = pending.rows[pending.count];
+        Row(items[i], row);
+        // The save's own name ("MISSION( 3 )": the screen numbers the slot from it) and detail.
+        const std::size_t save = static_cast<std::size_t>(pending.count);
+        if (save < row_names.size() && !row_names[save].empty())
+            std::snprintf(row.name, sizeof(row.name), "%s", row_names[save].c_str());
+        if (save < row_details.size())
+            std::snprintf(row.detail, sizeof(row.detail), "%s", row_details[save].c_str());
+        ++pending.count;
+    }
+    row_names.clear();
+    row_details.clear();
     state = State::Waiting;
     result = -2;
     asked = std::chrono::steady_clock::now();

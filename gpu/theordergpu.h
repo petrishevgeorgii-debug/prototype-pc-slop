@@ -33,6 +33,9 @@ int theordergpu_text_input_poll(char *out_utf8, uint64_t size);
  * poll: -1 while open, -2 cancelled, else the chosen index. */
 int theordergpu_choice_begin(const char *title, const char *const *items, const char *const *images, int count, int focus);
 int theordergpu_choice_poll(void);
+/* PROTOTYPE: each save's own name and detail (its subtitle, e.g. "MISSION( 3 )", and the difficulty)
+ * for the game's save screen, before theordergpu_choice_begin; the items are the saves only. */
+void theordergpu_choice_rows(const char *const *names, const char *const *details, int count);
 /* 1 while the in-game settings menu is open: the game's pad input is held neutral. */
 int theordergpu_overlay_captures_input(void);
 /* The game's field of view constants in the loaded image (writable): the in-game menu scales them. */
@@ -97,7 +100,7 @@ int theordergpu_pointer_clicks(void);
 /* A save list for the game's own save screen (PROTOTYPE's storage.gfx, game/p1/save_menu.cpp):
  * the saves the system dialog was asked to list (src/runtime_services.c). */
 typedef struct TheOrderSaveRow {
-    char name[96], detail[96];
+    char name[160], detail[160];
     int year, month, day, hour, minute; /* hour < 0: no date */
 } TheOrderSaveRow;
 typedef struct TheOrderSaveMenu {
