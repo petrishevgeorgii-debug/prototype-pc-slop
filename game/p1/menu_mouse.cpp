@@ -199,48 +199,66 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
     }
 }
 
-/// Above 60 FPS (THEORDER_PROTO_FPS, experimental): the menus and the HUD step a fixed time per
-/// frame (the 60 FPS patch halves the PS4's step), so at 120 FPS they ran twice as fast. The step
-/// follows the real time since this movie's last frame instead, never more than the 60 FPS one.
-/// (b4 scaled every movie: the loading screens, which get the real time already, crawled.)
-float MenuStep(void* movie, float delta, const TheOrderGameMenu* menu) {
+/// Above 60 FPS (the Display screen's Frame rate, experimental). The menus' movies (the map, the
+/// upgrades, the Web of Intrigue) run part of their animation per Advance call (their timelines),
+/// part by the time they are given: at 240 FPS the first ran four times too fast. Scaling the time
+/// given (b4) slowed the time-driven parts instead (the loading screens crawled). Here a movie is
+/// advanced at most 60 times a second, as at 60 FPS, with the time of the calls it skipped added
+/// to the next one; between them it shows what it last drew.
+struct Paced {
+    void* movie;
+    std::chrono::steady_clock::time_point at; ///< the last call
+    float budget;  ///< real time not yet advanced, seconds
+    float pending; ///< the skipped calls' time
+    float result;  ///< what the last real Advance returned
+};
+
+/// The movie's slot (a few movies are alive at once), or null.
+Paced* PacedSlot(void* movie) {
+    static Paced slots[16] = {};
+    Paced* free_slot = nullptr;
+    for (auto& s : slots) {
+        if (s.movie == movie) return &s;
+        if (!free_slot && !s.movie) free_slot = &s;
+    }
+    if (!free_slot) free_slot = &slots[reinterpret_cast<std::uintptr_t>(movie) >> 4 & 15];
+    *free_slot = {movie, std::chrono::steady_clock::now(), 1.0f, 0.0f, 0.0f};
+    return free_slot;
+}
+
+/// True when this call should advance the movie (`delta` then holds the skipped calls' time too).
+bool PaceMenu(void* movie, float& delta, const TheOrderGameMenu* menu, float*& result) {
+    result = nullptr;
     // The Frame rate row (the Display screen's second): 0 30 FPS, 1 60, 2 and on above 60.
     const bool above60 = menu && menu->get && menu->get(THEORDER_MENU_DISPLAY, 1) >= 2;
-    if (!above60) return delta;
-    struct Seen {
-        void* movie;
-        std::chrono::steady_clock::time_point at;
-    };
-    static Seen seen[16] = {};
+    if (!above60) return true;
+    constexpr float kStep = 1.0f / 60.0f;
+    Paced* slot = PacedSlot(movie);
     const auto now = std::chrono::steady_clock::now();
-    Seen* slot = nullptr;
-    for (auto& s : seen) {
-        if (s.movie == movie) { slot = &s; break; }
-        if (!slot && !s.movie) slot = &s;
-    }
-    if (!slot) slot = &seen[reinterpret_cast<std::uintptr_t>(movie) >> 4 & 15];
-    const bool known = slot->movie == movie;
-    const float since = known ? std::chrono::duration<float>(now - slot->at).count() : 1.0f / 60.0f;
-    slot->movie = movie;
+    const float since = std::min(std::chrono::duration<float>(now - slot->at).count(), 0.25f);
     slot->at = now;
-    // Movies stepped a fixed time per frame get a step much longer than the time that passed:
-    // scaled to it (the 60 FPS patch then halves the result). Others (the loading screens) are
-    // given the time that passed already: left alone.
-    const bool fixed = known && delta > 1.5f * since;
-    const float share = fixed ? std::clamp(2.0f * since / delta, 0.1f, 1.0f) : 1.0f;
-    static int logged = 0;
-    if (known && logged < 12 && (logged < 6 || fixed)) {
-        ++logged;
-        std::printf("Menu mouse: movie %p step %.4f s, %.4f s since its last frame: %s\n", movie, delta, since,
-                    fixed ? "a fixed step, scaled to real time" : "left alone");
+    slot->budget = std::min(slot->budget + since, 2 * kStep);
+    result = &slot->result;
+    if (slot->budget < kStep) {
+        slot->pending += delta;
+        return false;
+    }
+    slot->budget -= kStep;
+    delta += slot->pending;
+    slot->pending = 0.0f;
+    static bool logged = false;
+    if (!logged) {
+        logged = true;
+        std::printf("Menu mouse: above 60 FPS the menus advance 60 times a second\n");
         std::fflush(stdout);
     }
-    return delta * share;
+    return true;
 }
 
 GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
     const TheOrderGameMenu* menu = Native::Menu();
-    delta = MenuStep(movie, delta, menu);
+    float* paced_result = nullptr;
+    const bool advance = PaceMenu(movie, delta, menu, paced_result);
     SkipMovie(menu);
     Screens(movie, menu);
     TheOrderPointer p{};
@@ -286,7 +304,10 @@ GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
             }
         }
     }
-    return Guest::Call<float>(kAdvance, movie, delta, catch_up);
+    if (!advance) return paced_result ? *paced_result : 0.0f;
+    const float result = Guest::Call<float>(kAdvance, movie, delta, catch_up);
+    if (paced_result) *paced_result = result;
+    return result;
 }
 
 bool Matches(std::uint64_t at, std::initializer_list<std::uint8_t> bytes) {

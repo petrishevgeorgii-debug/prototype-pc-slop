@@ -204,9 +204,11 @@ game's Lua, through the script manager the trainer uses. A helper defined once i
 
 The 60 FPS patch sets the flip rate to 0 (every vblank; 1 while a movie plays), and the game steps
 by the time that passed, so run.py raises the vblank (`THEORDER_VBLANK_HZ`) and the present cap
-(`THEORDER_FPS_LIMIT`) to the chosen rate (`THEORDER_PROTO_FPS`). Scaleform's movies get a fixed
-step per frame (`GFxMovieRoot::Advance`'s delta, halved by the patch at `0x3ff64e`): above 60 the
-menu mouse's Advance scales it by the real time since that movie's last frame. Started with the
+(`THEORDER_FPS_LIMIT`) to the chosen rate (`THEORDER_PROTO_FPS`). Scaleform's movies run part of
+their animation per `GFxMovieRoot::Advance` call (their timelines) and part by the time given
+(halved by the patch at `0x3ff64e`): above 60 the menu mouse's Advance lets a movie advance at most
+60 times a second, handing the skipped calls' time to the next one. (Scaling the time instead
+slowed the loading screens to a crawl.) Started with the
 patch, the rate follows the Display screen's Frame rate row live (60 to 240): VideoOut's present
 thread re-times its vblank and limit from `PortSettings::proto_fps` (`THEORDER_PROTO_LIVE_FPS`).
 
