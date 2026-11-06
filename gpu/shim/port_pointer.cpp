@@ -117,6 +117,12 @@ bool BackHeld() {
 
 } // namespace PortPointer
 
+namespace PortPointer {
+bool MenusUp() {
+    return mode.load() == 1;
+}
+} // namespace PortPointer
+
 extern "C" int theordergpu_pointer_mode(int on) {
     using namespace PortPointer;
     if (on >= 0) {

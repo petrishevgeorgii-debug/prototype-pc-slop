@@ -12,6 +12,10 @@ void SetPicture(int x, int y, int w, int h, const float picture[4]);
 /// The game's menus are up and the Mouse in menus setting is on: the window lets go of the mouse.
 bool Wanted();
 
+/// The game's menus are up (its menu movie's top screen is not the HUD: theordergpu_pointer_mode),
+/// whatever the setting. Above 60 FPS the frame rate drops to 60 meanwhile (VideoOut).
+bool MenusUp();
+
 /// The window: a mouse event while Wanted().
 void Event(const SDL_Event& event, SDL_Window* window);
 

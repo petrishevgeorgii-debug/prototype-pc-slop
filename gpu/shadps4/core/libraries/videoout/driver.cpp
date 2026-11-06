@@ -18,6 +18,7 @@
 #include "port_toggles.h"
 #include "port_settings.h"
 #include "port_graphics.h"
+#include "port_pointer.h"
 #include "video_core/renderer_vulkan/vk_frame_capture.h"
 #include "common/debug.h"
 #include "common/thread.h"
@@ -684,8 +685,10 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
         const char* env = std::getenv("THEORDER_PROTO_LIVE_FPS");
         return env && env[0] == '1';
     }();
+    // The game's menus, map, Web of Intrigue and loading screens run parts of their animation per
+    // frame: while they are up the rate is 60, as the game was made for (PortPointer::MenusUp).
     const auto live_hz = [] {
-        const int fps = PortSettings::Get().proto_fps.load();
+        const int fps = PortPointer::MenusUp() ? 60 : PortSettings::Get().proto_fps.load();
         return u32(std::clamp(fps, 60, 240));
     };
     u32 vblank_hz = live_rate ? live_hz() : EmulatorSettings.GetVblankFrequency();
@@ -733,7 +736,10 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
             vblank_hz = live_hz();
             vblank_period = std::chrono::nanoseconds(1000000000 / vblank_hz);
             timer = Common::AccurateTimer{vblank_period};
-            std::printf("VideoOut: vblank %u Hz (Frame rate changed)\n", vblank_hz);
+            static int changes = 0;
+            if (++changes <= 20)
+                std::printf("VideoOut: vblank %u Hz (%s)\n", vblank_hz,
+                            PortPointer::MenusUp() ? "the game's menus are up" : "the Frame rate row");
         }
         if (const u32 limit = current_limit(); limit != frame_limit) {
             frame_limit = limit;
