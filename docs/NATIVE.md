@@ -243,9 +243,10 @@ screen needs is still in the PS4 game and its files:
   `0xe9080` (the preset's buttons), `0xe8320(dialog, -1, 0)` (the overlay up), then wait for
   `+0x58`.
 
-The plan: when the game opens its save list, the port fills those fields from the saves it keeps
-(title, subtitle, date) and shows this screen instead of the overlay's list, then answers the
-system dialog with the row chosen.
+1.1 b10 (`game/p1/save_menu.cpp`, `gpu/shim/port_save_menu.cpp`): when the game opens its save
+list, the port fills those fields from the saves it keeps (title, subtitle, date; a new save is the
+last row) and shows this screen instead of the overlay's list, then answers the system dialog with
+the row chosen (OK) or a cancel. Not taken within a second: the overlay's list, as before.
 
 ## Next
 

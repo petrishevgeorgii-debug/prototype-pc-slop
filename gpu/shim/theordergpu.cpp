@@ -3,6 +3,7 @@
 #include "port_copy.h"
 #include "port_overlay.h"
 #include "port_png.h"
+#include "port_save_menu.h"
 #include "port_settings.h"
 
 #ifndef _WIN32
@@ -399,11 +400,25 @@ extern "C" int theordergpu_text_input_begin(const char *initial,
   return 1;
 }
 
+// The list handed to the game's save screen, for the overlay if the screen does not take it.
+static std::vector<std::string> g_choice_items, g_choice_images;
+static std::string g_choice_title;
+static int g_choice_focus = 0;
+
 extern "C" int theordergpu_choice_begin(const char *title, const char *const *items,
                                     const char *const *images, int count,
                                     int focus) {
   if (!g_window || count <= 0)
     return 0;
+  // PROTOTYPE: the game's own save screen, when the game layer has it (port_save_menu.h).
+  if (PortSaveMenu::Begin(title ? title : "", std::vector<std::string>(items, items + count))) {
+    g_choice_items.assign(items, items + count);
+    g_choice_images.assign(count, std::string());
+    for (int i = 0; images && i < count; ++i) if (images[i]) g_choice_images[i] = images[i];
+    g_choice_title = title ? title : "";
+    g_choice_focus = focus;
+    return 1;
+  }
   // Pictures are decoded here, on the game's thread, before the list is shown.
   std::vector<PortPng::Image> pictures(count);
   for (int i = 0; images && i < count; ++i) {
@@ -418,7 +433,19 @@ extern "C" int theordergpu_choice_begin(const char *title, const char *const *it
   return 1;
 }
 
-extern "C" int theordergpu_choice_poll(void) { return PortOverlay::PollChoice(); }
+extern "C" int theordergpu_choice_poll(void) {
+  if (PortSaveMenu::Active()) {
+    const int choice = PortSaveMenu::Poll();
+    if (choice != -3) return choice;
+    // Not taken: the overlay's list after all.
+    std::vector<PortPng::Image> pictures(g_choice_items.size());
+    for (std::size_t i = 0; i < g_choice_images.size(); ++i)
+      if (!g_choice_images[i].empty()) PortPng::LoadRgba(g_choice_images[i].c_str(), pictures[i]);
+    PortOverlay::BeginChoice(g_choice_title, g_choice_items, std::move(pictures), g_choice_focus);
+    return -1;
+  }
+  return PortOverlay::PollChoice();
+}
 
 extern "C" int theordergpu_text_input_poll(char *out, uint64_t size) {
   if (!g_window)

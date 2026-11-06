@@ -20,6 +20,7 @@
 #include "../theordergpu.h"
 #include "port_settings.h"
 #include "port_console.h"
+#include "port_save_menu.h"
 #include "port_trainer.h"
 
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
@@ -507,6 +508,18 @@ void PressPause() {
     PortTrainer::PressPause();
 }
 
+void SaveMenuReady() {
+    PortSaveMenu::Ready();
+}
+
+int SaveMenuTake(TheOrderSaveMenu* out) {
+    return PortSaveMenu::Take(out);
+}
+
+void SaveMenuDone(int choice) {
+    PortSaveMenu::Done(choice);
+}
+
 int HudToggle() {
     return PortTrainer::TakeHudRequests();
 }
@@ -524,7 +537,8 @@ void ConsolePrint(const char* text, int kind) {
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
                                 theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions,
-                                PressPause, ConsoleTake, ConsolePrint, HudToggle};
+                                PressPause, ConsoleTake, ConsolePrint, HudToggle,
+                                SaveMenuReady, SaveMenuTake, SaveMenuDone};
 
 } // namespace
 

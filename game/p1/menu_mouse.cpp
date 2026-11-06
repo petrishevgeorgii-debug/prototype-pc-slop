@@ -33,6 +33,7 @@
 #include "game/native_registry.h"
 #include "game/p1/console.h"
 #include "game/p1/hud.h"
+#include "game/p1/save_menu.h"
 #include "game/p1/trainer.h"
 
 namespace {
@@ -177,6 +178,7 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
     Native::TrainerFrame(movie, screen);
     Native::ConsoleFrame();
     Native::HudFrame(screen);
+    Native::SaveMenuFrame();
     const bool up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE");
     const bool shown = menu->pointer_mode(up ? 1 : 0) != 0;
     static int was_shown = -1;

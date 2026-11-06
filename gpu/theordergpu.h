@@ -94,6 +94,19 @@ void theordergpu_pointer_take(TheOrderPointer *out);
 /* Left clicks in the window since the last call (in game, in the menus, in a movie): the game
  * layer skips a playing movie with one, as the PC version did (game/p1/menu_mouse.cpp). */
 int theordergpu_pointer_clicks(void);
+/* A save list for the game's own save screen (PROTOTYPE's storage.gfx, game/p1/save_menu.cpp):
+ * the saves the system dialog was asked to list (src/runtime_services.c). */
+typedef struct TheOrderSaveRow {
+    char name[96], detail[96];
+    int year, month, day, hour, minute; /* hour < 0: no date */
+} TheOrderSaveRow;
+typedef struct TheOrderSaveMenu {
+    int mode;    /* 1 save, 2 load */
+    int has_new; /* the list offers a new save (the dialog's first item) */
+    int count;   /* saves in rows */
+    TheOrderSaveRow rows[32];
+} TheOrderSaveMenu;
+
 typedef struct TheOrderGameMenu {
     int (*count)(int page);
     const char *(*label)(int page, int row);
@@ -129,6 +142,12 @@ typedef struct TheOrderGameMenu {
     /* Hide HUD: presses of its key (F3) since the last call; the game layer flips the game's own
      * Hide HUD switch (game/p1/hud.cpp). */
     int (*hud_toggle)(void);
+    /* The save list on the game's own save screen: the game layer says the screen works
+     * (save_menu_ready), takes a list to show (save_menu_take: 0 when none) and gives the choice
+     * (save_menu_done: the dialog's item, -2 cancelled). */
+    void (*save_menu_ready)(void);
+    int (*save_menu_take)(TheOrderSaveMenu *out);
+    void (*save_menu_done)(int choice);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
