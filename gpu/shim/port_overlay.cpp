@@ -16,6 +16,7 @@
 #include <vector>
 
 #include <SDL3/SDL.h>
+#include "port_console.h"
 #include "port_settings.h"
 #include "port_toggles.h"
 #include "port_graphics.h"
@@ -110,16 +111,42 @@ std::vector<ImTextureData*> choice_textures, choice_retired;
 std::atomic<bool> choice_retiring{false};
 float base_scale = 1.0f;
 ImFont* menu_font = nullptr; // Tektur (the PROTOTYPE menu)
+// The Lua console (the key under Esc): open, its input line, the history position (-1: none),
+// the log version last scrolled to, focus wanted, and the toggle key's character to swallow.
+std::atomic<bool> console_open{false};
+char console_input[512] = "";
+int console_history_pos = -1;
+unsigned console_seen_version = ~0u;
+bool console_focus = false, console_swallow_text = false;
 
 // Present rate for the FPS counter.
 std::chrono::steady_clock::time_point last_present{};
 float frame_ms_avg = 0.0f;
 
+namespace Proto {
+bool russian();
+}
+
+void SetConsole(bool value) {
+    if (console_open.exchange(value) == value) return;
+    ImGui::GetIO().MouseDrawCursor = value || menu_open;
+    if (value) {
+        console_focus = true;
+        console_history_pos = -1;
+        static bool greeted = false;
+        if (!greeted) {
+            greeted = true;
+            PortConsole::Print(Proto::russian() ? "Lua игры. help — подсказка." : "The game's Lua. Type help.",
+                               PortConsole::Kind::Info);
+        }
+    }
+}
+
 void SetOpen(bool value) {
     if (menu_open.exchange(value) == value) {
         return;
     }
-    ImGui::GetIO().MouseDrawCursor = value;
+    ImGui::GetIO().MouseDrawCursor = value || console_open;
     if (value) {
         requested_tab = PortSettings::Get().menu_tab;
     }
@@ -148,6 +175,11 @@ ImGuiKey KeyFromSdl(SDL_Keycode key) {
     case SDLK_ESCAPE: return ImGuiKey_Escape;
     case SDLK_Q: return ImGuiKey_Q;
     case SDLK_E: return ImGuiKey_E;
+    case SDLK_A: return ImGuiKey_A;
+    case SDLK_C: return ImGuiKey_C;
+    case SDLK_V: return ImGuiKey_V;
+    case SDLK_X: return ImGuiKey_X;
+    case SDLK_Z: return ImGuiKey_Z;
     case SDLK_LCTRL: return ImGuiKey_LeftCtrl;
     case SDLK_RCTRL: return ImGuiKey_RightCtrl;
     case SDLK_LSHIFT: return ImGuiKey_LeftShift;
@@ -1353,6 +1385,88 @@ void PrototypeMenu() {
     }
 }
 
+
+// ---- the Lua console (port_console.cpp; the game layer runs the commands: game/p1/console.cpp)
+
+int ConsoleHistory(ImGuiInputTextCallbackData* data) {
+    if (data->EventFlag != ImGuiInputTextFlags_CallbackHistory) return 0;
+    const auto history = PortConsole::History();
+    if (history.empty()) return 0;
+    if (data->EventKey == ImGuiKey_UpArrow) {
+        console_history_pos = console_history_pos < 0 ? int(history.size()) - 1 : std::max(0, console_history_pos - 1);
+    } else if (data->EventKey == ImGuiKey_DownArrow && console_history_pos >= 0) {
+        console_history_pos = console_history_pos + 1 < int(history.size()) ? console_history_pos + 1 : -1;
+    }
+    data->DeleteChars(0, data->BufTextLen);
+    if (console_history_pos >= 0) data->InsertChars(0, history[console_history_pos].c_str());
+    return 0;
+}
+
+void Console() {
+    const ImGuiIO& io = ImGui::GetIO();
+    const float margin = 24.0f * base_scale;
+    ImGui::SetNextWindowPos(ImVec2(margin, margin));
+    ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x - 2 * margin, io.DisplaySize.y * 0.46f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, IM_COL32(10, 2, 2, 236));
+    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(140, 10, 0, 255));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, IM_COL32(30, 4, 2, 255));
+    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 196, 140, 255));
+    ImGui::Begin("##console", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoFocusOnAppearing);
+    ImFont* font = menu_font ? menu_font : ImGui::GetFont();
+    ImGui::PushFont(font, 0.0f);
+    ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.1f, 1.0f), "%s", Proto::russian() ? "КОНСОЛЬ LUA" : "LUA CONSOLE");
+    ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", Proto::russian()
+                                  ? "  Enter выполняет · ↑↓ история · help — подсказка · find <текст> — поиск функций · ` или Esc закрывает"
+                                  : "  Enter runs · ↑↓ history · help · find <text> lists the game's functions · ` or Esc closes");
+    ImGui::Separator();
+    const float input_height = ImGui::GetFrameHeightWithSpacing();
+    ImGui::BeginChild("##console_log", ImVec2(0, -input_height), ImGuiChildFlags_None,
+                      ImGuiWindowFlags_HorizontalScrollbar);
+    unsigned version = 0;
+    const auto lines = PortConsole::Lines(&version);
+    for (const auto& line : lines) {
+        ImU32 color = IM_COL32(240, 230, 220, 255);
+        switch (line.kind) {
+        case PortConsole::Kind::Input: color = IM_COL32(255, 164, 72, 255); break;
+        case PortConsole::Kind::Error: color = IM_COL32(255, 80, 60, 255); break;
+        case PortConsole::Kind::Info: color = IM_COL32(170, 150, 140, 255); break;
+        default: break;
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextUnformatted(line.text.c_str());
+        ImGui::PopStyleColor();
+    }
+    if (version != console_seen_version) {
+        console_seen_version = version;
+        ImGui::SetScrollHereY(1.0f);
+    }
+    ImGui::EndChild();
+    ImGui::SetNextItemWidth(-1.0f);
+    if (console_focus) {
+        ImGui::SetKeyboardFocusHere();
+        console_focus = false;
+    }
+    if (ImGui::InputText("##console_input", console_input, sizeof(console_input),
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackHistory, ConsoleHistory)) {
+        std::string command = console_input;
+        while (!command.empty() && (command.back() == ' ' || command.back() == '\t')) command.pop_back();
+        if (command == "clear" || command == "cls") {
+            PortConsole::Clear();
+        } else if (!command.empty()) {
+            PortConsole::Submit(command);
+        }
+        console_input[0] = '\0';
+        console_history_pos = -1;
+        console_focus = true; // Enter takes the focus away: back to the input line
+    }
+    ImGui::End();
+    ImGui::PopStyleColor(4);
+}
+
 void LoadingScreen() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + viewport->WorkSize.x * 0.5f,
@@ -1489,7 +1603,7 @@ void UpdateTextInput(SDL_Window* window) {
     bool want = false;
     {
         std::scoped_lock lock{imgui_mutex};
-        want = initialized && menu_open && ImGui::GetIO().WantTextInput;
+        want = initialized && (menu_open || console_open) && ImGui::GetIO().WantTextInput;
     }
     if (want != SDL_TextInputActive(window)) {
         if (want) {
@@ -1579,7 +1693,7 @@ bool HandleEvent(const SDL_Event& event) {
         return HandleChoiceEvent(event);
     }
     ImGuiIO& io = ImGui::GetIO();
-    const bool is_open = menu_open;
+    const bool is_open = menu_open || console_open;
     switch (event.type) {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP: {
@@ -1592,9 +1706,19 @@ bool HandleEvent(const SDL_Event& event) {
             Vulkan::FrameCapture::Request();
             return true;
         }
+        // The key under Esc (` on English layouts, Ё on Russian ones): the Lua console.
+        if (down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_GRAVE && !text_entry_active) {
+            SetConsole(!console_open);
+            console_swallow_text = true;
+            return true;
+        }
+        if (down && !event.key.repeat && console_open && !menu_open && event.key.key == SDLK_ESCAPE) {
+            SetConsole(false);
+            return true;
+        }
         if (down && !event.key.repeat &&
-            (event.key.key == SDLK_INSERT || (is_open && event.key.key == SDLK_ESCAPE))) {
-            SetOpen(event.key.key == SDLK_INSERT ? !is_open : false);
+            (event.key.key == SDLK_INSERT || (menu_open && event.key.key == SDLK_ESCAPE))) {
+            SetOpen(event.key.key == SDLK_INSERT ? !menu_open : false);
             return true;
         }
         if (!is_open) {
@@ -1645,6 +1769,11 @@ bool HandleEvent(const SDL_Event& event) {
         // do not type. SDL sends them while text input is on (UpdateTextInput).
         if (!is_open) {
             return false;
+        }
+        if (console_swallow_text) {
+            console_swallow_text = false;
+            const std::string typed = event.text.text;
+            if (typed == "`" || typed == "~" || typed == "ё" || typed == "Ё") return true;
         }
         io.AddInputCharactersUTF8(event.text.text);
         return true;
@@ -1708,12 +1837,12 @@ void SetLoading(bool active, u32 done, u32 total) {
 
 bool Visible() {
     const auto& s = PortSettings::Get();
-    return initialized && (loading || background_total || menu_open || text_entry_active || choice_active ||
+    return initialized && (loading || background_total || menu_open || console_open || text_entry_active || choice_active ||
                            choice_retiring || s.show_fps);
 }
 
 bool CapturesInput() {
-    return menu_open || text_entry_active || choice_active;
+    return menu_open || console_open || text_entry_active || choice_active;
 }
 
 void BeginChoice(const std::string& title, const std::vector<std::string>& items,
@@ -1777,6 +1906,9 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
         } else {
             Menu();
         }
+    }
+    if (console_open) {
+        Console();
     }
     if (PortSettings::Get().show_fps && !menu_open) {
         FpsCounter();

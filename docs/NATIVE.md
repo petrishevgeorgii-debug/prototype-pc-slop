@@ -190,6 +190,24 @@ replaced by one that calls it and then moves the submission start to where it en
 step for a full command buffer, `0x921101`). Group `framesubmit`. Details in
 [RENDERER.md](RENDERER.md).
 
+## The Lua console (`game/p1/console.cpp`)
+
+The overlay's console (the key under Esc; `gpu/shim/port_console.cpp` queues the lines) hands each
+command to the game layer, which runs it in protomain's Advance, on the thread that runs the
+game's Lua, through the script manager the trainer uses. A helper defined once in the game's Lua
+(`__port_console`) tries the line as an expression (`return ` + it), then as statements, with
+`print` redirected, and returns one string (`\1` first: an error, `\2`: a note) read with Lua 5.1's
+`lua_tolstring` (`0x4d8390`). `find <text>` walks the globals: the game's script functions
+(`go_*`, `db_*`, `fe_*`, `cm_*`...) are globals.
+
+## Frame rates above 60
+
+The 60 FPS patch sets the flip rate to 0 (every vblank; 1 while a movie plays), and the game steps
+by the time that passed, so run.py raises the vblank (`THEORDER_VBLANK_HZ`) and the present cap
+(`THEORDER_FPS_LIMIT`) to the chosen rate (`THEORDER_PROTO_FPS`). Scaleform's movies get a fixed
+step per frame (`GFxMovieRoot::Advance`'s delta, halved by the patch at `0x3ff64e`): above 60 the
+menu mouse's Advance scales it by the real time since that movie's last frame.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,

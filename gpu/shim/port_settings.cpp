@@ -130,6 +130,13 @@ void Set(Values& v, const std::string& key, const std::string& value) {
         }
     } else if (key == "proto_fps60") {
         v.proto_fps60 = i != 0 ? 1 : 0;
+    } else if (key == "proto_fps") {
+        for (int rate : ProtoFrameRates) {
+            if (i == rate) {
+                v.proto_fps = rate;
+                v.proto_fps60 = rate > 30 ? 1 : 0;
+            }
+        }
     } else if (key == "fov") {
         v.fov = std::clamp(i, 50, 200);
     } else if (key == "anisotropy") {
@@ -200,6 +207,7 @@ void Load() {
         {"THEORDER_ANISOTROPY", "anisotropy"},
         // PROTOTYPE (run.py: theorder.ini's proto_res / proto_fps60 when it has them).
         {"THEORDER_PROTO_RES", "proto_res"},              {"THEORDER_FPS60", "proto_fps60"},
+        {"THEORDER_PROTO_FPS", "proto_fps"},
     };
     for (const auto& [env, key] : env_keys) {
         if (const char* value = std::getenv(env); value && value[0]) {
@@ -326,6 +334,7 @@ void Save() {
     // PROTOTYPE's render resolution and frame rate: read by run.py and the launcher at start.
     if (v.proto_res >= 0 && v.proto_res < ProtoResolutionCount) std::fprintf(file, "proto_res=%s\n", ProtoResolutions[v.proto_res]);
     if (v.proto_fps60 >= 0) std::fprintf(file, "proto_fps60=%d\n", v.proto_fps60.load());
+    if (v.proto_fps > 0) std::fprintf(file, "proto_fps=%d\n", v.proto_fps.load());
     // Read by run.sh at start.
     std::fprintf(file, "live_resolution=%s\n", v.live_resolution < 0 ? "auto"
                                                   : v.live_resolution ? "1" : "0");

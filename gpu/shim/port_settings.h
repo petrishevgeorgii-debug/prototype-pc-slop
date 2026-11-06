@@ -28,6 +28,10 @@ inline constexpr int OutputDefault = 1; ///< 1920x1080, the game's own size
 inline constexpr const char* ProtoResolutions[] = {"1280x720", "1600x900", "1920x1080",
                                                    "2560x1440", "3200x1800", "3840x2160"};
 inline constexpr int ProtoResolutionCount = 6;
+/// PROTOTYPE's frame rates (the launcher's P1_FRAME_RATES): 30 the PS4's, 60 the 60 FPS patch,
+/// above it experimental (run.py raises the vblank and the cap).
+inline constexpr int ProtoFrameRates[] = {30, 60, 90, 120, 144, 165, 240};
+inline constexpr int ProtoFrameRateCount = 7;
 /// The in-game menu's tabs: Image, Performance, Overlay.
 inline constexpr int MenuTabCount = 3;
 
@@ -93,6 +97,8 @@ struct Values {
     /// start; startup_*: what this launch runs with. -1: not known (another game).
     std::atomic<int> proto_res{-1};
     std::atomic<int> proto_fps60{-1};
+    /// The frame rate itself (30, 60, 90... ProtoFrameRates), -1 not known: proto_fps60 says 30 or 60.
+    std::atomic<int> proto_fps{-1};
     int startup_proto_res = -1, startup_proto_fps60 = -1;
     /// Field of view in percent of the game's (tangent of the half angle); live.
     std::atomic<int> fov{100};

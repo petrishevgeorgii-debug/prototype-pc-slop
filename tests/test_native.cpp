@@ -180,7 +180,7 @@ void MenuPressOptions() {}
 void MenuPressPause() {}
 const TheOrderGameMenu kMenu = {MenuCount, MenuLabel, MenuChoices, MenuChoice, MenuGet, MenuSet, MenuReset, MenuSave,
                                 MenuLinked, MenuQuit, MenuPointerMode, MenuPointerTake, MenuPointerClicks,
-                                MenuTrainerOpen, MenuTrainerActions, MenuPressOptions, MenuPressPause};
+                                MenuTrainerOpen, MenuTrainerActions, MenuPressOptions, MenuPressPause, nullptr, nullptr};
 
 struct Value {
     std::uint32_t type, pad;

@@ -21,13 +21,17 @@
 // moved with SetVariable (slot 12). (protomain's own frame script asking the port, as before, did
 // not run once the game had been played.)
 
+#include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "game/guest.h"
 #include "game/native_registry.h"
+#include "game/p1/console.h"
 #include "game/p1/trainer.h"
 
 namespace {
@@ -170,6 +174,7 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
         std::fflush(stdout);
     }
     Native::TrainerFrame(movie, screen);
+    Native::ConsoleFrame();
     const bool up = *screen && std::strcmp(screen, "IGHUD") && std::strcmp(screen, "NONE");
     const bool shown = menu->pointer_mode(up ? 1 : 0) != 0;
     static int was_shown = -1;
@@ -194,8 +199,45 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
     }
 }
 
+/// Above 60 FPS (THEORDER_PROTO_FPS, experimental): the menus and the HUD step a fixed time per
+/// frame (the 60 FPS patch halves the PS4's step), so at 120 FPS they ran twice as fast. The step
+/// follows the real time since this movie's last frame instead, never more than the 60 FPS one.
+float MenuStep(void* movie, float delta) {
+    static const bool above60 = [] {
+        const char* env = std::getenv("THEORDER_PROTO_FPS");
+        return env && std::atoi(env) > 60;
+    }();
+    if (!above60) return delta;
+    struct Seen {
+        void* movie;
+        std::chrono::steady_clock::time_point at;
+    };
+    static Seen seen[16] = {};
+    const auto now = std::chrono::steady_clock::now();
+    Seen* slot = nullptr;
+    for (auto& s : seen) {
+        if (s.movie == movie) { slot = &s; break; }
+        if (!slot && !s.movie) slot = &s;
+    }
+    if (!slot) slot = &seen[reinterpret_cast<std::uintptr_t>(movie) >> 4 & 15];
+    const bool known = slot->movie == movie;
+    const float since = known ? std::chrono::duration<float>(now - slot->at).count() : 1.0f / 60.0f;
+    slot->movie = movie;
+    slot->at = now;
+    const float share = std::clamp(since * 60.0f, 0.1f, 1.0f);
+    static bool logged = false;
+    if (!logged && known && share < 0.9f) {
+        logged = true;
+        std::printf("Menu mouse: above 60 FPS the menus' step is scaled to real time (%.2f of the 60 FPS step)\n",
+                    share);
+        std::fflush(stdout);
+    }
+    return delta * share;
+}
+
 GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
     const TheOrderGameMenu* menu = Native::Menu();
+    delta = MenuStep(movie, delta);
     SkipMovie(menu);
     Screens(movie, menu);
     TheOrderPointer p{};

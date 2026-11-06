@@ -3,6 +3,12 @@
 All releases of the PROTOTYPE native PC port. Each version's full notes are in
 [docs/releases](docs/releases) and on the [Releases page](https://github.com/petrishevgeorgii-debug/prototype-pc-slop/releases).
 
+## 1.1.0 — in progress
+
+### Added
+- **Lua console** (PROTOTYPE): the key under Esc (` on English keyboards, Ё on Russian ones) opens a console over the game. What you type runs in the game's own Lua, the scripting its missions use: an expression shows its value, statements run, `print` writes to the console. `find <text>` lists the game's functions and values whose names hold the text (`find go_Set`, `find weather`); `help`, `clear`; ↑/↓ go through what was typed. The game gets no input while it is open (`gpu/shim/port_console.cpp`, `game/p1/console.cpp`).
+- **Frame rates above 60** (PROTOTYPE, experimental): Frame rate on the launcher's GAME page and in the game's Display screen offers 90, 120, 144, 165 and 240 FPS besides 30 and 60. The 60 FPS patch flips every vblank, so the vblank and the frame cap follow the chosen rate (`run.py`); the menus and the HUD, which step a fixed time per frame, follow the real time between frames instead (`game/p1/menu_mouse.cpp`). With V-Sync on, at most the screen's refresh rate.
+
 ## 1.0.5 — October 27, 2026 ([notes](docs/releases/v1.0.5.md))
 
 ### Added

@@ -56,7 +56,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.1.0'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 2
+BETA = 3
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
@@ -148,9 +148,12 @@ GAMES = {
 }
 # Settings each game keeps for itself (its patches); everything else is shared.
 GAME_DEFAULTS = {
-    'p1': {'render_res': '1920x1080', 'fps60': True, 'tendril_fix': True},
+    'p1': {'render_res': '1920x1080', 'fps60': True, 'fps': 60, 'tendril_fix': True},
     'p2': {'render_res': '1920x1080', 'fps60': False},
 }
+# PROTOTYPE's frame rates: 30 is the PS4's; 60 the 60 FPS patch; above it the patch with the vblank
+# and the frame cap raised (run.py), experimental.
+P1_FRAME_RATES = (30, 60, 90, 120, 144, 165, 240)
 PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
 
 
@@ -186,6 +189,9 @@ def load_settings():
     per_game = values.get('per_game') if isinstance(values.get('per_game'), dict) else {}
     if 'p1' not in per_game:
         per_game['p1'] = {k: values.get(k, v) for k, v in GAME_DEFAULTS['p1'].items()}
+    # 1.1: PROTOTYPE's frame rate is a number (30, 60, 90...); before, 60 FPS on or off.
+    if isinstance(per_game.get('p1'), dict) and 'fps' not in per_game['p1']:
+        per_game['p1']['fps'] = 60 if per_game['p1'].get('fps60', True) else 30
     for key, defaults in GAME_DEFAULTS.items():
         settings = per_game.setdefault(key, {})
         for name, value in defaults.items():
@@ -195,6 +201,10 @@ def load_settings():
     for settings in per_game.values():  # the 0.7 shadow options, scrapped
         settings.pop('shadows', None)
         settings.pop('shadow_distance', None)
+    p1 = per_game['p1']
+    if p1.get('fps') not in P1_FRAME_RATES:
+        p1['fps'] = 60 if p1.get('fps60', True) else 30
+    p1['fps60'] = p1['fps'] > 30
     values['per_game'] = per_game
     for key in ('render_res', 'fps60', 'tendril_fix', 'tab'):  # the 0.5 single values
         values.pop(key, None)
@@ -210,6 +220,9 @@ def load_settings():
             per_game['p1']['render_res'] = ini['proto_res']
         if ini.get('proto_fps60') in ('0', '1'):
             per_game['p1']['fps60'] = ini['proto_fps60'] == '1'
+            per_game['p1']['fps'] = 60 if per_game['p1']['fps60'] else 30
+        if ini.get('proto_fps', '').isdigit() and int(ini['proto_fps']) in P1_FRAME_RATES:
+            per_game['p1']['fps'] = int(ini['proto_fps'])
     except Exception:
         pass
     return values
@@ -242,7 +255,8 @@ def write_ini(values):
             'discord': int(bool(values['discord'])), 'menu_mouse': int(bool(values['menu_mouse'])),
             # PROTOTYPE's render resolution and frame rate (also changed by the game's Display screen).
             'proto_res': values['per_game']['p1']['render_res'],
-            'proto_fps60': int(bool(values['per_game']['p1']['fps60'])),
+            'proto_fps60': int(values['per_game']['p1']['fps'] > 30),
+            'proto_fps': int(values['per_game']['p1']['fps']),
         })
     except Exception as error:  # the game still starts with its defaults
         print(f'launcher: theorder.ini not written: {error}')
@@ -254,7 +268,8 @@ def game_environment(values):
     env.update({
         'THEORDER_GAME_DIR': values['game_dir'],
         # Both games' patch settings: a start from the bundle menu runs the other game (run.py).
-        'THEORDER_FPS60': '1' if p1['fps60'] else '0',
+        'THEORDER_FPS60': '1' if p1['fps'] > 30 else '0',
+        'THEORDER_PROTO_FPS': str(p1['fps']),
         'THEORDER_PROTO_RES': p1['render_res'],
         'THEORDER_PROTO_TENDRIL_FIX': '1' if p1['tendril_fix'] else '0',
         'THEORDER_PROTO2_FPS60': '1' if p2['fps60'] else '0',
@@ -658,6 +673,8 @@ class Launcher:
     def setv(self, key, value):
         if key.startswith('game.'):
             self.values['per_game'][self.game][key[5:]] = value
+            if key == 'game.fps':  # the 60 FPS patch is on for every rate above 30
+                self.values['per_game'][self.game]['fps60'] = value > 30
         else:
             self.values[key] = value
 
@@ -789,7 +806,8 @@ class Launcher:
         settings = self.values['per_game'][self.game]
         version = self.sfo.get('APP_VER')
         facts = [TITLE_ID] + ([f'APP {version}'] if version else []) + [
-            settings['render_res'].replace('x', ' × '), '60 FPS' if settings['fps60'] else '30 FPS']
+            settings['render_res'].replace('x', ' × '),
+            f"{settings.get('fps', 60 if settings['fps60'] else 30)} FPS"]
         item = cv.create_text(fx0, fy1 + 98, text=' · '.join(facts), anchor='w', fill=C['muted'], font=self.f(9))
         change = cv.create_text(cv.bbox(item)[2] + 14, fy1 + 98, text=T('[ CHANGE ]'), anchor='w', fill=C['red'],
                                 font=self.f(8, 'bold'))
@@ -1189,8 +1207,11 @@ class Launcher:
                          'the PS4\'s. Higher supersamples (sharper, heavier); lower is scaled up by FSR 1. If the '
                          'game misbehaves, set it back to 1920 × 1080. Also the window\'s size (Windowed) and '
                          'the screen mode (Fullscreen).', 'game.render_res', res)
-            self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed.',
-                         'game.fps60', [(False, '30 FPS'), (True, '60 FPS')])
+            self.stepper('Frame rate', '60 FPS: gameplay at 60; videos and menus keep their normal speed. '
+                         'Above 60 is experimental: the game runs as fast as your PC and screen allow, up '
+                         'to the number chosen (with V-Sync, at most your screen\'s refresh rate). If '
+                         'something moves too fast or too slow, go back to 60 FPS.', 'game.fps',
+                         [(f, f'{f} FPS') for f in P1_FRAME_RATES])
             self.toggle('White tendrils fix', 'Consume tendrils keep their red veins (a GPU emulation '
                         'difference). Keep it on.', 'game.tendril_fix')
             self.toggle('Discord status', 'Your Discord profile shows "Playing PROTOTYPE": in the menus or '

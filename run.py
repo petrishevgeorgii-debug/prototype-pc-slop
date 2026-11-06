@@ -393,6 +393,9 @@ def main():
         env['THEORDER_PROTO_RES'] = ini['proto_res']
     if ini.get('proto_fps60') in ('0', '1'):
         env['THEORDER_FPS60'] = ini['proto_fps60']
+    if ini.get('proto_fps', '').isdigit():
+        env['THEORDER_PROTO_FPS'] = ini['proto_fps']
+        env['THEORDER_FPS60'] = '1' if int(ini['proto_fps']) > 30 else '0'
     # THEORDER_SAFE_GPU (tests, PROTOTYPE 2 bring-up): 1 = the GPU layer's optimizations, early
     # readbacks and async shaders off; settings = only the readbacks and async shaders off.
     # THEORDER_GPU_TOGGLES=<mask>: these optimizations off (bits: src/runtime_memory.c and
@@ -601,6 +604,23 @@ def main():
             derived.append('THEORDER_VBLANK_HZ')
         # PROTOTYPE paces itself on the PS4's 60 Hz flips: without a cap the present thread
         # let it run at 70-120 FPS (menus and loading screens too fast).
+        # Above 60 (THEORDER_PROTO_FPS, launcher and Display screen, experimental): the 60 FPS patch
+        # flips every vblank, so the vblank runs at the chosen rate and the cap follows it; the
+        # menus' animation step is scaled back to real time (game/p1/frame_rate.cpp).
+        proto_fps = 0
+        if is_prototype and not is_prototype2 and get_env(env, fps_key) == '1':
+            try:
+                proto_fps = int(get_env(env, 'PROTO_FPS', '60'))
+            except ValueError:
+                proto_fps = 60
+        if proto_fps > 60:
+            proto_fps = min(proto_fps, 240)
+            for key in ('VBLANK_HZ', 'FPS_LIMIT'):
+                if not get_env(env, key) or key in derived or f'THEORDER_{key}' in derived:
+                    env[f'THEORDER_{key}'] = str(proto_fps)
+                    if f'THEORDER_{key}' not in derived:
+                        derived.append(f'THEORDER_{key}')
+            env['THEORDER_PROTO_FPS'] = str(proto_fps)
         if is_prototype and not get_env(env, 'FPS_LIMIT'):
             env['THEORDER_FPS_LIMIT'] = '60'
             derived.append('THEORDER_FPS_LIMIT')
@@ -610,7 +630,8 @@ def main():
         derived.append('THEORDER_ENGINE_FPS')
         # The Order runs at half its engine setting: 30 FPS at 60, 60 with the frame rate patch.
         if is_prototype:
-            print(f"Game frame rate: {60 if get_env(env, fps_key) == '1' else 30} FPS", flush=True)
+            print(f"Game frame rate: {proto_fps if proto_fps > 60 else 60 if get_env(env, fps_key) == '1' else 30} FPS"
+                  + (' (experimental: above 60)' if proto_fps > 60 else ''), flush=True)
         else:
             print(f'Game frame rate: {engine_fps // 2} FPS'
                   + ('' if fps_patched or graphics['engine_fps'] == '60' else

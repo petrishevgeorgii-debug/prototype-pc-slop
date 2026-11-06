@@ -19,6 +19,7 @@
 
 #include "../theordergpu.h"
 #include "port_settings.h"
+#include "port_console.h"
 #include "port_trainer.h"
 
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
@@ -250,6 +251,20 @@ int ProtoFps60() {
     return PortSettings::Get().proto_fps60 != 0 ? 1 : 0; // unknown: the launcher's default, 60
 }
 
+/// The frame rate row's choice: an index into ProtoFrameRates.
+int ProtoFpsIndex() {
+    const int fps = PortSettings::Get().proto_fps > 0 ? PortSettings::Get().proto_fps.load() : ProtoFps60() ? 60 : 30;
+    for (int i = 0; i < PortSettings::ProtoFrameRateCount; ++i)
+        if (PortSettings::ProtoFrameRates[i] == fps) return i;
+    return 1;
+}
+
+void SetProtoFps(int fps) {
+    auto& s = PortSettings::Get();
+    s.proto_fps = fps;
+    s.proto_fps60 = fps > 30 ? 1 : 0;
+}
+
 const char* DisplayLabel(int row) {
     switch (row) {
     case Resolution: return T("RESOLUTION", "РАЗРЕШЕНИЕ");
@@ -265,7 +280,7 @@ const char* DisplayLabel(int row) {
 int DisplayChoices(int row) {
     switch (row) {
     case Resolution: return PortSettings::ProtoResolutionCount;
-    case FrameRate: return 2;
+    case FrameRate: return PortSettings::ProtoFrameRateCount;
     case DisplayMode: return 3;
     case VSync: return 2;
     case FrameCounter: return 2;
@@ -277,7 +292,11 @@ int DisplayChoices(int row) {
 const char* DisplayChoice(int row, int index) {
     switch (row) {
     case Resolution: return PortSettings::ProtoResolutions[std::clamp(index, 0, PortSettings::ProtoResolutionCount - 1)];
-    case FrameRate: return index ? "60 FPS" : "30 FPS";
+    case FrameRate: {
+        static const char* const rates[] = {"30 FPS", "60 FPS", "90 FPS", "120 FPS", "144 FPS", "165 FPS", "240 FPS"};
+        static_assert(sizeof(rates) / sizeof(rates[0]) == PortSettings::ProtoFrameRateCount);
+        return rates[std::clamp(index, 0, PortSettings::ProtoFrameRateCount - 1)];
+    }
     case DisplayMode: {
         static const char* const en[] = {"WINDOWED", "BORDERLESS", "FULLSCREEN"};
         static const char* const ru[] = {"ОКНО", "БЕЗ РАМКИ", "ПОЛНЫЙ ЭКРАН"};
@@ -295,7 +314,7 @@ int DisplayGet(int row) {
     auto& s = PortSettings::Get();
     switch (row) {
     case Resolution: return ProtoRes();
-    case FrameRate: return ProtoFps60();
+    case FrameRate: return ProtoFpsIndex();
     case DisplayMode: return std::clamp(s.display_mode.load(), 0, 2);
     case VSync: return s.vsync ? 1 : 0;
     case FrameCounter: return s.show_fps ? 1 : 0;
@@ -307,7 +326,7 @@ void DisplaySet(int row, int index) {
     auto& s = PortSettings::Get();
     switch (row) {
     case Resolution: s.proto_res = std::clamp(index, 0, PortSettings::ProtoResolutionCount - 1); break;
-    case FrameRate: s.proto_fps60 = index ? 1 : 0; break;
+    case FrameRate: SetProtoFps(PortSettings::ProtoFrameRates[std::clamp(index, 0, PortSettings::ProtoFrameRateCount - 1)]); break;
     case DisplayMode: s.display_mode = std::clamp(index, 0, 2); break;
     case VSync: s.vsync = index != 0; break;
     case FrameCounter: s.show_fps = index != 0; break;
@@ -317,7 +336,7 @@ void DisplaySet(int row, int index) {
             // frame rate (theorder.ini). Unsaved progress is lost: the row says so.
             PortSettings::Save();
             std::printf("Menu: restarting for resolution %s, %d FPS\n", PortSettings::ProtoResolutions[ProtoRes()],
-                        ProtoFps60() ? 60 : 30);
+                        PortSettings::ProtoFrameRates[ProtoFpsIndex()]);
             std::fflush(stdout);
             runtime_restart();
         }
@@ -330,7 +349,7 @@ void DisplayReset(int row) {
     auto& s = PortSettings::Get();
     switch (row) {
     case Resolution: s.proto_res = 2; break;
-    case FrameRate: s.proto_fps60 = 1; break;
+    case FrameRate: SetProtoFps(60); break;
     case DisplayMode: s.display_mode = 1; break;
     case VSync: s.vsync = true; break;
     case FrameCounter: s.show_fps = false; break;
@@ -488,10 +507,20 @@ void PressPause() {
     PortTrainer::PressPause();
 }
 
+int ConsoleTake(char* out, int size) {
+    return PortConsole::Take(out, size) ? 1 : 0;
+}
+
+void ConsolePrint(const char* text, int kind) {
+    PortConsole::Print(text, kind == 2   ? PortConsole::Kind::Error
+                             : kind == 3 ? PortConsole::Kind::Info
+                                         : PortConsole::Kind::Output);
+}
+
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
                                 theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions,
-                                PressPause};
+                                PressPause, ConsoleTake, ConsolePrint};
 
 } // namespace
 

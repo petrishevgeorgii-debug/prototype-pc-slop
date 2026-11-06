@@ -103,8 +103,8 @@ RU = {
         'Экспериментально. Разрешение, в котором рисует игра; 1920 × 1080 — как на PS4. Выше — суперсэмплинг '
         '(чётче, тяжелее), ниже — растягивается FSR 1. Если игра ведёт себя странно, верните 1920 × 1080. Также '
         'это размер окна (В окне) и режим экрана (Полный экран).',
-    '60 FPS: gameplay at 60; videos and menus keep their normal speed.':
-        '60 FPS: игра идёт в 60 кадрах; видео и меню — с обычной скоростью.',
+    '60 FPS: gameplay at 60; videos and menus keep their normal speed. Above 60 is experimental: the game runs as fast as your PC and screen allow, up to the number chosen (with V-Sync, at most your screen\'s refresh rate). If something moves too fast or too slow, go back to 60 FPS.':
+        '60 FPS: игра идёт с частотой 60, видео и меню — с обычной скоростью. Выше 60 — экспериментально: игра идёт так быстро, как позволяют компьютер и экран, но не выше выбранного (с V-Sync — не выше частоты экрана). Если что-то движется слишком быстро или медленно, верните 60 FPS.',
     'White tendrils fix': 'Исправление белых щупалец',
     'Consume tendrils keep their red veins (a GPU emulation difference). Keep it on.':
         'Щупальца поглощения сохраняют красные прожилки (различие эмуляции GPU). Оставьте включённым.',

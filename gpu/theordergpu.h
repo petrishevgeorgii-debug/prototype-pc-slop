@@ -121,6 +121,11 @@ typedef struct TheOrderGameMenu {
     unsigned (*trainer_actions)(void);
     void (*press_options)(void);
     void (*press_pause)(void);
+    /* The Lua console (the overlay's, the key under Esc; gpu/shim/port_console.cpp): the next typed
+     * command into `out` (0 when none), and what one printed or returned (kind 1 output, 2 an
+     * error, 3 a note). game/p1/console.cpp runs them in the game's Lua. */
+    int (*console_take)(char *out, int size);
+    void (*console_print)(const char *text, int kind);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
