@@ -13,7 +13,9 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
 
 #include "game/guest.h"
 #include "game/native_registry.h"
@@ -38,10 +40,18 @@ __port_console = function(src)
   end
   local cmd, arg = string.match(src, '^%s*(%a+)%s*(.-)%s*$')
   if cmd == 'help' and arg == '' then
+    if __port_ru then
+      return '\2Введите код Lua и нажмите Enter: команды выполняются, у выражения показывается значение.\n' ..
+        'find <текст>   функции и значения игры, в имени которых есть этот текст\n' ..
+        'clear          очищает журнал\n' ..
+        'Например:  find go_Set    go_GetHealth(PLAYER_1)    go_SetHealth(PLAYER_1, 5000)\n' ..
+        'go_SlowMotion(0.5) — замедление (1 — обычная скорость)    fe_ToggleHideHUDOption() — скрыть HUD (или F3)'
+    end
     return '\2Type Lua and press Enter: statements run, an expression shows its value.\n' ..
       'find <text>   the game\'s functions and values whose names hold the text\n' ..
       'clear         empties this log\n' ..
-      'For example:  find go_Set    find weather    go_GetHealth(PLAYER_1)    print(PLAYER_1)'
+      'For example:  find go_Set    go_GetHealth(PLAYER_1)    go_SetHealth(PLAYER_1, 5000)\n' ..
+      'go_SlowMotion(0.5) slows the game (1 is normal)    fe_ToggleHideHUDOption() hides the HUD (or F3)'
   end
   if cmd == 'find' and arg ~= '' then
     local names, needle = {}, string.lower(arg)
@@ -51,9 +61,12 @@ __port_console = function(src)
       end
     end
     table.sort(names)
-    if #names == 0 then return '\2nothing is named like "' .. arg .. '"' end
+    if #names == 0 then
+      return '\2' .. (__port_ru and ('нет ничего с «' .. arg .. '» в имени') or ('nothing is named like "' .. arg .. '"'))
+    end
     local shown = #names > 300 and 300 or #names
-    local more = #names > shown and ('\n... and ' .. (#names - shown) .. ' more: be more exact') or ''
+    local more = #names > shown and (__port_ru and ('\n... и ещё ' .. (#names - shown) .. ': уточните поиск')
+      or ('\n... and ' .. (#names - shown) .. ' more: be more exact')) or ''
     return table.concat(names, '\n', 1, shown) .. more
   end
   local f, err = loadstring('return ' .. src, '=console')
@@ -102,7 +115,13 @@ bool Define(void* manager) {
     const int top = Guest::Call<int>(kGetTop, manager);
     bool ok = false;
     if (Guest::Call<std::uint8_t>(kPushFunction, manager, "loadstring")) {
-        Guest::Call<void>(kPushString, manager, kHelper);
+        // The game's language (run.py: THEORDER_LANGUAGE, 8 Russian) for the helper's own texts.
+        static const std::string code = [] {
+            const char* language = std::getenv("THEORDER_LANGUAGE");
+            return std::string(language && std::strcmp(language, "8") == 0 ? "__port_ru = true\n" : "__port_ru = false\n") +
+                   kHelper;
+        }();
+        Guest::Call<void>(kPushString, manager, code.c_str());
         ok = Guest::Call<std::uint8_t>(kCall, manager, 1) && Guest::Call<int>(kType, manager) == kLuaFunction &&
              Guest::Call<std::uint8_t>(kCall, manager, 0);
     }

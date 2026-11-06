@@ -7,6 +7,9 @@ void Request();
 int Get(int row);
 void Set(int row, int index);
 int TakeRequests();
+/// F3: the game's Hide HUD switch (game/p1/hud.cpp).
+void HudRequest();
+int TakeHudRequests();
 unsigned TakeActions();
 void PressOptions();
 bool OptionsHeld();

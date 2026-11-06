@@ -277,6 +277,8 @@ bool WindowSDL::PollEvents() {
         case SDL_EVENT_KEY_DOWN:
             // F1: PROTOTYPE's trainer (port_trainer.cpp, game/p1/trainer.cpp).
             if (event.key.key == SDLK_F1 && !event.key.repeat && !text_active) PortTrainer::Request();
+            // F3: the game's own Hide HUD (game/p1/hud.cpp).
+            if (event.key.key == SDLK_F3 && !event.key.repeat && !text_active) PortTrainer::HudRequest();
             if (event.key.key == SDLK_F7 && !event.key.repeat) {
                 auto& s = PortSettings::Get();
                 s.mouse_look = !s.mouse_look;

@@ -507,6 +507,10 @@ void PressPause() {
     PortTrainer::PressPause();
 }
 
+int HudToggle() {
+    return PortTrainer::TakeHudRequests();
+}
+
 int ConsoleTake(char* out, int size) {
     return PortConsole::Take(out, size) ? 1 : 0;
 }
@@ -520,7 +524,7 @@ void ConsolePrint(const char* text, int kind) {
 const TheOrderGameMenu kMenu = {Count, Label, Choices, Choice, Get, Set, Reset, Save, Linked, Quit,
                                 theordergpu_pointer_mode, theordergpu_pointer_take,
                                 theordergpu_pointer_clicks, TrainerOpen, TrainerActions, PressOptions,
-                                PressPause, ConsoleTake, ConsolePrint};
+                                PressPause, ConsoleTake, ConsolePrint, HudToggle};
 
 } // namespace
 

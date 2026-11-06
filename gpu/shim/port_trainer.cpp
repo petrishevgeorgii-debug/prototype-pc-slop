@@ -15,7 +15,7 @@
 namespace PortTrainer {
 namespace {
 
-std::atomic<int> requests{0};
+std::atomic<int> requests{0}, hud_requests{0};
 std::atomic<unsigned> actions{0};
 std::atomic<int> switches[THEORDER_TRAINER_ROWS];
 std::atomic<long long> options_until{0}, pause_until{0};
@@ -48,6 +48,14 @@ void Set(int row, int index) {
 
 int TakeRequests() {
     return requests.exchange(0);
+}
+
+void HudRequest() {
+    ++hud_requests;
+}
+
+int TakeHudRequests() {
+    return hud_requests.exchange(0);
 }
 
 unsigned TakeActions() {

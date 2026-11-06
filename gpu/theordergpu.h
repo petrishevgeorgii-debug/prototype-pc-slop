@@ -126,6 +126,9 @@ typedef struct TheOrderGameMenu {
      * error, 3 a note). game/p1/console.cpp runs them in the game's Lua. */
     int (*console_take)(char *out, int size);
     void (*console_print)(const char *text, int kind);
+    /* Hide HUD: presses of its key (F3) since the last call; the game layer flips the game's own
+     * Hide HUD switch (game/p1/hud.cpp). */
+    int (*hud_toggle)(void);
 } TheOrderGameMenu;
 const TheOrderGameMenu *theordergpu_game_menu(void);
 /* Number of symbols registered by the vendored libraries (diagnostics). */
