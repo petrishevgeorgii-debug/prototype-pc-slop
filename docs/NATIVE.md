@@ -213,6 +213,40 @@ menus are up (the top screen is not the HUD) VideoOut runs the vblank and limit 
 patch, the rate follows the Display screen's Frame rate row live (60 to 240): VideoOut's present
 thread re-times its vblank and limit from `PortSettings::proto_fps` (`THEORDER_PROTO_LIVE_FPS`).
 
+## The PC save menu (research, 1.1)
+
+The PC (and PS3) version chooses a save slot on a screen of its own menus: `storage.gfx`, a list
+of slots ("01  MISSION NAME / 2:41 PM 9/5/2017 / DIFFICULTY" with a picture, "Create new slot").
+The PS4 game asks the system's save dialog instead (`sceSaveDataDialog`, which the port answers
+with its overlay's list: `src/runtime_services.c`, `PortOverlay::BeginChoice`). Everything the PC
+screen needs is still in the PS4 game and its files:
+
+- `p1/art/hud/storage.gfx` (the screen: `$SelectSaveEntry`, `$SelectLoadEntry`, `$NewDataSlot`,
+  `protosaveentry` rows with `mcSlotImage`), `protolistsaveimages.gfx`, `protosave.gfx`,
+  `protosaveload.gfx` (both set `gStorage` flags for it).
+- `engine::StorageManager` (made at start, `0xe8b90`; its dialog at `[0x126dea0]`, size 0x98,
+  the overlay `STORAGE_OVERLAY` / `StorageDialog`). Its `StorageDialogState` (vtable slot 8,
+  `0xe9260`) answers the screen's `DoCallBack`s from the dialog's fields:
+
+  | callback | field |
+  |---|---|
+  | GetTitle / GetMessage | `+0x10` / `+0x18` (strings) |
+  | GetButtonCount / GetButton | `+0x90` / the buttons at `+0x60` (16 bytes each: text, id) |
+  | GetSelectionCount / GetNumSlots | `+0x50` / `+0x54` |
+  | GetSelectionIcon | `+0x30` (an int per row) |
+  | GetSelectionDetail / GetSelectionName | `+0x38` / `+0x40` (a string per row) |
+  | GetSelectionDate / GetSelectionTime | `+0x48` (per row: u16 year, u8 month, day, hour, minute) |
+  | SetSelection / SetButton | `+0x5c` (the row chosen) / `+0x58` (the button's id: the result) |
+
+- The PC's way to show it is still there but never called on PS4 (`0xe8c50`, no callers): set
+  `+0x10`..`+0x28` (title, message, a button preset 0-9, a callback), clear `+0x50`/`+0x58`,
+  `0xe9080` (the preset's buttons), `0xe8320(dialog, -1, 0)` (the overlay up), then wait for
+  `+0x58`.
+
+The plan: when the game opens its save list, the port fills those fields from the saves it keeps
+(title, subtitle, date) and shows this screen instead of the overlay's list, then answers the
+system dialog with the row chosen.
+
 ## Next
 
 1. **Renderer front end.** Map Pure3D's draw path: passes (`pure3d::Pass`, `ShadowPass`,
