@@ -202,6 +202,7 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
 /// Above 60 FPS (THEORDER_PROTO_FPS, experimental): the menus and the HUD step a fixed time per
 /// frame (the 60 FPS patch halves the PS4's step), so at 120 FPS they ran twice as fast. The step
 /// follows the real time since this movie's last frame instead, never more than the 60 FPS one.
+/// (b4 scaled every movie: the loading screens, which get the real time already, crawled.)
 float MenuStep(void* movie, float delta, const TheOrderGameMenu* menu) {
     // The Frame rate row (the Display screen's second): 0 30 FPS, 1 60, 2 and on above 60.
     const bool above60 = menu && menu->get && menu->get(THEORDER_MENU_DISPLAY, 1) >= 2;
@@ -222,12 +223,16 @@ float MenuStep(void* movie, float delta, const TheOrderGameMenu* menu) {
     const float since = known ? std::chrono::duration<float>(now - slot->at).count() : 1.0f / 60.0f;
     slot->movie = movie;
     slot->at = now;
-    const float share = std::clamp(since * 60.0f, 0.1f, 1.0f);
-    static bool logged = false;
-    if (!logged && known && share < 0.9f) {
-        logged = true;
-        std::printf("Menu mouse: above 60 FPS the menus' step is scaled to real time (%.2f of the 60 FPS step)\n",
-                    share);
+    // Movies stepped a fixed time per frame get a step much longer than the time that passed:
+    // scaled to it (the 60 FPS patch then halves the result). Others (the loading screens) are
+    // given the time that passed already: left alone.
+    const bool fixed = known && delta > 1.5f * since;
+    const float share = fixed ? std::clamp(2.0f * since / delta, 0.1f, 1.0f) : 1.0f;
+    static int logged = 0;
+    if (known && logged < 12 && (logged < 6 || fixed)) {
+        ++logged;
+        std::printf("Menu mouse: movie %p step %.4f s, %.4f s since its last frame: %s\n", movie, delta, since,
+                    fixed ? "a fixed step, scaled to real time" : "left alone");
         std::fflush(stdout);
     }
     return delta * share;
