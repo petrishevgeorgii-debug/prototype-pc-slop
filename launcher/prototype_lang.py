@@ -159,10 +159,12 @@ RU = {
     'KEYBOARD AND MOUSE': 'КЛАВИАТУРА И МЫШЬ',
     'Button icons in game': 'Иконки кнопок в игре',
     'The buttons the game shows in its hints and tutorials: your keys and mouse buttons (below), or the '
-    'PlayStation buttons. Automatic: the ones of what you played with last time. Takes effect at the next start.':
+    'PlayStation or Xbox buttons. Automatic: the ones of what you played with last time. Takes effect at the '
+    'next start.':
         'Кнопки, которые игра показывает в подсказках и обучении: ваши клавиши и кнопки мыши (ниже) или кнопки '
-        'PlayStation. Авто: того устройства, на котором вы играли в прошлый раз. Применяется при следующем запуске.',
-    'Automatic': 'Авто', 'Keyboard & mouse': 'Клавиатура и мышь', 'PlayStation': 'PlayStation',
+        'PlayStation или Xbox. Авто: того устройства, на котором вы играли в прошлый раз. Применяется при '
+        'следующем запуске.',
+    'Automatic': 'Авто', 'Keyboard & mouse': 'Клавиатура и мышь', 'PlayStation': 'PlayStation', 'Xbox': 'Xbox',
     'Mouse look': 'Обзор мышью',
     'The mouse turns the camera as in PC games: by how far you move it, with no dead zone or speed limit (F7 '
     'switches it in game).':

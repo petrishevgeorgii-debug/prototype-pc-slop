@@ -37,9 +37,11 @@ import zlib  # noqa: F401
 if sys.platform == 'win32':
     import _winapi  # noqa: F401
     import winreg  # noqa: F401
-try:  # scripts/proto_prompts.py draws the key caps with these
+try:  # scripts/proto_prompts.py draws the key caps with these, proto_xbox.py the Xbox buttons
     import PIL.DdsImagePlugin  # noqa: F401
+    import PIL.ImageChops  # noqa: F401
     import PIL.ImageDraw  # noqa: F401
+    import PIL.ImageFilter  # noqa: F401
     import PIL.ImageFont  # noqa: F401
 except ImportError:
     pass
@@ -56,7 +58,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.1.0'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 13
+BETA = 14
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
@@ -154,7 +156,7 @@ GAME_DEFAULTS = {
 # PROTOTYPE's frame rates: 30 is the PS4's; 60 the 60 FPS patch; above it the patch with the vblank
 # and the frame cap raised (run.py), experimental.
 P1_FRAME_RATES = (30, 60, 90, 120, 144, 165, 240)
-PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation')]
+PROMPTS = [('auto', 'Automatic'), ('keyboard', 'Keyboard & mouse'), ('gamepad', 'PlayStation'), ('xbox', 'Xbox')]
 
 
 def load_settings():
@@ -1288,8 +1290,8 @@ class Launcher:
         x0, _, x1, _ = PANEL
         self.section('KEYBOARD AND MOUSE', first=True)
         self.stepper('Button icons in game', 'The buttons the game shows in its hints and tutorials: your keys '
-                     'and mouse buttons (below), or the PlayStation buttons. Automatic: the ones of what you '
-                     'played with last time. Takes effect at the next start.', 'prompts', PROMPTS)
+                     'and mouse buttons (below), or the PlayStation or Xbox buttons. Automatic: the ones of '
+                     'what you played with last time. Takes effect at the next start.', 'prompts', PROMPTS)
         self.toggle('Mouse look', 'The mouse turns the camera as in PC games: by how far you move it, with '
                     'no dead zone or speed limit (F7 switches it in game).', 'mouse_look')
         self.slider('Mouse sensitivity', 'How fast the mouse turns the camera (also in the in-game menu).',

@@ -115,8 +115,10 @@ def prompt_texts(full, russian, menu=False):
     return result
 
 
-def patch_text_bible(data, full):
-    """The text bible package with every button symbol replaced; returns (data, replaced)."""
+def patch_text_bible(data, full, xbox=False):
+    """The text bible package with every button symbol replaced; returns (data, replaced).
+    `xbox`: the fonts draw the Xbox buttons (scripts/proto_xbox.py), so the symbols stay, but in
+    the Web of Intrigue's texts the touchpad's (·) is Options there: Start (¸)."""
     out = bytearray(data[:12])
     replaced = 0
     for cid, pos, header, total in chunks(data, 12, len(data)):
@@ -145,10 +147,13 @@ def patch_text_bible(data, full):
         bounds = list(starts) + [size]
         strings = [text[bounds[i]:bounds[i + 1]].decode('utf-8', 'replace') for i in range(count)]
         russian = sum('Ѐ' <= ch <= 'ӿ' for s in strings[:400] for ch in s) > 200
-        table = prompt_texts(full, russian)
-        menu_table = prompt_texts(full, russian, menu=True)
-        woi_keys = proto_controls.keys_for(full, 'options')
-        woi_text = f'[{proto_controls.key_label(woi_keys[0], russian)}]' if woi_keys else None
+        if xbox:
+            table, menu_table, woi_text = {}, {}, '¸'
+        else:
+            table = prompt_texts(full, russian)
+            menu_table = prompt_texts(full, russian, menu=True)
+            woi_keys = proto_controls.keys_for(full, 'options')
+            woi_text = f'[{proto_controls.key_label(woi_keys[0], russian)}]' if woi_keys else None
         keys = []
         p = 12
         _, p = pstring(chunk, p)
@@ -463,8 +468,7 @@ def patch_archive(path, target, full, font, log):
     if not found:
         return None
     texts = hints = 0
-    regions, blobs = [], []
-    end = (size + 0x7ff) & ~0x7ff
+    changed = []
     for entry_at, kind, member in found:
         packed = member.startswith(b'RZ\0\0')
         data = zlib.decompress(member[16:]) if packed else member
@@ -476,9 +480,22 @@ def patch_archive(path, target, full, font, log):
             hints += n
         if packed:
             data = b'RZ\0\0' + struct.pack('<III', 0, len(data), 0) + zlib.compress(data, 6)
+        changed.append((entry_at, data))
+    if not write_patch(path, target, changed, log):
+        return None
+    return texts, hints
+
+
+def write_patch(path, target, changed, log):
+    """Writes `target`, the G3PATCH1 of archive `path` with the members [(entry offset, new
+    data)] added past its end; False when the archive cannot take them."""
+    size = path.stat().st_size
+    regions = []
+    end = (size + 0x7ff) & ~0x7ff
+    for entry_at, data in changed:
         if end + len(data) > 0xffffffff:
             log(f'Prompts: {path.name} is too large to add to')
-            return None
+            return False
         regions.append((entry_at + 4, 8, struct.pack('<II', end, len(data))))
         regions.append((end, len(data), data))
         end = (end + len(data) + 0x7ff) & ~0x7ff
@@ -492,7 +509,7 @@ def patch_archive(path, target, full, font, log):
     tmp = target.with_suffix('.tmp')
     tmp.write_bytes(b'G3PATCH1' + struct.pack('<QQII', size, end, len(regions), 0) + b''.join(table) + payload)
     tmp.replace(target)
-    return texts, hints
+    return True
 
 
 # --- Driver -----------------------------------------------------------------------------------

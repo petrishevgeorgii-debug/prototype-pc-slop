@@ -203,23 +203,27 @@ def resolve_language(cli_lang, env, ini_path, graphics_options=None):
     return 1
 
 
-def gamepad_connected(probe):
-    """Whether SDL sees a gamepad now (probe --gamepad prints 'Gamepad: none' without one)."""
+def gamepad_kind(probe):
+    """'xbox' (its bottom button is labelled A), 'playstation' (any other) or None: the gamepad
+    SDL sees now (probe --gamepad prints 'Gamepad: none' without one)."""
     try:
         result = subprocess.run([str(probe), '--gamepad'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, text=True, timeout=10, creationflags=no_console())
     except (OSError, subprocess.TimeoutExpired):
-        return False
-    return any(line.startswith('Gamepad:') and line.strip() != 'Gamepad: none'
-               for line in result.stdout.splitlines())
+        return None
+    for line in result.stdout.splitlines():
+        if line.startswith('Gamepad:') and line.strip() != 'Gamepad: none':
+            return 'xbox' if ' south=a ' in f' {line} ' else 'playstation'
+    return None
 
 
 def prototype_controls(env, probe, game, out, derived, prompts=True):
     """PROTOTYPE's keyboard and mouse layout (THEORDER_PROTO_CONTROLS: the launcher's changes,
     JSON) for the runtime, and the button prompts: THEORDER_PROMPTS=keyboard shows the keys in
     the game's texts and hints (files made from the game's own, scripts/proto_prompts.py),
-    gamepad keeps the PS4 buttons, auto (default) follows the device last played with (or, the first
-    time, keyboard when no gamepad is connected)."""
+    gamepad keeps the PS4 buttons, xbox draws the Xbox ones (scripts/proto_xbox.py), auto (default)
+    follows the device last played with (or, the first time, keyboard when no gamepad is
+    connected), with the Xbox buttons for a gamepad whose bottom button is A."""
     import proto_controls
     full = proto_controls.layout(get_env(env, 'PROTO_CONTROLS', ''))
     if not get_env(env, 'KEY_MAP'):
@@ -229,21 +233,29 @@ def prototype_controls(env, probe, game, out, derived, prompts=True):
     last_input = out / 'last_input.txt'
     env['THEORDER_LAST_INPUT'] = str(last_input)
     mode = get_env(env, 'PROMPTS', 'auto')
-    if mode not in ('keyboard', 'gamepad'):
+    if mode not in ('keyboard', 'gamepad', 'xbox'):
         try:
             mode = last_input.read_text(encoding='utf-8').strip()
         except OSError:
             mode = ''
+        kind = gamepad_kind(probe) if mode != 'keyboard' else None
         if mode not in ('keyboard', 'gamepad'):
-            mode = 'gamepad' if gamepad_connected(probe) else 'keyboard'
-    print(f'Button prompts: {"keyboard and mouse" if mode == "keyboard" else "controller"}', flush=True)
-    if mode != 'keyboard' or not prompts:
+            mode = 'gamepad' if kind else 'keyboard'
+        if mode == 'gamepad' and kind == 'xbox':
+            mode = 'xbox'
+    print(f'Button prompts: {dict(keyboard="keyboard and mouse", xbox="Xbox").get(mode, "PlayStation")}',
+          flush=True)
+    if mode == 'gamepad' or not prompts:
         return
-    import proto_prompts
     try:
-        root = proto_prompts.generate(game, out / 'prompts', full, log=lambda m: print(m, flush=True))
+        if mode == 'xbox':
+            import proto_xbox
+            root = proto_xbox.generate(game, out / 'prompts-xbox', log=lambda m: print(m, flush=True))
+        else:
+            import proto_prompts
+            root = proto_prompts.generate(game, out / 'prompts', full, log=lambda m: print(m, flush=True))
     except (OSError, ValueError, ImportError) as error:
-        print(f'Prompts: keyboard prompts unavailable ({error})', flush=True)
+        print(f'Prompts: {mode} prompts unavailable ({error})', flush=True)
         return
     if root:
         env['THEORDER_FILE_OVERRIDES'] = str(Path(root).resolve())
