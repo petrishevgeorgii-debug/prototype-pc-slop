@@ -677,8 +677,19 @@ void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_
 }
 
 void VideoOutDriver::PresentThread(std::stop_token token) {
-    const std::chrono::nanoseconds vblank_period(1000000000 /
-                                                 EmulatorSettings.GetVblankFrequency());
+    // port: PROTOTYPE above 60 FPS (run.py: THEORDER_PROTO_LIVE_FPS with the 60 FPS patch, which
+    // flips every vblank): the vblank and the frame limit follow the Frame rate row live
+    // (PortSettings::proto_fps, 60 to 240).
+    static const bool live_rate = [] {
+        const char* env = std::getenv("THEORDER_PROTO_LIVE_FPS");
+        return env && env[0] == '1';
+    }();
+    const auto live_hz = [] {
+        const int fps = PortSettings::Get().proto_fps.load();
+        return u32(std::clamp(fps, 60, 240));
+    };
+    u32 vblank_hz = live_rate ? live_hz() : EmulatorSettings.GetVblankFrequency();
+    std::chrono::nanoseconds vblank_period(1000000000 / vblank_hz);
 
     Common::SetCurrentThreadName("shadPS4:PresentThread");
     Common::SetCurrentThreadRealtime(vblank_period);
@@ -692,6 +703,7 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     const bool fixed_limit = std::getenv("THEORDER_FPS_LIMIT") || EmulatorSettings.GetVblankFrequency() == 480;
     const auto current_limit = [&] {
         const auto& s = PortSettings::Get();
+        if (live_rate) return live_hz();
         return fixed_limit ? EmulatorSettings.GetFrameLimit()
                            : u32(PortGraphics::PresentLimit(s.fps_limit, s.applied_engine_fps));
     };
@@ -699,8 +711,8 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     auto frame_period = frame_limit ? std::chrono::nanoseconds(1000000000 / frame_limit)
                                     : std::chrono::nanoseconds(0);
     auto next_flip = std::chrono::steady_clock::now();
-    std::printf("VideoOut: vblank %u Hz, frame limit %u FPS\n",
-                EmulatorSettings.GetVblankFrequency(), frame_limit);
+    std::printf("VideoOut: vblank %u Hz, frame limit %u FPS%s\n", vblank_hz, frame_limit,
+                live_rate ? " (PROTOTYPE's Frame rate, live)" : "");
 
     const auto receive_request = [this] -> Request {
         std::scoped_lock lk{mutex};
@@ -717,6 +729,12 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
     bool immediate_flips = true;
 
     while (!token.stop_requested()) {
+        if (live_rate && live_hz() != vblank_hz) {
+            vblank_hz = live_hz();
+            vblank_period = std::chrono::nanoseconds(1000000000 / vblank_hz);
+            timer = Common::AccurateTimer{vblank_period};
+            std::printf("VideoOut: vblank %u Hz (Frame rate changed)\n", vblank_hz);
+        }
         if (const u32 limit = current_limit(); limit != frame_limit) {
             frame_limit = limit;
             frame_period = limit ? std::chrono::nanoseconds(1000000000 / limit) : std::chrono::nanoseconds(0);

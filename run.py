@@ -606,7 +606,8 @@ def main():
         # let it run at 70-120 FPS (menus and loading screens too fast).
         # Above 60 (THEORDER_PROTO_FPS, launcher and Display screen, experimental): the 60 FPS patch
         # flips every vblank, so the vblank runs at the chosen rate and the cap follows it; the
-        # menus' animation step is scaled back to real time (game/p1/frame_rate.cpp).
+        # menus' animation step is scaled back to real time (game/p1/menu_mouse.cpp). With the patch
+        # the rate also follows the Frame rate row live, 60 to 240 (THEORDER_PROTO_LIVE_FPS, VideoOut).
         proto_fps = 0
         if is_prototype and not is_prototype2 and get_env(env, fps_key) == '1':
             try:
@@ -621,6 +622,9 @@ def main():
                     if f'THEORDER_{key}' not in derived:
                         derived.append(f'THEORDER_{key}')
             env['THEORDER_PROTO_FPS'] = str(proto_fps)
+        if proto_fps:
+            env['THEORDER_PROTO_LIVE_FPS'] = '1'
+            derived.append('THEORDER_PROTO_LIVE_FPS')
         if is_prototype and not get_env(env, 'FPS_LIMIT'):
             env['THEORDER_FPS_LIMIT'] = '60'
             derived.append('THEORDER_FPS_LIMIT')

@@ -206,7 +206,9 @@ The 60 FPS patch sets the flip rate to 0 (every vblank; 1 while a movie plays), 
 by the time that passed, so run.py raises the vblank (`THEORDER_VBLANK_HZ`) and the present cap
 (`THEORDER_FPS_LIMIT`) to the chosen rate (`THEORDER_PROTO_FPS`). Scaleform's movies get a fixed
 step per frame (`GFxMovieRoot::Advance`'s delta, halved by the patch at `0x3ff64e`): above 60 the
-menu mouse's Advance scales it by the real time since that movie's last frame.
+menu mouse's Advance scales it by the real time since that movie's last frame. Started with the
+patch, the rate follows the Display screen's Frame rate row live (60 to 240): VideoOut's present
+thread re-times its vblank and limit from `PortSettings::proto_fps` (`THEORDER_PROTO_LIVE_FPS`).
 
 ## Next
 

@@ -202,11 +202,9 @@ void Screens(void* movie, const TheOrderGameMenu* menu) {
 /// Above 60 FPS (THEORDER_PROTO_FPS, experimental): the menus and the HUD step a fixed time per
 /// frame (the 60 FPS patch halves the PS4's step), so at 120 FPS they ran twice as fast. The step
 /// follows the real time since this movie's last frame instead, never more than the 60 FPS one.
-float MenuStep(void* movie, float delta) {
-    static const bool above60 = [] {
-        const char* env = std::getenv("THEORDER_PROTO_FPS");
-        return env && std::atoi(env) > 60;
-    }();
+float MenuStep(void* movie, float delta, const TheOrderGameMenu* menu) {
+    // The Frame rate row (the Display screen's second): 0 30 FPS, 1 60, 2 and on above 60.
+    const bool above60 = menu && menu->get && menu->get(THEORDER_MENU_DISPLAY, 1) >= 2;
     if (!above60) return delta;
     struct Seen {
         void* movie;
@@ -237,7 +235,7 @@ float MenuStep(void* movie, float delta) {
 
 GUEST_ABI float Advance(void* movie, float delta, std::uint32_t catch_up) {
     const TheOrderGameMenu* menu = Native::Menu();
-    delta = MenuStep(movie, delta);
+    delta = MenuStep(movie, delta, menu);
     SkipMovie(menu);
     Screens(movie, menu);
     TheOrderPointer p{};
