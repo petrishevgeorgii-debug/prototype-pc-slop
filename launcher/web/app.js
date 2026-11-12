@@ -227,7 +227,7 @@ const count = (n, forms) => `${n} ${plural(n, forms)}`;
 
 // The releases, in both languages.
 const RELEASES = {
-  ru: [['1.1.0', '', [
+  ru: [['1.1.0', '12 ноября 2026', [
     ['НОВОЕ', 'Новый лаунчер', 'Этот лаунчер: сохранения с картинками миссий, резервные копии, моды, проверка обновлений.'],
     ['НОВОЕ', 'Экран сохранений из ПК-версии', 'Ячейка выбирается на родном экране игры, как в ПК-версии: с миссией, датой, сложностью и картинкой. Есть и «Создать новую ячейку».'],
     ['НОВОЕ', 'Иконки Xbox', 'Кнопки Xbox 360 из шрифта ПК-версии прямо в текстах игры, а над людьми и предметами — цветные A, B, X и Y.'],
@@ -238,7 +238,7 @@ const RELEASES = {
     ['НОВОЕ', 'Трейнер', 'Отдельный экран в меню паузы самой игры: F1 или удержание тачпада на DualSense.'],
     ['НОВОЕ', 'Карта рендера', 'Первый шаг к собственному рендеру: в логе видны все проходы, шейдеры и вызовы отрисовки.'],
     ['ИСПРАВЛЕНО', 'Дальность теней', 'Убрали настройку, которая почти ни на что не влияла.']]]],
-  en: [['1.1.0', '', [
+  en: [['1.1.0', 'November 12, 2026', [
     ['NEW', 'A new launcher', 'This one: saves with their mission pictures, backups, mods, update checks.'],
     ['NEW', 'The PC version’s save screen', 'Slots are chosen on the game’s own screen, as on PC: mission, date, difficulty and picture, and “Create new slot”.'],
     ['NEW', 'Xbox button icons', 'The Xbox 360 buttons of the PC version’s font in the game’s texts, and A, B, X, Y in colour over people and objects.'],
