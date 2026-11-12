@@ -831,6 +831,7 @@ async function init() {
     else if (e.key === 'Escape' && bootShown) { bootShown = false; renderBoot(); }
   });
   if (!reduce) setInterval(cycleFeed, 2600);
+  addEventListener('pagehide', () => { fetch('/api/bye', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {}); });
   noise(); clock(); setInterval(clock, 1000);
   if (!S.gameDir) go('folder');
   poll();

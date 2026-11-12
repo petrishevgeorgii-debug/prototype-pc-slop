@@ -76,19 +76,24 @@ def _pid_alive(pid):
         return False
 
 
-def show_windows(pid, show):
-    """Minimises (show False) or restores the browser's windows (Windows only)."""
-    if sys.platform != 'win32' or not pid:
-        return
+WINDOW_TITLE = 'PROTOTYPE'  # the page's <title>: how its window is found
+
+
+def show_windows(show):
+    """Minimises (show False) or restores the launcher's window: the browser window titled
+    PROTOTYPE (Windows only). The browser's process can hand its window to another one, so the
+    window is found by its class and title rather than its process."""
+    if sys.platform != 'win32':
+        return False
     user32 = ctypes.windll.user32
     found = []
     proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
 
     def each(hwnd, _):
-        owner = ctypes.c_ulong()
-        user32.GetWindowThreadProcessId(ctypes.c_void_p(hwnd), ctypes.byref(owner))
-        if owner.value == pid and user32.IsWindowVisible(ctypes.c_void_p(hwnd)) and \
-                user32.GetWindowTextLengthW(ctypes.c_void_p(hwnd)) > 0:
+        title, cls = ctypes.create_unicode_buffer(64), ctypes.create_unicode_buffer(64)
+        user32.GetWindowTextW(ctypes.c_void_p(hwnd), title, 64)
+        user32.GetClassNameW(ctypes.c_void_p(hwnd), cls, 64)
+        if title.value == WINDOW_TITLE and cls.value == 'Chrome_WidgetWin_1':
             found.append(hwnd)
         return True
     user32.EnumWindows(proc(each), 0)
@@ -96,6 +101,7 @@ def show_windows(pid, show):
         user32.ShowWindow(ctypes.c_void_p(hwnd), 9 if show else 6)  # SW_RESTORE / SW_MINIMIZE
         if show:
             user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
+    return bool(found)
 
 
 def dir_size(path):
@@ -445,7 +451,7 @@ class Backend:
         if self.values.get('minimize_on_play', True):
             time.sleep(6)  # the game window is up by then
             if process.poll() is None:
-                show_windows(self.browser_pid, False)
+                show_windows(False)
         code = process.wait()
         with self.lock:
             played = int(time.time() - self.started)
@@ -454,7 +460,7 @@ class Backend:
             self.values.pop('playing', None)
             self.exit = {'code': code, 'game': game, 'played': played}
             self.save()
-        show_windows(self.browser_pid, True)
+        show_windows(True)
 
     def do_stop(self):
         if not self.running:
@@ -615,6 +621,11 @@ class Backend:
         self.check_update()
         return {'update': self.update}
 
+    def do_bye(self):
+        """The page is going away (its window closing, or a reload: a reload asks again at once)."""
+        self.bye_at = time.time()
+        return {'ok': True}
+
     def do_close(self):
         threading.Timer(0.2, self.close_browser).start()
         return {'ok': True}
@@ -652,6 +663,7 @@ def make_handler(backend, web_dir, token):
 
         def do_GET(self):
             backend.seen = True
+            backend.last_seen = time.time()
             path = self.path.split('#')[0]
             if path.startswith('/?') or path == '/':
                 query = dict(p.split('=', 1) for p in path[2:].split('&') if '=' in p)
@@ -679,6 +691,7 @@ def make_handler(backend, web_dir, token):
             self._send(200, target.read_bytes(), MIME.get(target.suffix, 'application/octet-stream'))
 
         def do_POST(self):
+            backend.last_seen = time.time()
             if not self._allowed() or not self.headers.get('Content-Type', '').startswith('application/json'):
                 self._send(403, b'{}')
                 return
@@ -721,13 +734,12 @@ def run(L):
     lock = profile / 'launcher.lock'
     try:  # one launcher at a time: a second start brings the first one's window back
         other = json.loads(lock.read_text(encoding='utf-8'))
-        if _pid_alive(other.get('pid')) and _pid_alive(other.get('browser')):
-            show_windows(other.get('browser'), True)
+        if _pid_alive(other.get('pid')) and show_windows(True):
             return True
     except (OSError, ValueError):
         pass
     backend = Backend(L)
-    backend.seen = False
+    backend.seen, backend.last_seen, backend.bye_at = False, 0.0, 0.0
     token = secrets.token_urlsafe(24)
     server = Server(('127.0.0.1', 0), make_handler(backend, folder, token))
     port = server.server_address[1]
@@ -748,15 +760,27 @@ def run(L):
         lock.write_text(json.dumps({'pid': os.getpid(), 'browser': process.pid, 'port': port}), encoding='utf-8')
     except OSError:
         pass
+    # The browser's own process may end at once (it hands the window to another one), so the
+    # window's life is the page's: it asks every 1.5 s while shown (at least once a minute when
+    # minimised) and says goodbye when it closes.
     started = time.time()
-    process.wait()
-    if time.time() - started < 4 and not backend.seen:  # the window never opened
+    while not backend.seen and time.time() - started < 25:
+        time.sleep(0.2)
+    if not backend.seen:  # the window never opened
         server.shutdown()
-        print(f'launcher: {browser.name} closed at once; classic window')
+        if process.poll() is None:
+            process.terminate()
+        print(f'launcher: {browser.name} showed no window; classic window')
         return False
-    # The game may still be running: keep its log reader alive until it ends.
-    while backend.running:
-        time.sleep(1)
+    while True:
+        time.sleep(0.5)
+        now = time.time()
+        if backend.running:
+            continue
+        if backend.bye_at and backend.last_seen <= backend.bye_at + 0.2 and now - backend.bye_at > 2.5:
+            break  # closed (a reload would have asked again by now)
+        if now - backend.last_seen > 90:
+            break  # the window is gone without a goodbye
     server.shutdown()
     backend.save()
     try:
