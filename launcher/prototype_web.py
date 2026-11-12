@@ -157,11 +157,21 @@ class Backend:
         """The connected gamepad (theorder-probe --gamepad), every 20 s."""
         exe = 'theorder-probe.exe' if self.L.WINDOWS else 'theorder-probe'
         probe = next((p for p in (self.L.PORT_DIR / 'bin' / exe, self.L.PORT_DIR / 'out' / exe) if p.is_file()), None)
+        env = dict(os.environ)
+        # Development builds run from the MSYS2 tree: its CLANG64 DLLs (SDL3, FFmpeg...), as run.py does.
+        if probe and self.L.WINDOWS and not (probe.parent / 'SDL3.dll').is_file():
+            clang64 = Path(env.get('MSYS2_ROOT', r'C:\msys64')) / 'clang64' / 'bin'
+            if not clang64.is_dir():
+                return  # its DLLs are nowhere: no check (and no "DLL not found" box)
+            env['PATH'] = f'{clang64}{os.pathsep}{env.get("PATH", "")}'
+        if self.L.WINDOWS:  # a missing DLL fails quietly instead of with a system error box
+            ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)
         while probe:
             if not self.running:
                 try:
                     r = subprocess.run([str(probe), '--gamepad'], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                       stderr=subprocess.DEVNULL, text=True, timeout=10, creationflags=self.L.NO_WINDOW)
+                                       stderr=subprocess.DEVNULL, text=True, timeout=10, env=env,
+                                       creationflags=self.L.NO_WINDOW)
                     line = next((ln for ln in r.stdout.splitlines() if ln.startswith('Gamepad:')), 'Gamepad: none')
                     if line.strip() == 'Gamepad: none':
                         self.pad = None
