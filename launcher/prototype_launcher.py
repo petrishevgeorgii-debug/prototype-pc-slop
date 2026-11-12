@@ -58,7 +58,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.1.0'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 14
+BETA = 15
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
@@ -140,7 +140,7 @@ DEFAULTS = {
     'controls': {}, 'prompts': 'auto', 'controls_group': 'move', 'mouse_look': True, 'mouse_sensitivity': 100,
     'vibration': 100, 'light_bar': True, 'menu_vibration': 1, 'extra_vibration': True,
     'haptics': True, 'haptics_sound': 2, 'discord': True, 'ui_language': 'auto', 'menu_mouse': True,
-    'game': 'p1',
+    'game': 'p1', 'minimize_on_play': True, 'play_time': {},
 }
 # The two games of the bundle: name, the executable run.py starts (THEORDER_EBOOT), the data
 # folder, the line under the name on its tab, and the part of the bundle's key art (pic0) it shows.
@@ -1727,6 +1727,15 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
             pass
+    # The launcher's window: the web interface in an Edge app window (launcher/prototype_web.py);
+    # the classic one below without Edge, with --classic or THEORDER_LAUNCHER=classic.
+    if not os.environ.get('PROTO_LAUNCHER_SCREENSHOT'):
+        try:
+            import prototype_web
+            if prototype_web.run(sys.modules[__name__]):
+                return
+        except Exception as error:
+            print(f'launcher: web window failed ({error}); classic window')
     import tkinter as tk
     root = tk.Tk()
     if WINDOWS or os.environ.get('PROTO_LAUNCHER_SCREENSHOT'):

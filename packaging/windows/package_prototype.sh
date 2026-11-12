@@ -64,6 +64,8 @@ cp gpu/third_party/fonts/LICENSE-Tektur-OFL.txt gpu/third_party/fonts/LICENSE-De
 mkdir -p "$dest/fonts"
 cp gpu/third_party/fonts/Tektur-SemiCondensed.ttf gpu/third_party/fonts/LICENSE-Tektur-OFL.txt "$dest/fonts/"
 cp run.py LICENSE README.md CREDITS.md CHANGELOG.md "$dest/"
+# The launcher's page (launcher/prototype_web.py shows it in an Edge app window).
+cp -r launcher/web "$dest/web"
 mkdir -p "$dest/docs"
 cp docs/SHADER_MODS.md "$dest/docs/"
 cp packaging/windows/README-RELEASE.txt "$dest/READ ME FIRST.txt"

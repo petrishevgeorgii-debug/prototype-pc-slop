@@ -200,10 +200,23 @@ void Init() {
     if (!fs::exists(shaders / "README.txt", ec)) {
         std::ofstream(shaders / "README.txt") << Readme;
     }
-    // Named mods first (alphabetical), mods/shaders last: a later file wins.
+    // Named mods first (alphabetical), mods/shaders last: a later file wins. The launcher can
+    // switch named mods off (THEORDER_SHADER_MODS_DISABLED: their folder names, ';' between).
+    std::vector<std::string> disabled;
+    if (const char* off = std::getenv("THEORDER_SHADER_MODS_DISABLED")) {
+        std::string list = off;
+        for (size_t start = 0; start <= list.size();) {
+            const size_t end = std::min(list.find(';', start), list.size());
+            if (end > start) disabled.push_back(list.substr(start, end - start));
+            start = end + 1;
+        }
+    }
     std::vector<fs::path> folders;
     for (const auto& entry : fs::directory_iterator(mods_dir, ec)) {
         const auto name = entry.path().filename().string();
+        if (std::find(disabled.begin(), disabled.end(), name) != disabled.end()) {
+            continue;
+        }
         if (entry.is_directory() && name != "shaders" && !name.starts_with('_') &&
             !name.starts_with('.') && fs::is_directory(entry.path() / "shaders", ec)) {
             folders.push_back(entry.path() / "shaders");

@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="bg" aria-hidden="true">
+  <div class="bg-art" id="art"></div>
+  <div class="bg-tint"></div>
+  <canvas id="noise"></canvas>
+  <div class="scan"></div>
+</div>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><b><i>[</i>PROTOTYPE<i>]</i></b><span data-t="brandSub"></span></div>
+    <div class="switch" role="group" id="switch">
+      <button id="g-p1" data-game="p1" aria-pressed="true">PROTOTYPE<small data-t="p1Sub"></small></button>
+      <button id="g-p2" data-game="p2" aria-pressed="false">PROTOTYPE 2<small data-t="p2Sub"></small></button>
+    </div>
+    <div class="top-right">
+      <span class="chip live" id="pad" hidden></span>
+      <span class="chip" id="ver"></span>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail">
+    <div class="mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><circle cx="16" cy="16" r="4.2"/><path d="M16 11.8V3.5M12.4 18.1 5.2 22.3M19.6 18.1l7.2 4.2"/><path d="M10 6.5a11 11 0 0 0-4.6 11.8M22 6.5a11 11 0 0 1 4.6 11.8M9.4 26.6a11 11 0 0 0 13.2 0"/></svg>
+    </div>
+    <button class="nav" data-page="home"><span class="k">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20V9l8-5 8 5v11h-5v-6H9v6z"/></svg><span data-t="navHome"></span></button>
+    <button class="nav" data-page="graphics"><span class="k">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h18v12H3z"/><path d="M3 15l5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/></svg><span data-t="navGraphics"></span></button>
+    <button class="nav" data-page="display"><span class="k">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4h18v12H3zM8 20h8M12 16v4"/></svg><span data-t="navDisplay"></span></button>
+    <button class="nav" data-page="controls"><span class="k">4</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h18v10H3z"/><path d="M6 10h1M9 10h1M12 10h1M15 10h1M7 14h10"/></svg><span data-t="navKeys"></span></button>
+    <button class="nav" data-page="gamepad"><span class="k">5</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M7 8h10a4 4 0 0 1 4 4l-.6 4.2a2.4 2.4 0 0 1-4.2 1.2L14.5 15h-5l-1.7 2.4a2.4 2.4 0 0 1-4.2-1.2L3 12a4 4 0 0 1 4-4z"/><path d="M7.5 11v3M6 12.5h3"/></svg><span data-t="navPad"></span></button>
+    <button class="nav" data-page="saves"><span class="k">6</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg><span data-t="navSaves"></span></button>
+    <button class="nav" data-page="mods"><span class="k">7</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span data-t="navMods"></span></button>
+    <button class="nav" data-page="news"><span class="k">8</span><span class="badge" id="news-badge" hidden></span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2"/><path d="M7 9h7M7 12h7M7 15h4"/></svg><span data-t="navNews"></span></button>
+    <div class="grow"></div>
+    <button class="nav" data-page="folder"><span class="k">9</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h7l2 2h9v11H3z"/></svg><span data-t="navFolder"></span></button>
+  </nav>
+
+  <main class="main" id="main">
+    <section class="page" id="page-home">
+      <div class="home">
+        <div class="dossier">
+          <div class="eyebrow"><span class="rec" data-t="rec"></span><span id="h-cam"></span></div>
+          <h1 class="hero-name" id="h-name"></h1>
+          <div class="fileline" id="h-file"></div>
+          <div class="status" id="h-status"></div>
+          <button class="continue" id="h-continue" type="button" hidden>
+            <div class="shot" id="h-shot"></div>
+            <div class="txt"><small data-t="lastSave"></small><strong id="h-save"></strong><span id="h-savemeta"></span></div>
+          </button>
+          <div>
+            <div class="eyebrow" style="margin-bottom:8px" data-t="launchSettings"></div>
+            <div class="profile" id="h-profile"></div>
+          </div>
+        </div>
+        <div class="wall">
+          <div class="wall-head"><div class="eyebrow" id="wall-title"></div><div class="eyebrow" id="clock"></div></div>
+          <div class="monitors" id="monitors"></div>
+          <div class="wall-foot" id="wall-foot"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-graphics">
+      <h2 class="title" data-t="navGraphics"></h2>
+      <p class="lede" id="gfx-lede"></p>
+      <div class="cols">
+        <div class="group"><h3 id="gfx-game-head"></h3><div id="gfx-game"></div></div>
+        <div class="group"><h3 data-t="imageBoth"></h3><div id="gfx-image"></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-display">
+      <h2 class="title" data-t="navDisplay"></h2>
+      <p class="lede" data-t="displayLede"></p>
+      <div class="cols">
+        <div class="group"><h3 data-t="window"></h3><div id="dsp-window"></div></div>
+        <div class="group"><h3 data-t="inGame"></h3><div id="dsp-game"></div><div class="note" data-th="inGameNote"></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-controls">
+      <h2 class="title" data-t="keysTitle"></h2>
+      <p class="lede" data-t="keysLede"></p>
+      <div class="cols">
+        <div class="group"><h3 data-t="mouseIcons"></h3><div id="ctl-mouse"></div></div>
+        <div class="group"><h3 data-t="actions"></h3>
+          <div class="tabs" id="key-groups"></div>
+          <div id="ctl-keys"></div>
+          <div class="btns" style="margin-top:12px"><button class="btn" id="keys-reset" type="button" data-t="resetKeys"></button></div>
+          <div class="hint" id="keys-hint" data-t="keysHint"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-gamepad">
+      <h2 class="title" data-t="navPad"></h2>
+      <p class="lede" data-t="padLede"></p>
+      <div class="cols">
+        <div class="group"><h3 data-t="vibration"></h3><div id="pad-rumble"></div></div>
+        <div class="group"><h3>DualSense</h3><div id="pad-ds"></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-saves">
+      <h2 class="title" data-t="navSaves"></h2>
+      <p class="lede" data-t="savesLede"></p>
+      <div class="saves-bar">
+        <button class="btn primary" id="sv-backup" type="button" data-t="backupNow"></button>
+        <button class="btn" id="sv-folder" type="button" data-t="openFolder"></button>
+        <span class="count" id="sv-count"></span>
+      </div>
+      <div class="save-grid" id="sv-grid"></div>
+      <div class="backups group"><h3 data-t="backups"></h3><div id="sv-backups"></div></div>
+    </section>
+
+    <section class="page" id="page-mods">
+      <h2 class="title" data-t="navMods"></h2>
+      <p class="lede" data-t="modsLede"></p>
+      <div class="cols">
+        <div class="group"><h3 data-t="shaderMods"></h3><div id="mod-list"></div>
+          <div class="btns" style="margin-top:14px"><button class="btn" id="mods-open" type="button" data-t="openMods"></button></div>
+          <div class="note" data-th="modsNote"></div>
+        </div>
+        <div class="group"><h3><span data-t="luaScripts"></span> <span class="tag" data-t="in12"></span></h3>
+          <div class="note" data-th="luaNote"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-news">
+      <h2 class="title" data-t="navNewsTitle"></h2>
+      <div class="update" id="update"></div>
+      <div id="releases"></div>
+    </section>
+
+    <section class="page" id="page-folder">
+      <h2 class="title" data-t="gameFolder"></h2>
+      <p class="lede" data-t="folderLede"></p>
+      <div class="path"><code id="fd-path"></code><button class="btn" id="fd-change" type="button" data-t="change"></button></div>
+      <div class="checks" id="fd-checks"></div>
+      <div class="btns">
+        <button class="btn" id="fd-prepare" type="button" data-t="prepare"></button>
+        <button class="btn" id="fd-restore" type="button" data-t="restoreOriginals" hidden></button>
+        <button class="btn" id="fd-clean" type="button" data-t="clean"></button>
+        <button class="btn" id="fd-log" type="button" data-t="openLog"></button>
+      </div>
+      <div class="group" style="margin-top:30px"><h3 data-t="launcher"></h3><div id="fd-launcher"></div></div>
+    </section>
+  </main>
+
+  <footer class="dock" id="dock">
+    <button class="play" id="play" type="button">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3l15 9-15 9z"/></svg>
+      <span class="lbl"><span id="play-label"></span><small id="play-sub"></small></span>
+    </button>
+    <div class="dock-info" id="dock-info"></div>
+    <div class="links">
+      <button type="button" id="l-log" data-t="log"></button>
+      <button type="button" id="l-port" data-t="portFolder"></button>
+    </div>
+  </footer>
+</div>
+
+<div class="boot" id="boot" role="dialog">
+  <div class="boot-head"><b id="boot-title"></b><span id="boot-time"></span></div>
+  <div class="bar"><i id="boot-bar"></i></div>
+  <pre id="boot-log"></pre>
+  <div class="foot"><span id="boot-note"></span><button class="btn" id="boot-hide" type="button" data-t="hide"></button></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="modal-wrap" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3 id="modal-title"></h3>
+    <p id="modal-text"></p>
+    <pre id="modal-list" hidden></pre>
+    <div class="btns"><button class="btn" id="modal-no" type="button"></button><button class="btn primary" id="modal-yes" type="button"></button></div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

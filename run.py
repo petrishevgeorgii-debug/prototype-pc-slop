@@ -8,6 +8,7 @@ Extra arguments go to the game probe.
 The in-game "Apply and restart" runs this script again through THEORDER_RESTART_COMMAND;
 `--after PID` waits for the previous game process to end first (its GPU device and memory).
 """
+import json
 import os
 from pathlib import Path
 import shlex
@@ -668,6 +669,13 @@ def main():
         # Shader mods (docs/SHADER_MODS.md): mods/shaders and mods/<name>/shaders.
         env.setdefault('THEORDER_SHADER_MODS_DIR',
                        str(Path(get_env(env, 'MODS_DIR', str(data / 'mods'))).resolve()))
+        # The named mods switched off in the launcher (mods.json "disabled").
+        try:
+            mods_config = json.loads(Path(get_env(env, 'MODS_CONFIG', str(data / 'mods.json'))).read_text(encoding='utf-8'))
+            off = [n for n in mods_config.get('disabled', []) if isinstance(n, str) and ';' not in n]
+        except (OSError, ValueError, AttributeError):
+            off = []
+        env.setdefault('THEORDER_SHADER_MODS_DISABLED', ';'.join(off))
         from save_backup import backup
         try:
             if made := backup(user_dir):
