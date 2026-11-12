@@ -9,8 +9,9 @@
   * PROTOTYPE 2's story pictures: p2/art/hud/story_*_01.p3d.rz;
   * the mission and district names in the game's language (its text bible).
 
-Everything is written once to <out> (JPEG files and names.json) and reused while the game files
-stay the same. Dumps that keep the files in archives get no pictures: the launcher shows none.
+Everything is written once to <out> (each picture as JPEG for the web window and BMP for the
+native one, the window icon as icon.bmp, and names.json) and reused while the game files stay
+the same. Dumps that keep the files in archives get no pictures: the launcher shows none.
 """
 import hashlib
 import io
@@ -22,7 +23,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import proto_prompts  # noqa: E402  (RZ, P3D chunks, GNF)
 
-VERSION = 1
+VERSION = 2
 P1_HUD = Path('p1') / 'art' / 'hud'
 P2_HUD = Path('p2') / 'art' / 'hud'
 FORMATS = {35: (b'DXT1', 8), 36: (b'DXT3', 16), 37: (b'DXT5', 16)}  # GNF data format: DDS, block bytes
@@ -95,8 +96,10 @@ def mission_frames(gfx):
 
 
 def _jpeg(image, path, quality=82):
+    """The picture as JPEG (the web window) and BMP (the native one: SDL reads BMP itself)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path, 'JPEG', quality=quality, optimize=True, progressive=True)
+    image.convert('RGB').save(path.with_suffix('.bmp'), 'BMP')
 
 
 def _fit(image, size):
@@ -116,7 +119,8 @@ def _content_box(image):
 
 
 def _key(game):
-    files = [Path(game) / 'sce_sys' / 'pic0.png', Path(game) / P1_HUD / 'fe_permanent.p3d.rz',
+    files = [Path(game) / 'sce_sys' / 'pic0.png', Path(game) / 'sce_sys' / 'icon0.png',
+             Path(game) / P1_HUD / 'fe_permanent.p3d.rz',
              Path(game) / P1_HUD / 'protolistsaveimages.gfx', Path(game) / P1_HUD / 'textbible_english.p3d.rz',
              *sorted((Path(game) / P2_HUD).glob('story_*_01.p3d.rz'))]
     stats = [(str(p.name), p.stat().st_size, int(p.stat().st_mtime)) for p in files if p.is_file()]
@@ -134,7 +138,7 @@ def generate(game, out, log=print):
             return cached
     except (OSError, ValueError):
         pass
-    from PIL import Image
+    from PIL import Image, ImageStat
     result = {'key': key, 'art': [], 'p1': [], 'p2': [], 'missions': {}, 'districts': []}
     game = Path(game)
     pic = game / 'sce_sys' / 'pic0.png'
@@ -148,6 +152,14 @@ def generate(game, out, log=print):
                     result['art'].append(name)
         except OSError as error:
             log(f'launcher art: {pic.name}: {error}')
+    icon = game / 'sce_sys' / 'icon0.png'
+    if icon.is_file():
+        try:
+            with Image.open(icon) as image:
+                out.mkdir(parents=True, exist_ok=True)
+                image.convert('RGB').resize((64, 64), Image.LANCZOS).save(out / 'icon.bmp', 'BMP')
+        except OSError as error:
+            log(f'launcher art: {icon.name}: {error}')
     gfx, package = game / P1_HUD / 'protolistsaveimages.gfx', game / P1_HUD / 'fe_permanent.p3d.rz'
     if gfx.is_file() and package.is_file():
         try:
@@ -164,7 +176,10 @@ def generate(game, out, log=print):
             for _, gnf in _texture_chunks(proto_prompts.read_rz(path))[:1]:
                 image = decode(gnf)
                 name = path.name[len('story_'):-len('_01.p3d.rz')]
-                _jpeg(_fit(image.crop(_content_box(image)), (384, 216)), out / 'p2' / f'{name}.jpg')
+                picture = _fit(image.crop(_content_box(image)), (384, 216))
+                if ImageStat.Stat(picture.convert('L')).mean[0] > 170:
+                    continue  # a white flash (the final boss's card): no picture for a camera
+                _jpeg(picture, out / 'p2' / f'{name}.jpg')
                 result['p2'].append(name)
         except (OSError, ValueError, struct.error, IndexError) as error:
             log(f'launcher art: {path.name}: {error}')

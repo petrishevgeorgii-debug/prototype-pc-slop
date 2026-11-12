@@ -133,6 +133,7 @@ class Backend:
         self.pad = None
         self.update = None
         self.browser_pid = None
+        self.native = False       # the native window (prototype_native.py) minimises and restores itself
         self.checks, self.sfo = [], {}
         self.lock = threading.RLock()
         self.refresh()
@@ -357,7 +358,7 @@ class Backend:
             'controls': self.controls(), 'pad': self.pad, 'update': self.update,
             'cache': {'mb': round(size / 1e6), 'files': files}, 'prepared': {g: self.prepared(g) for g in ('p1', 'p2')},
             'playTime': v.get('play_time', {}), 'launch': self.launch_state(), 'notice': notice,
-            'releases': RELEASES_PAGE,
+            'releases': RELEASES_PAGE, 'artDir': str(self.art_dir),
         }
 
     # ---- actions (from the page)
@@ -458,7 +459,7 @@ class Backend:
         return self.state()
 
     def wait_game(self, process, game):
-        if self.values.get('minimize_on_play', True):
+        if self.values.get('minimize_on_play', True) and not self.native:
             time.sleep(6)  # the game window is up by then
             if process.poll() is None:
                 show_windows(False)
@@ -470,7 +471,8 @@ class Backend:
             self.values.pop('playing', None)
             self.exit = {'code': code, 'game': game, 'played': played}
             self.save()
-        show_windows(True)
+        if not self.native:
+            show_windows(True)
 
     def do_stop(self):
         if not self.running:
@@ -535,6 +537,17 @@ class Backend:
             self.refresh()
             self.art = None
             threading.Thread(target=self.load_art, daemon=True).start()
+        return self.state()
+
+    def do_set_folder(self, path):
+        """The game folder the native window's folder dialog chose."""
+        if not path or not Path(path).is_dir():
+            raise ValueError('not a folder')
+        self.values['game_dir'] = str(Path(path))
+        self.save()
+        self.refresh()
+        self.art = None
+        threading.Thread(target=self.load_art, daemon=True).start()
         return self.state()
 
     def do_prepare(self):

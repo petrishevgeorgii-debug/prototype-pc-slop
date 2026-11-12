@@ -13,6 +13,7 @@ from paths import ROOT
 sys.path.insert(0, str(ROOT / 'launcher'))
 import prototype_launcher as L  # noqa: E402
 import prototype_web as W  # noqa: E402
+import prototype_native as N  # noqa: E402
 
 
 def param(title, subtitle, detail, mtime):
@@ -89,6 +90,41 @@ class BackendTest(unittest.TestCase):
     def test_unknown_actions_are_refused(self):
         with self.assertRaises(ValueError):
             self.backend.act('rm_rf', {})
+
+
+    def test_the_native_window_sets_the_folder(self):
+        game = self.root / 'game'
+        game.mkdir()
+        state = self.backend.act('set_folder', {'path': str(game)})
+        self.assertEqual(state['gameDir'], str(game))
+        self.assertIn('artDir', state)
+        with self.assertRaises(ValueError):
+            self.backend.act('set_folder', {'path': str(self.root / 'nowhere')})
+
+
+class NativeTest(unittest.TestCase):
+    """launcher-ui's requests (JSON lines on its stdout) and their answers (on its stdin)."""
+    def test_requests_are_answered_by_id(self):
+        import io
+
+        class Backend:
+            def act(self, name, args):
+                if name == 'boom':
+                    raise ValueError('no such thing')
+                return {'echo': name, 'args': args}
+
+        class Process:
+            stdout = io.BytesIO(b'{"id": 1, "action": "poll", "args": {}}\nnot json\n'
+                                b'{"id": 2, "action": "boom", "args": {}}\n{"id": 3, "action": "set", "args": {"key": "vsync"}}\n')
+            stdin = io.BytesIO()
+        process = Process()
+        process.stdin.close = lambda: None
+        with mock.patch.object(threading.Thread, 'start', lambda self: self.run()):
+            self.assertEqual(N.serve(Backend(), process), 3)
+        replies = {r['id']: r for r in map(json.loads, process.stdin.getvalue().decode().splitlines())}
+        self.assertEqual(replies[1], {'id': 1, 'ok': True, 'result': {'echo': 'poll', 'args': {}}})
+        self.assertEqual((replies[2]['ok'], replies[2]['error']), (False, 'no such thing'))
+        self.assertEqual(replies[3]['result']['args'], {'key': 'vsync'})
 
 
 class NewerTest(unittest.TestCase):

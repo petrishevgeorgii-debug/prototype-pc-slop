@@ -58,7 +58,7 @@ APP_NAME = 'PROTOTYPE'
 VERSION = '1.1.0'
 # A test build: BETA = 1 makes 1.0.5 b1 (the launcher's title, the release zip's name:
 # PROTOTYPE-PC-Port-v1.0.5-b1.zip); 0 for the release itself (Publish Release.bat).
-BETA = 17
+BETA = 18
 VERSION_LABEL = VERSION + (f' b{BETA}' if BETA else '')
 TITLE_ID = 'CUSA06545'
 # sha256 of the untouched executables of CUSA06545 01.00 (the port patches them in memory only).
@@ -1727,9 +1727,16 @@ def main():
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
             pass
-    # The launcher's window: the web interface in an Edge app window (launcher/prototype_web.py);
-    # the classic one below without Edge, with --classic or THEORDER_LAUNCHER=classic.
+    # The launcher's window: the native one (launcher-ui, launcher/prototype_native.py); without it
+    # the web interface in an Edge app window (launcher/prototype_web.py); the classic one below
+    # without either, with --classic or THEORDER_LAUNCHER=classic (=web skips the native one).
     if not os.environ.get('PROTO_LAUNCHER_SCREENSHOT'):
+        try:
+            import prototype_native
+            if prototype_native.run(sys.modules[__name__]):
+                return
+        except Exception as error:
+            print(f'launcher: native window failed ({error}); web window')
         try:
             import prototype_web
             if prototype_web.run(sys.modules[__name__]):

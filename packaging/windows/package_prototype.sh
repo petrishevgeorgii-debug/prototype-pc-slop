@@ -33,9 +33,17 @@ cp out/rel-pyi-dist/Prototype.exe "$dest/"
 for exe in theorder-probe.exe theorder-gpu-capabilities.exe; do
     llvm-strip --strip-debug -o "$dest/bin/$exe" "out/$exe"
 done
+# The launcher's window (launcher/native); without it Prototype.exe opens its web window.
+uis=()
+if [[ -f out/launcher-ui.exe ]]; then
+    llvm-strip --strip-debug -o "$dest/bin/launcher-ui.exe" out/launcher-ui.exe
+    uis=("$dest/bin/launcher-ui.exe")
+else
+    echo 'Note: no out/launcher-ui.exe (bash build.sh makes it): the package uses the web launcher window' >&2
+fi
 # The librsvg stub first: ldd then finds it beside the executable and GIO stays out.
 cp out/librsvg-2-2.dll "$dest/bin/"
-ldd "$dest/bin/theorder-probe.exe" "$dest/bin/theorder-gpu-capabilities.exe" |
+ldd "$dest/bin/theorder-probe.exe" "$dest/bin/theorder-gpu-capabilities.exe" "${uis[@]}" |
     awk '/\/clang64\/bin\// {print $3}' | sort -u | while read -r dll; do
         cp -u "$dll" "$dest/bin/"
     done

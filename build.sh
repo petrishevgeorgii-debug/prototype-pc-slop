@@ -35,6 +35,16 @@ MINGW*|MSYS*)
     else
         echo "The Manhattan Engine was not built (out/engine-build.log); the game is not affected." >&2
     fi
+    # The launcher's window (launcher/native, SDL3 + Dear ImGui): without it the launcher opens its
+    # web window; a failure does not stop the game's build.
+    if cmake -S launcher/native -B out/launcher-ui -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ >/dev/null \
+            && ninja -C out/launcher-ui > out/launcher-ui-build.log 2>&1; then
+        cp out/launcher-ui/launcher-ui.exe out/
+        echo "Built $PWD/out/launcher-ui.exe"
+    else
+        grep -v '^\[' out/launcher-ui-build.log 2>/dev/null | tail -20 >&2
+        echo "The launcher window was not built (out/launcher-ui-build.log); the launcher uses its web window." >&2
+    fi
     # Loaded instead of FFmpeg's real librsvg, which brings GIO in (packaging/windows/rsvg_stub.c).
     clang -shared -O2 -Wall -Wextra -Werror packaging/windows/rsvg_stub.c -o out/librsvg-2-2.dll
     echo "Built $PWD/out/theorder-probe.exe"
